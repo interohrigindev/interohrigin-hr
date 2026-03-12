@@ -13,6 +13,7 @@ DROP TABLE IF EXISTS public.evaluation_weights CASCADE;
 DROP TABLE IF EXISTS public.evaluation_periods CASCADE;
 DROP TABLE IF EXISTS public.employees CASCADE;
 DROP TABLE IF EXISTS public.departments CASCADE;
+DROP TABLE IF EXISTS public.grade_criteria CASCADE;
 -- Drop possibly existing old schema tables
 DROP TABLE IF EXISTS public.evaluations CASCADE;
 DROP TABLE IF EXISTS public.evaluation_criteria CASCADE;
@@ -20,7 +21,7 @@ DROP TABLE IF EXISTS public.evaluation_scores CASCADE; -- same name but differen
 DROP TABLE IF EXISTS public.profiles CASCADE;
 
 -- =====================================================================
--- 2. RUN MIGRATION 002 (Create Schema & Seed Data)
+-- 2. RUN MIGRATION 002 & 006 (Create Schema & Seed Data)
 -- =====================================================================
 
 -- [Content from 002_new_schema.sql]
@@ -48,6 +49,10 @@ CREATE TABLE public.employees (
                               'employee','leader','director_kim','director_kang','executive','ceo'
                             )),
   is_active     boolean     DEFAULT true,
+  phone         text,
+  address       text,
+  birth_date    date,
+  avatar_url    text,
   created_at    timestamptz DEFAULT now(),
   updated_at    timestamptz DEFAULT now()
 );
@@ -75,13 +80,14 @@ CREATE TABLE public.evaluation_categories (
 );
 
 CREATE TABLE public.evaluation_items (
-  id          uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
-  category_id uuid    NOT NULL REFERENCES public.evaluation_categories(id) ON DELETE CASCADE,
-  name        text    NOT NULL,
-  description text,
-  max_score   integer DEFAULT 10,
-  sort_order  integer NOT NULL,
-  is_active   boolean DEFAULT true
+  id              uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id     uuid    NOT NULL REFERENCES public.evaluation_categories(id) ON DELETE CASCADE,
+  name            text    NOT NULL,
+  description     text,
+  max_score       integer DEFAULT 10,
+  sort_order      integer NOT NULL,
+  is_active       boolean DEFAULT true,
+  evaluation_type text    DEFAULT 'qualitative' CHECK (evaluation_type IN ('quantitative', 'qualitative', 'mixed'))
 );
 
 CREATE TABLE public.evaluation_targets (
@@ -168,6 +174,16 @@ CREATE TABLE public.evaluation_weights (
   UNIQUE (period_id, evaluator_role)
 );
 
+-- [Content from 006_grade_criteria.sql]
+CREATE TABLE public.grade_criteria (
+  id        uuid    PRIMARY KEY DEFAULT gen_random_uuid(),
+  grade     text    NOT NULL CHECK (grade IN ('S','A','B','C','D')),
+  min_score integer NOT NULL,
+  max_score integer NOT NULL,
+  label     text,
+  UNIQUE (grade)
+);
+
 CREATE INDEX idx_employees_department_id   ON public.employees(department_id);
 CREATE INDEX idx_employees_role            ON public.employees(role);
 
@@ -190,34 +206,42 @@ ALTER TABLE public.self_evaluations     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.evaluator_scores     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.evaluator_comments   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.evaluation_weights   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.grade_criteria       ENABLE ROW LEVEL SECURITY;
 
--- SEED DATA (Departments, Categories, Items)
+-- SEED DATA (Departments, Categories, Items, Grade Criteria)
 INSERT INTO public.departments (id, name) VALUES
-  ('d0000000-0000-0000-0000-000000000001', '브랜드사업본부'),
-  ('d0000000-0000-0000-0000-000000000002', '경영지원본부'),
-  ('d0000000-0000-0000-0000-000000000003', '뉴미디어사업본부'),
-  ('d0000000-0000-0000-0000-000000000004', 'IT사업본부');
+  ('10000000-0000-0000-0000-000000000001', '브랜드사업본부'),
+  ('10000000-0000-0000-0000-000000000002', '경영지원본부'),
+  ('10000000-0000-0000-0000-000000000003', '뉴미디어사업본부'),
+  ('10000000-0000-0000-0000-000000000004', 'IT사업본부');
 
 INSERT INTO public.evaluation_categories (id, name, weight, sort_order) VALUES
-  ('c0000000-0000-0000-0000-000000000001', '업적평가', 0.7, 1),
-  ('c0000000-0000-0000-0000-000000000002', '역량평가', 0.3, 2);
+  ('20000000-0000-0000-0000-000000000001', '업적평가', 0.7, 1),
+  ('20000000-0000-0000-0000-000000000002', '역량평가', 0.3, 2);
 
-INSERT INTO public.evaluation_items (category_id, name, description, max_score, sort_order) VALUES
-  ('c0000000-0000-0000-0000-000000000001', '업무목표 달성도', '분기 핵심 업무목표(KPI) 대비 실제 달성률', 10, 1),
-  ('c0000000-0000-0000-0000-000000000001', '업무 품질',       '업무 결과물의 정확성·완성도·기한 준수', 10, 2),
-  ('c0000000-0000-0000-0000-000000000001', '업무 효율성',     '시간·자원·비용 대비 산출 효율', 10, 3),
-  ('c0000000-0000-0000-0000-000000000001', '문제 해결 기여',  '돌발 이슈·장애 해결, 프로세스 개선 기여', 10, 4),
-  ('c0000000-0000-0000-0000-000000000001', '팀 목표 기여도',  '본인의 성과가 팀 전체 목표에 기여한 정도', 10, 5);
+INSERT INTO public.evaluation_items (category_id, name, description, max_score, sort_order, evaluation_type) VALUES
+  ('20000000-0000-0000-0000-000000000001', '상품 이익률 및 원가 관리',     '상품별 이익률 목표 달성도 및 원가 절감 노력을 평가합니다.', 10, 1, 'quantitative'),
+  ('20000000-0000-0000-0000-000000000001', '신제품 기획 및 라인업 전략',   '신규 상품 기획력과 브랜드 라인업 확장 전략의 적절성을 평가합니다.', 10, 2, 'qualitative'),
+  ('20000000-0000-0000-0000-000000000001', '프로모션 기획 및 마케팅 효율', '프로모션 성과(매출, ROI)와 마케팅 기획의 창의성을 종합 평가합니다.', 10, 3, 'mixed'),
+  ('20000000-0000-0000-0000-000000000001', '수요 예측 및 재고 관리',       '수요 예측 정확도와 적정 재고 수준 유지 능력을 평가합니다.', 10, 4, 'quantitative'),
+  ('20000000-0000-0000-0000-000000000001', '브랜드 톤앤매너 및 품질 관리', '브랜드 일관성 유지 및 상품 품질 관리 역량을 평가합니다.', 10, 5, 'qualitative'),
+  ('20000000-0000-0000-0000-000000000001', '트렌드 분석 및 경쟁사 대응',   '시장 트렌드 파악 능력과 경쟁사 동향 대응 전략을 평가합니다.', 10, 6, 'qualitative'),
+  ('20000000-0000-0000-0000-000000000001', '일정 준수 및 유관 부서 리딩',  '프로젝트 일정 준수율과 유관 부서 간 협업 리더십을 평가합니다.', 10, 7, 'mixed');
 
-INSERT INTO public.evaluation_items (category_id, name, description, max_score, sort_order) VALUES
-  ('c0000000-0000-0000-0000-000000000002', '전문성/직무역량', '담당 직무 관련 전문지식 및 스킬 수준', 10, 1),
-  ('c0000000-0000-0000-0000-000000000002', '커뮤니케이션',    '부서 내·외 소통, 보고·협업 커뮤니케이션', 10, 2),
-  ('c0000000-0000-0000-0000-000000000002', '주도성/책임감',   '자발적 업무 추진, 맡은 업무에 대한 책임감', 10, 3),
-  ('c0000000-0000-0000-0000-000000000002', '협업/팀워크',     '팀원·타부서와의 협력 및 지원', 10, 4),
-  ('c0000000-0000-0000-0000-000000000002', '성장/자기개발',   '역량 향상을 위한 학습·자기개발 노력', 10, 5);
+INSERT INTO public.evaluation_items (category_id, name, description, max_score, sort_order, evaluation_type) VALUES
+  ('20000000-0000-0000-0000-000000000002', '근태 및 사내 규정 준수',     '출결 관리, 근태 기록 및 사내 규정 준수 여부를 평가합니다.', 10, 1, 'quantitative'),
+  ('20000000-0000-0000-0000-000000000002', '커뮤니케이션 및 보고 태도',  '업무 보고의 적시성, 정확성 및 동료 간 소통 능력을 평가합니다.', 10, 2, 'qualitative'),
+  ('20000000-0000-0000-0000-000000000002', '업무 적극성 및 조직 적응',   '업무에 대한 적극적인 태도와 조직 문화 적응력을 평가합니다.', 10, 3, 'qualitative');
 
 INSERT INTO public.evaluation_periods (id, year, quarter, status, start_date, end_date) VALUES
-  ('p0000000-0000-0000-0000-000000000001', 2026, 1, 'in_progress', '2026-01-01', '2026-03-31');
+  ('30000000-0000-0000-0000-000000000001', 2026, 1, 'in_progress', '2026-01-01', '2026-03-31');
+
+INSERT INTO public.grade_criteria (grade, min_score, max_score, label) VALUES
+  ('S', 90, 100, '탁월'),
+  ('A', 80, 89,  '우수'),
+  ('B', 70, 79,  '보통'),
+  ('C', 60, 69,  '미흡'),
+  ('D', 0,  59,  '부진');
 
 -- (Weights from 002 are incompatible with later schema, so we skip them here or insert and let them be deleted)
 
@@ -243,7 +267,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 ALTER TABLE public.employees DROP CONSTRAINT IF EXISTS employees_role_check;
 ALTER TABLE public.employees
   ADD CONSTRAINT employees_role_check
-  CHECK (role IN ('employee', 'leader', 'director', 'ceo'));
+  CHECK (role IN ('employee', 'leader', 'director', 'division_head', 'ceo', 'admin'));
 
 ALTER TABLE public.evaluation_targets DROP CONSTRAINT IF EXISTS evaluation_targets_status_check;
 ALTER TABLE public.evaluation_targets
@@ -275,7 +299,7 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE;
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean AS $$
   SELECT COALESCE(
-    (SELECT role IN ('director', 'ceo') FROM public.employees WHERE id = auth.uid()),
+    (SELECT role IN ('director', 'division_head', 'ceo', 'admin') FROM public.employees WHERE id = auth.uid()),
     false
   )
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
@@ -477,7 +501,7 @@ BEGIN
     RAISE EXCEPTION '직원을 생성할 권한이 없습니다.';
   END IF;
 
-  IF p_role NOT IN ('employee', 'leader', 'director', 'ceo') THEN
+  IF p_role NOT IN ('employee', 'leader', 'director', 'division_head', 'ceo', 'admin') THEN
     RAISE EXCEPTION '유효하지 않은 역할입니다: %', p_role;
   END IF;
 
@@ -689,30 +713,68 @@ LEFT JOIN status_order so ON so.status_name = t.status
 GROUP BY p.id, p.year, p.quarter;
 
 -- RLS Policies (Consolidated)
+-- departments
+DROP POLICY IF EXISTS "dept_select_authenticated" ON public.departments;
+DROP POLICY IF EXISTS "dept_insert_admin" ON public.departments;
+DROP POLICY IF EXISTS "dept_update_admin" ON public.departments;
+DROP POLICY IF EXISTS "dept_delete_admin" ON public.departments;
+
+CREATE POLICY "dept_select_authenticated" ON public.departments FOR SELECT TO authenticated USING (true);
+CREATE POLICY "dept_insert_admin" ON public.departments FOR INSERT TO authenticated WITH CHECK (public.is_admin());
+CREATE POLICY "dept_update_admin" ON public.departments FOR UPDATE TO authenticated USING (public.is_admin());
+CREATE POLICY "dept_delete_admin" ON public.departments FOR DELETE TO authenticated USING (public.is_admin());
+
+-- employees
+DROP POLICY IF EXISTS "emp_select_authenticated" ON public.employees;
+DROP POLICY IF EXISTS "emp_update_self_or_admin" ON public.employees;
+DROP POLICY IF EXISTS "emp_insert_admin" ON public.employees;
+DROP POLICY IF EXISTS "emp_delete_admin" ON public.employees;
+
+CREATE POLICY "emp_select_authenticated" ON public.employees FOR SELECT TO authenticated USING (true);
+CREATE POLICY "emp_update_self_or_admin" ON public.employees FOR UPDATE TO authenticated USING (id = auth.uid() OR public.is_admin());
+CREATE POLICY "emp_insert_admin" ON public.employees FOR INSERT TO authenticated WITH CHECK (public.is_admin());
+CREATE POLICY "emp_delete_admin" ON public.employees FOR DELETE TO authenticated USING (public.is_admin());
+
+-- evaluation_periods
+DROP POLICY IF EXISTS "period_select_authenticated" ON public.evaluation_periods;
+DROP POLICY IF EXISTS "period_insert_admin" ON public.evaluation_periods;
+DROP POLICY IF EXISTS "period_update_admin" ON public.evaluation_periods;
+DROP POLICY IF EXISTS "period_delete_admin" ON public.evaluation_periods;
+
+CREATE POLICY "period_select_authenticated" ON public.evaluation_periods FOR SELECT TO authenticated USING (true);
+CREATE POLICY "period_insert_admin" ON public.evaluation_periods FOR INSERT TO authenticated WITH CHECK (public.is_admin());
+CREATE POLICY "period_update_admin" ON public.evaluation_periods FOR UPDATE TO authenticated USING (public.is_admin());
+CREATE POLICY "period_delete_admin" ON public.evaluation_periods FOR DELETE TO authenticated USING (public.is_admin());
+
+-- evaluation_categories
+DROP POLICY IF EXISTS "cat_select_authenticated" ON public.evaluation_categories;
+DROP POLICY IF EXISTS "cat_insert_admin" ON public.evaluation_categories;
+DROP POLICY IF EXISTS "cat_update_admin" ON public.evaluation_categories;
+DROP POLICY IF EXISTS "cat_delete_admin" ON public.evaluation_categories;
+
+CREATE POLICY "cat_select_authenticated" ON public.evaluation_categories FOR SELECT TO authenticated USING (true);
+CREATE POLICY "cat_insert_admin" ON public.evaluation_categories FOR INSERT TO authenticated WITH CHECK (public.is_admin());
+CREATE POLICY "cat_update_admin" ON public.evaluation_categories FOR UPDATE TO authenticated USING (public.is_admin());
+CREATE POLICY "cat_delete_admin" ON public.evaluation_categories FOR DELETE TO authenticated USING (public.is_admin());
+
+-- evaluation_items
+DROP POLICY IF EXISTS "item_select_authenticated" ON public.evaluation_items;
+DROP POLICY IF EXISTS "item_insert_admin" ON public.evaluation_items;
+DROP POLICY IF EXISTS "item_update_admin" ON public.evaluation_items;
+DROP POLICY IF EXISTS "item_delete_admin" ON public.evaluation_items;
+
+CREATE POLICY "item_select_authenticated" ON public.evaluation_items FOR SELECT TO authenticated USING (true);
+CREATE POLICY "item_insert_admin" ON public.evaluation_items FOR INSERT TO authenticated WITH CHECK (public.is_admin());
+CREATE POLICY "item_update_admin" ON public.evaluation_items FOR UPDATE TO authenticated USING (public.is_admin());
+CREATE POLICY "item_delete_admin" ON public.evaluation_items FOR DELETE TO authenticated USING (public.is_admin());
+
+-- evaluation_targets
 DROP POLICY IF EXISTS "target_select_own"          ON public.evaluation_targets;
 DROP POLICY IF EXISTS "target_select_leader_dept"  ON public.evaluation_targets;
 DROP POLICY IF EXISTS "target_select_director_up"  ON public.evaluation_targets;
 DROP POLICY IF EXISTS "target_update_admin"        ON public.evaluation_targets;
-
-DROP POLICY IF EXISTS "self_eval_select_own"        ON public.self_evaluations;
-DROP POLICY IF EXISTS "self_eval_select_evaluator"  ON public.self_evaluations;
-DROP POLICY IF EXISTS "self_eval_insert_own"        ON public.self_evaluations;
-DROP POLICY IF EXISTS "self_eval_update_own"        ON public.self_evaluations;
-
-DROP POLICY IF EXISTS "eval_score_select_own_target"  ON public.evaluator_scores;
-DROP POLICY IF EXISTS "eval_score_select_my_scores"   ON public.evaluator_scores;
-DROP POLICY IF EXISTS "eval_score_select_admin"       ON public.evaluator_scores;
-DROP POLICY IF EXISTS "eval_score_insert_my_turn"     ON public.evaluator_scores;
-DROP POLICY IF EXISTS "eval_score_update_my_turn"     ON public.evaluator_scores;
-
-DROP POLICY IF EXISTS "eval_comment_select_own_target"  ON public.evaluator_comments;
-DROP POLICY IF EXISTS "eval_comment_select_my_comments" ON public.evaluator_comments;
-DROP POLICY IF EXISTS "eval_comment_select_admin"       ON public.evaluator_comments;
-DROP POLICY IF EXISTS "eval_comment_insert_my_turn"     ON public.evaluator_comments;
-DROP POLICY IF EXISTS "eval_comment_update_my_turn"     ON public.evaluator_comments;
-
-DROP POLICY IF EXISTS "grade_criteria_manage_management" ON public.grade_criteria;
-DROP POLICY IF EXISTS "grade_criteria_manage_admin"      ON public.grade_criteria;
+DROP POLICY IF EXISTS "target_insert_admin"        ON public.evaluation_targets;
+DROP POLICY IF EXISTS "target_delete_admin"        ON public.evaluation_targets;
 
 CREATE POLICY "target_select_own" ON public.evaluation_targets FOR SELECT TO authenticated
   USING (employee_id = auth.uid());
@@ -721,17 +783,29 @@ CREATE POLICY "target_select_leader_dept" ON public.evaluation_targets FOR SELEC
     SELECT 1 FROM public.employees e WHERE e.id = evaluation_targets.employee_id
     AND e.department_id = public.get_my_department_id()));
 CREATE POLICY "target_select_director_up" ON public.evaluation_targets FOR SELECT TO authenticated
-  USING (public.get_my_role() IN ('director', 'ceo'));
+  USING (public.get_my_role() IN ('director', 'division_head', 'ceo', 'admin'));
 CREATE POLICY "target_update_admin" ON public.evaluation_targets FOR UPDATE TO authenticated
   USING (public.is_admin());
+CREATE POLICY "target_insert_admin" ON public.evaluation_targets FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
+CREATE POLICY "target_delete_admin" ON public.evaluation_targets FOR DELETE TO authenticated
+  USING (public.is_admin());
+
+-- self_evaluations
+DROP POLICY IF EXISTS "self_eval_select_own"        ON public.self_evaluations;
+DROP POLICY IF EXISTS "self_eval_select_evaluator"  ON public.self_evaluations;
+DROP POLICY IF EXISTS "self_eval_insert_own"        ON public.self_evaluations;
+DROP POLICY IF EXISTS "self_eval_update_own"        ON public.self_evaluations;
+DROP POLICY IF EXISTS "self_eval_insert_admin"      ON public.self_evaluations;
+DROP POLICY IF EXISTS "self_eval_delete_admin"      ON public.self_evaluations;
 
 CREATE POLICY "self_eval_select_own" ON public.self_evaluations FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM public.evaluation_targets t
     WHERE t.id = self_evaluations.target_id AND t.employee_id = auth.uid()));
 CREATE POLICY "self_eval_select_evaluator" ON public.self_evaluations FOR SELECT TO authenticated
-  USING (public.get_my_role() IN ('leader', 'director', 'ceo') AND EXISTS (
+  USING (public.get_my_role() IN ('leader', 'director', 'division_head', 'ceo', 'admin') AND EXISTS (
     SELECT 1 FROM public.evaluation_targets t WHERE t.id = self_evaluations.target_id AND (
-      public.get_my_role() <> 'leader' OR EXISTS (
+      public.get_my_role() NOT IN ('leader') OR EXISTS (
         SELECT 1 FROM public.employees e WHERE e.id = t.employee_id
         AND e.department_id = public.get_my_department_id()))));
 CREATE POLICY "self_eval_insert_own" ON public.self_evaluations FOR INSERT TO authenticated
@@ -740,6 +814,17 @@ CREATE POLICY "self_eval_insert_own" ON public.self_evaluations FOR INSERT TO au
 CREATE POLICY "self_eval_update_own" ON public.self_evaluations FOR UPDATE TO authenticated
   USING (EXISTS (SELECT 1 FROM public.evaluation_targets t
     WHERE t.id = self_evaluations.target_id AND t.employee_id = auth.uid() AND t.status = 'pending'));
+CREATE POLICY "self_eval_insert_admin" ON public.self_evaluations FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
+CREATE POLICY "self_eval_delete_admin" ON public.self_evaluations FOR DELETE TO authenticated
+  USING (public.is_admin());
+
+-- evaluator_scores
+DROP POLICY IF EXISTS "eval_score_select_own_target"  ON public.evaluator_scores;
+DROP POLICY IF EXISTS "eval_score_select_my_scores"   ON public.evaluator_scores;
+DROP POLICY IF EXISTS "eval_score_select_admin"       ON public.evaluator_scores;
+DROP POLICY IF EXISTS "eval_score_insert_my_turn"     ON public.evaluator_scores;
+DROP POLICY IF EXISTS "eval_score_update_my_turn"     ON public.evaluator_scores;
 
 CREATE POLICY "eval_score_select_own_target" ON public.evaluator_scores FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM public.evaluation_targets t
@@ -761,6 +846,13 @@ CREATE POLICY "eval_score_update_my_turn" ON public.evaluator_scores FOR UPDATE 
       (evaluator_scores.evaluator_role = 'director' AND t.status = 'leader_done') OR
       (evaluator_scores.evaluator_role = 'ceo'      AND t.status = 'director_done'))));
 
+-- evaluator_comments
+DROP POLICY IF EXISTS "eval_comment_select_own_target"  ON public.evaluator_comments;
+DROP POLICY IF EXISTS "eval_comment_select_my_comments" ON public.evaluator_comments;
+DROP POLICY IF EXISTS "eval_comment_select_admin"       ON public.evaluator_comments;
+DROP POLICY IF EXISTS "eval_comment_insert_my_turn"     ON public.evaluator_comments;
+DROP POLICY IF EXISTS "eval_comment_update_my_turn"     ON public.evaluator_comments;
+
 CREATE POLICY "eval_comment_select_own_target" ON public.evaluator_comments FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM public.evaluation_targets t
     WHERE t.id = evaluator_comments.target_id AND t.employee_id = auth.uid()));
@@ -781,8 +873,23 @@ CREATE POLICY "eval_comment_update_my_turn" ON public.evaluator_comments FOR UPD
       (evaluator_comments.evaluator_role = 'director' AND t.status = 'leader_done') OR
       (evaluator_comments.evaluator_role = 'ceo'      AND t.status = 'director_done'))));
 
-CREATE POLICY "grade_criteria_manage_admin" ON public.grade_criteria FOR ALL TO authenticated
-  USING (public.is_admin());
+-- evaluation_weights
+DROP POLICY IF EXISTS "weight_select_authenticated" ON public.evaluation_weights;
+DROP POLICY IF EXISTS "weight_insert_admin" ON public.evaluation_weights;
+DROP POLICY IF EXISTS "weight_update_admin" ON public.evaluation_weights;
+DROP POLICY IF EXISTS "weight_delete_admin" ON public.evaluation_weights;
+
+CREATE POLICY "weight_select_authenticated" ON public.evaluation_weights FOR SELECT TO authenticated USING (true);
+CREATE POLICY "weight_insert_admin" ON public.evaluation_weights FOR INSERT TO authenticated WITH CHECK (public.is_admin());
+CREATE POLICY "weight_update_admin" ON public.evaluation_weights FOR UPDATE TO authenticated USING (public.is_admin());
+CREATE POLICY "weight_delete_admin" ON public.evaluation_weights FOR DELETE TO authenticated USING (public.is_admin());
+
+-- grade_criteria
+DROP POLICY IF EXISTS "grade_criteria_select_all" ON public.grade_criteria;
+DROP POLICY IF EXISTS "grade_criteria_manage_admin" ON public.grade_criteria;
+
+CREATE POLICY "grade_criteria_select_all" ON public.grade_criteria FOR SELECT TO authenticated USING (true);
+CREATE POLICY "grade_criteria_manage_admin" ON public.grade_criteria FOR ALL TO authenticated USING (public.is_admin());
 
 -- Create Admin User
 DO $$
@@ -840,12 +947,86 @@ BEGIN
   RAISE NOTICE '관리자 계정 생성 완료: admin@interohrigin.com / AdminPassword123!';
 END $$;
 
--- 4. INSERT DEFAULT WEIGHTS (For the new 4-role system)
+-- =====================================================================
+-- 4. AI SETTINGS & REPORTS (Migration 011)
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS public.ai_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider text NOT NULL CHECK (provider IN ('gemini', 'openai')),
+  api_key text NOT NULL,
+  model text NOT NULL,
+  is_active boolean DEFAULT true,
+  module text DEFAULT 'hr' CHECK (module IN ('hr', 'sales', 'inventory')),
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.ai_reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  target_id uuid REFERENCES public.evaluation_targets(id) ON DELETE CASCADE,
+  period_id uuid REFERENCES public.evaluation_periods(id),
+  employee_id uuid REFERENCES public.employees(id),
+  provider text NOT NULL,
+  model text NOT NULL,
+  report_content text NOT NULL,
+  report_type text DEFAULT 'individual' CHECK (report_type IN ('individual', 'department', 'company')),
+  module text DEFAULT 'hr',
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.ai_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_reports ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "ai_settings_admin_select" ON public.ai_settings;
+DROP POLICY IF EXISTS "ai_settings_admin_insert" ON public.ai_settings;
+DROP POLICY IF EXISTS "ai_settings_admin_update" ON public.ai_settings;
+DROP POLICY IF EXISTS "ai_settings_admin_delete" ON public.ai_settings;
+
+CREATE POLICY "ai_settings_admin_select" ON public.ai_settings FOR SELECT USING (public.is_admin());
+CREATE POLICY "ai_settings_admin_insert" ON public.ai_settings FOR INSERT WITH CHECK (public.is_admin());
+CREATE POLICY "ai_settings_admin_update" ON public.ai_settings FOR UPDATE USING (public.is_admin());
+CREATE POLICY "ai_settings_admin_delete" ON public.ai_settings FOR DELETE USING (public.is_admin());
+
+DROP POLICY IF EXISTS "ai_reports_admin_select" ON public.ai_reports;
+DROP POLICY IF EXISTS "ai_reports_admin_insert" ON public.ai_reports;
+DROP POLICY IF EXISTS "ai_reports_admin_update" ON public.ai_reports;
+DROP POLICY IF EXISTS "ai_reports_admin_delete" ON public.ai_reports;
+
+CREATE POLICY "ai_reports_admin_select" ON public.ai_reports FOR SELECT USING (public.is_admin());
+CREATE POLICY "ai_reports_admin_insert" ON public.ai_reports FOR INSERT WITH CHECK (public.is_admin());
+CREATE POLICY "ai_reports_admin_update" ON public.ai_reports FOR UPDATE USING (public.is_admin());
+CREATE POLICY "ai_reports_admin_delete" ON public.ai_reports FOR DELETE USING (public.is_admin());
+
+-- =====================================================================
+-- 5. STORAGE BUCKET FOR AVATARS (Migration 012)
+-- =====================================================================
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('avatars', 'avatars', true, 2097152, ARRAY['image/jpeg','image/png','image/webp','image/gif'])
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "avatars_upload" ON storage.objects;
+DROP POLICY IF EXISTS "avatars_update" ON storage.objects;
+DROP POLICY IF EXISTS "avatars_delete" ON storage.objects;
+DROP POLICY IF EXISTS "avatars_read"   ON storage.objects;
+
+CREATE POLICY "avatars_upload" ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'avatars');
+CREATE POLICY "avatars_update" ON storage.objects FOR UPDATE TO authenticated
+USING (bucket_id = 'avatars');
+CREATE POLICY "avatars_delete" ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'avatars');
+CREATE POLICY "avatars_read" ON storage.objects FOR SELECT TO public
+USING (bucket_id = 'avatars');
+
+-- =====================================================================
+-- 6. INSERT DEFAULT WEIGHTS (For the new 4-role system)
 INSERT INTO public.evaluation_weights (period_id, evaluator_role, weight) VALUES
-  ('p0000000-0000-0000-0000-000000000001', 'self',     0.10),
-  ('p0000000-0000-0000-0000-000000000001', 'leader',   0.40),
-  ('p0000000-0000-0000-0000-000000000001', 'director', 0.30),
-  ('p0000000-0000-0000-0000-000000000001', 'ceo',      0.20)
+  ('30000000-0000-0000-0000-000000000001', 'self',     0.10),
+  ('30000000-0000-0000-0000-000000000001', 'leader',   0.40),
+  ('30000000-0000-0000-0000-000000000001', 'director', 0.30),
+  ('30000000-0000-0000-0000-000000000001', 'ceo',      0.20)
 ON CONFLICT (period_id, evaluator_role) DO UPDATE SET weight = EXCLUDED.weight;
 
 COMMIT;
