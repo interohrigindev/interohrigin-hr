@@ -74,8 +74,13 @@ RETURNS boolean AS $$
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- =====================================================================
--- 4. 비즈니스 함수
+-- 4. 비즈니스 함수 (기존 함수 DROP 후 재생성)
 -- =====================================================================
+DROP FUNCTION IF EXISTS public.generate_evaluation_sheets(uuid);
+DROP FUNCTION IF EXISTS public.advance_evaluation_stage(uuid, text);
+DROP FUNCTION IF EXISTS public.calculate_final_score(uuid);
+DROP FUNCTION IF EXISTS public.create_employee_with_auth(text, text, text, text, uuid);
+DROP FUNCTION IF EXISTS public.delete_employee(uuid);
 
 -- generate_evaluation_sheets
 CREATE OR REPLACE FUNCTION public.generate_evaluation_sheets(p_period_id uuid)
