@@ -242,24 +242,30 @@ export default function TabEmployees() {
     }
     setInviting(true)
 
-    const { data, error } = await supabase.functions.invoke('create-employee', {
-      body: {
-        email: inviteForm.email,
-        password: inviteForm.password,
-        name: inviteForm.name,
-        role: inviteForm.role,
-        department_id: inviteForm.department_id || null,
-        birth_date: inviteForm.birth_date || null,
-        address: inviteForm.address || null,
-        phone: inviteForm.phone || null,
-        avatar_url: inviteForm.avatar_url || null,
-      },
+    // Step 1: RPC로 auth.users + employees 기본 레코드 생성
+    const { data, error } = await supabase.rpc('create_employee_with_auth', {
+      p_email: inviteForm.email,
+      p_password: inviteForm.password,
+      p_name: inviteForm.name,
+      p_role: inviteForm.role,
+      p_department_id: inviteForm.department_id || null,
     })
 
     if (error) {
-      const msg = data?.error || error.message
-      toast('직원 등록 실패: ' + msg, 'error')
+      toast('직원 등록 실패: ' + error.message, 'error')
     } else {
+      // Step 2: 추가 필드 업데이트 (birth_date, address, phone, avatar_url)
+      const employeeId = data as string
+      const extraFields: Record<string, string | null> = {}
+      if (inviteForm.birth_date) extraFields.birth_date = inviteForm.birth_date
+      if (inviteForm.address) extraFields.address = inviteForm.address
+      if (inviteForm.phone) extraFields.phone = inviteForm.phone
+      if (inviteForm.avatar_url) extraFields.avatar_url = inviteForm.avatar_url
+
+      if (Object.keys(extraFields).length > 0 && employeeId) {
+        await supabase.from('employees').update(extraFields).eq('id', employeeId)
+      }
+
       toast(`${inviteForm.name}님이 등록되었습니다. 임시 비밀번호: ${inviteForm.password}`, 'info')
       setShowInviteDialog(false)
       fetchData()
@@ -326,13 +332,12 @@ export default function TabEmployees() {
   async function handleDeleteEmployee(emp: Employee) {
     if (!confirm(`${emp.name}님을 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 관련 평가 데이터도 모두 삭제됩니다.`)) return
 
-    const { data, error } = await supabase.functions.invoke('delete-employee', {
-      body: { employee_id: emp.id },
+    const { error } = await supabase.rpc('delete_employee', {
+      p_employee_id: emp.id,
     })
 
     if (error) {
-      const msg = data?.error || error.message
-      toast('삭제 실패: ' + msg, 'error')
+      toast('삭제 실패: ' + error.message, 'error')
     } else {
       toast(`${emp.name}님이 삭제되었습니다`)
       fetchData()
