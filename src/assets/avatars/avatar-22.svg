@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs><radialGradient id="b22" cx="50%" cy="40%" r="50%"><stop offset="0%" stop-color="#FEF3C7"/><stop offset="100%" stop-color="#FCD34D"/></radialGradient></defs>
+  <circle cx="40" cy="40" r="40" fill="url(#b22)"/>
+  <!-- Croissant -->
+  <!-- Main body -->
+  <path d="M14 44c4-12 12-16 26-16s22 4 26 16c-4 8-14 12-26 12S18 52 14 44z" fill="#D97706"/>
+  <!-- Layers -->
+  <path d="M18 42c4-10 10-12 22-12s18 2 22 12" fill="#F59E0B"/>
+  <path d="M22 40c4-8 8-8 18-8s14 0 18 8" fill="#FBBF24"/>
+  <!-- Layer lines -->
+  <path d="M20 44c6-2 14-3 20-3s14 1 20 3" stroke="#D97706" stroke-width="0.8" fill="none"/>
+  <path d="M18 48c8-2 16-3 22-3s14 1 22 3" stroke="#D97706" stroke-width="0.8" fill="none"/>
+  <!-- Curved tips -->
+  <path d="M14 44c-2 2-2 6 0 6" stroke="#D97706" stroke-width="2" fill="#D97706"/>
+  <path d="M66 44c2 2 2 6 0 6" stroke="#D97706" stroke-width="2" fill="#D97706"/>
+  <!-- Shine -->
+  <path d="M30 34c4-2 8-2 12 0" stroke="white" stroke-width="1" fill="none" opacity="0.3"/>
+  <!-- Eyes -->
+  <circle cx="34" cy="40" r="2.5" fill="white"/><circle cx="34.5" cy="40.5" r="1.5" fill="#1A1A1A"/><circle cx="35" cy="40" r="0.6" fill="white"/>
+  <circle cx="46" cy="40" r="2.5" fill="white"/><circle cx="46.5" cy="40.5" r="1.5" fill="#1A1A1A"/><circle cx="47" cy="40" r="0.6" fill="white"/>
+  <!-- Smile -->
+  <path d="M37 44c1.5 1 4.5 1 6 0" stroke="#78350F" stroke-width="0.8" stroke-linecap="round" fill="none"/>
+  <!-- Blush -->
+  <circle cx="28" cy="44" r="3" fill="#FBBF24" opacity="0.3"/>
+  <circle cx="52" cy="44" r="3" fill="#FBBF24" opacity="0.3"/>
+</svg>

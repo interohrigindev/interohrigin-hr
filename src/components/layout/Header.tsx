@@ -1,0 +1,57 @@
+import { LogOut, Menu } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
+import logoSvg from '@/assets/logo.svg'
+import { ROLE_LABELS } from '@/lib/constants'
+import { Badge } from '@/components/ui/Badge'
+
+interface HeaderProps {
+  onMenuToggle: () => void
+}
+
+export function Header({ onMenuToggle }: HeaderProps) {
+  const { profile, signOut } = useAuth()
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+      <div className="flex h-14 items-center justify-between px-4 md:px-6">
+        {/* Left: hamburger + title */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onMenuToggle}
+            className="inline-flex items-center justify-center rounded-lg p-2 text-gray-500 hover:bg-gray-100 md:hidden"
+            aria-label="메뉴 열기"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          <img src={logoSvg} alt="InterOhrigin" className="h-8 w-8" />
+          <h1 className="text-lg font-bold tracking-tight text-gray-900">
+            인터오리진{' '}
+            <span className="text-brand-600">인사평가</span>
+          </h1>
+        </div>
+
+        {/* Right: user info + logout */}
+        {profile && (
+          <div className="flex items-center gap-3">
+            {/* name + badge (hide name on very small screens) */}
+            <span className="hidden text-sm font-medium text-gray-700 sm:inline">
+              {profile.name}
+            </span>
+            <Badge variant="primary">{ROLE_LABELS[profile.role] ?? profile.role}</Badge>
+
+            <div className="h-5 w-px bg-gray-200" />
+
+            <button
+              onClick={signOut}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">로그아웃</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </header>
+  )
+}

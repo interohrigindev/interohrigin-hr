@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs><radialGradient id="b21" cx="50%" cy="40%" r="50%"><stop offset="0%" stop-color="#D1FAE5"/><stop offset="100%" stop-color="#6EE7B7"/></radialGradient></defs>
+  <circle cx="40" cy="40" r="40" fill="url(#b21)"/>
+  <!-- Gimbap (김밥) -->
+  <!-- Outer nori -->
+  <circle cx="40" cy="40" r="22" fill="#1A3A1A"/>
+  <!-- Rice ring -->
+  <circle cx="40" cy="40" r="19" fill="white"/>
+  <!-- Fillings -->
+  <!-- Danmuji (yellow pickled radish) -->
+  <circle cx="40" cy="30" r="3.5" fill="#FBBF24"/>
+  <!-- Ham -->
+  <circle cx="48" cy="34" r="3" fill="#F472B6"/>
+  <!-- Spinach -->
+  <circle cx="48" cy="43" r="3" fill="#22C55E"/>
+  <!-- Carrot -->
+  <circle cx="40" cy="48" r="3" fill="#FB923C"/>
+  <!-- Egg -->
+  <circle cx="32" cy="43" r="3" fill="#FDE68A"/>
+  <!-- Crab stick -->
+  <circle cx="32" cy="34" r="3" fill="#EF4444"/>
+  <!-- Center rice -->
+  <circle cx="40" cy="39" r="5" fill="#FEFCE8"/>
+  <!-- Eyes -->
+  <circle cx="36" cy="38" r="2" fill="white"/><circle cx="36.3" cy="38.3" r="1.2" fill="#1A1A1A"/><circle cx="36.8" cy="38" r="0.5" fill="white"/>
+  <circle cx="44" cy="38" r="2" fill="white"/><circle cx="44.3" cy="38.3" r="1.2" fill="#1A1A1A"/><circle cx="44.8" cy="38" r="0.5" fill="white"/>
+  <!-- Smile -->
+  <path d="M38 42c1 1 3 1 4 0" stroke="#14532D" stroke-width="0.7" stroke-linecap="round" fill="none"/>
+</svg>

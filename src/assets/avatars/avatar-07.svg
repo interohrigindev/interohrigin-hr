@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs><radialGradient id="b7" cx="50%" cy="40%" r="50%"><stop offset="0%" stop-color="#BFDBFE"/><stop offset="100%" stop-color="#60A5FA"/></radialGradient></defs>
+  <circle cx="40" cy="40" r="40" fill="url(#b7)"/>
+  <!-- 말 (Horse) -->
+  <ellipse cx="40" cy="46" rx="20" ry="18" fill="#C4854A"/>
+  <!-- Long face -->
+  <ellipse cx="40" cy="52" rx="10" ry="10" fill="#D4A06A"/>
+  <!-- Mane -->
+  <path d="M30 16c2 4 4 8 4 14" stroke="#5C3D2E" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <path d="M34 14c2 4 3 10 3 16" stroke="#5C3D2E" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M38 13c1 4 2 10 2 17" stroke="#5C3D2E" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <!-- Ears -->
+  <path d="M24 22l4 10 4-6z" fill="#C4854A"/><path d="M56 22l-4 10-4-6z" fill="#C4854A"/>
+  <!-- Eyes -->
+  <circle cx="32" cy="40" r="3.5" fill="white"/><circle cx="32.5" cy="40.5" r="2.2" fill="#3B2506"/><circle cx="33.5" cy="39.5" r="0.9" fill="white"/>
+  <circle cx="48" cy="40" r="3.5" fill="white"/><circle cx="48.5" cy="40.5" r="2.2" fill="#3B2506"/><circle cx="49.5" cy="39.5" r="0.9" fill="white"/>
+  <!-- Nostrils -->
+  <circle cx="36" cy="54" r="2" fill="#8B6E4E"/><circle cx="44" cy="54" r="2" fill="#8B6E4E"/>
+  <!-- Mouth -->
+  <path d="M36 58c2 1 6 1 8 0" stroke="#8B5A3A" stroke-width="0.8" stroke-linecap="round" fill="none"/>
+  <circle cx="26" cy="48" r="3" fill="#F9A8D4" opacity="0.2"/>
+  <circle cx="54" cy="48" r="3" fill="#F9A8D4" opacity="0.2"/>
+</svg>

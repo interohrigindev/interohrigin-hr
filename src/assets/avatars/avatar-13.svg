@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs><radialGradient id="b13" cx="50%" cy="40%" r="50%"><stop offset="0%" stop-color="#FEF3C7"/><stop offset="100%" stop-color="#FCD34D"/></radialGradient></defs>
+  <circle cx="40" cy="40" r="40" fill="url(#b13)"/>
+  <!-- Pizza -->
+  <path d="M40 16L14 62h52L40 16z" fill="#F59E0B"/>
+  <path d="M40 18L16 60h48L40 18z" fill="#FBBF24"/>
+  <!-- Crust -->
+  <path d="M14 62c0 0 8 4 26 4s26-4 26-4" stroke="#D97706" stroke-width="4" stroke-linecap="round" fill="#D97706"/>
+  <!-- Cheese drip -->
+  <path d="M24 52c0 3-1 5 0 6" stroke="#FBBF24" stroke-width="2" fill="none"/>
+  <path d="M56 52c0 3 1 5 0 6" stroke="#FBBF24" stroke-width="2" fill="none"/>
+  <!-- Pepperoni -->
+  <circle cx="36" cy="40" r="5" fill="#DC2626"/>
+  <circle cx="46" cy="48" r="4.5" fill="#DC2626"/>
+  <circle cx="32" cy="52" r="4" fill="#DC2626"/>
+  <circle cx="42" cy="32" r="3.5" fill="#DC2626"/>
+  <!-- Eyes on pizza -->
+  <circle cx="34" cy="36" r="2.5" fill="white"/><circle cx="34.5" cy="36.5" r="1.5" fill="#1A1A1A"/><circle cx="35" cy="36" r="0.6" fill="white"/>
+  <circle cx="46" cy="36" r="2.5" fill="white"/><circle cx="46.5" cy="36.5" r="1.5" fill="#1A1A1A"/><circle cx="47" cy="36" r="0.6" fill="white"/>
+  <!-- Smile -->
+  <path d="M38 42c1 1.5 4 1.5 5 0" stroke="#92400E" stroke-width="0.8" stroke-linecap="round" fill="none"/>
+</svg>

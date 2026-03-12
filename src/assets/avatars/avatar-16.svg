@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs><radialGradient id="b16" cx="50%" cy="40%" r="50%"><stop offset="0%" stop-color="#FEF9C3"/><stop offset="100%" stop-color="#FDE047"/></radialGradient></defs>
+  <circle cx="40" cy="40" r="40" fill="url(#b16)"/>
+  <!-- Taco -->
+  <!-- Shell -->
+  <path d="M10 50c0-20 14-32 30-32s30 12 30 32" fill="#F59E0B"/>
+  <path d="M12 50c0-18 13-30 28-30s28 12 28 30" fill="#FBBF24"/>
+  <!-- Meat -->
+  <ellipse cx="40" cy="40" rx="20" ry="8" fill="#92400E"/>
+  <!-- Lettuce -->
+  <path d="M22 36c3-2 6 1 9-1s6 2 9 0 6 1 9-1 6 2 9 0" stroke="#4ADE80" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <!-- Tomato -->
+  <circle cx="30" cy="34" r="3" fill="#EF4444"/>
+  <circle cx="42" cy="33" r="2.5" fill="#EF4444"/>
+  <circle cx="52" cy="35" r="2.8" fill="#EF4444"/>
+  <!-- Cheese -->
+  <path d="M26 38c2 1 4-1 6 0s4 1 6 0 4-1 6 0 4 1 6 0" stroke="#FCD34D" stroke-width="1.5" fill="none"/>
+  <!-- Eyes -->
+  <circle cx="33" cy="44" r="2.5" fill="white"/><circle cx="33.5" cy="44.5" r="1.5" fill="#1A1A1A"/><circle cx="34" cy="44" r="0.6" fill="white"/>
+  <circle cx="47" cy="44" r="2.5" fill="white"/><circle cx="47.5" cy="44.5" r="1.5" fill="#1A1A1A"/><circle cx="48" cy="44" r="0.6" fill="white"/>
+  <!-- Smile -->
+  <path d="M37 48c1.5 1 4.5 1 6 0" stroke="#78350F" stroke-width="0.8" stroke-linecap="round" fill="none"/>
+</svg>

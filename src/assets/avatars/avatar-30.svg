@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs><radialGradient id="b30" cx="50%" cy="40%" r="50%"><stop offset="0%" stop-color="#E0F2FE"/><stop offset="100%" stop-color="#7DD3FC"/></radialGradient></defs>
+  <circle cx="40" cy="40" r="40" fill="url(#b30)"/>
+  <!-- Sydney Opera House -->
+  <!-- Base/platform -->
+  <rect x="8" y="54" width="64" height="8" rx="2" fill="#D1D5DB"/>
+  <!-- Shell 1 (left) -->
+  <path d="M16 54c0-20 8-34 14-34s4 14 4 34" fill="white" stroke="#E5E7EB" stroke-width="0.5"/>
+  <!-- Shell 2 (center) -->
+  <path d="M28 54c0-24 8-38 14-38s6 14 6 38" fill="white" stroke="#E5E7EB" stroke-width="0.5"/>
+  <!-- Shell 3 (right) -->
+  <path d="M42 54c0-20 6-30 10-30s4 10 4 30" fill="white" stroke="#E5E7EB" stroke-width="0.5"/>
+  <!-- Shell 4 (far right small) -->
+  <path d="M52 54c0-14 4-20 6-20s2 6 2 20" fill="white" stroke="#E5E7EB" stroke-width="0.5"/>
+  <!-- Water -->
+  <path d="M4 64c4-2 8 0 12-2s8 2 12 0 8-2 12 0 8 2 12 0 8-2 12 0" stroke="#7DD3FC" stroke-width="1.5" fill="none" opacity="0.5"/>
+  <!-- Eyes -->
+  <circle cx="35" cy="44" r="2.5" fill="white"/><circle cx="35.5" cy="44.5" r="1.5" fill="#1A1A1A"/><circle cx="36" cy="44" r="0.6" fill="white"/>
+  <circle cx="45" cy="44" r="2.5" fill="white"/><circle cx="45.5" cy="44.5" r="1.5" fill="#1A1A1A"/><circle cx="46" cy="44" r="0.6" fill="white"/>
+  <!-- Smile -->
+  <path d="M38 50c1 1 3 1 4 0" stroke="#374151" stroke-width="0.7" stroke-linecap="round" fill="none"/>
+</svg>

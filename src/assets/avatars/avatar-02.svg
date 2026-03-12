@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs><radialGradient id="b2" cx="50%" cy="40%" r="50%"><stop offset="0%" stop-color="#FDE68A"/><stop offset="100%" stop-color="#F59E0B"/></radialGradient></defs>
+  <circle cx="40" cy="40" r="40" fill="url(#b2)"/>
+  <!-- 소 (Ox) -->
+  <ellipse cx="40" cy="44" rx="22" ry="20" fill="#F5F0E8"/>
+  <!-- Horns -->
+  <path d="M18 28c-4-8-2-14 2-16" stroke="#D4A06A" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M62 28c4-8 2-14-2-16" stroke="#D4A06A" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <!-- Brown patches -->
+  <ellipse cx="30" cy="30" rx="8" ry="6" fill="#8B6E4E" opacity="0.6"/>
+  <ellipse cx="52" cy="32" rx="6" ry="5" fill="#8B6E4E" opacity="0.6"/>
+  <!-- Ears -->
+  <ellipse cx="16" cy="34" rx="5" ry="8" fill="#F5F0E8" transform="rotate(-20 16 34)"/>
+  <ellipse cx="64" cy="34" rx="5" ry="8" fill="#F5F0E8" transform="rotate(20 64 34)"/>
+  <!-- Eyes -->
+  <circle cx="32" cy="40" r="3.5" fill="white"/><circle cx="32.5" cy="40.5" r="2.2" fill="#3B2506"/><circle cx="33.5" cy="39.5" r="0.9" fill="white"/>
+  <circle cx="48" cy="40" r="3.5" fill="white"/><circle cx="48.5" cy="40.5" r="2.2" fill="#3B2506"/><circle cx="49.5" cy="39.5" r="0.9" fill="white"/>
+  <!-- Muzzle -->
+  <ellipse cx="40" cy="52" rx="10" ry="6" fill="#F0D5B8"/>
+  <!-- Nostrils -->
+  <circle cx="37" cy="52" r="1.5" fill="#C4945A"/>
+  <circle cx="43" cy="52" r="1.5" fill="#C4945A"/>
+  <!-- Mouth -->
+  <path d="M36 56c2 1 6 1 8 0" stroke="#A07040" stroke-width="0.8" stroke-linecap="round" fill="none"/>
+  <circle cx="26" cy="48" r="3" fill="#F9A8D4" opacity="0.2"/>
+  <circle cx="54" cy="48" r="3" fill="#F9A8D4" opacity="0.2"/>
+</svg>

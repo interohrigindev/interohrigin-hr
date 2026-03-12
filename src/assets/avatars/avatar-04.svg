@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs><radialGradient id="b4" cx="50%" cy="40%" r="50%"><stop offset="0%" stop-color="#FBCFE8"/><stop offset="100%" stop-color="#F472B6"/></radialGradient></defs>
+  <circle cx="40" cy="40" r="40" fill="url(#b4)"/>
+  <!-- 토끼 (Rabbit) -->
+  <ellipse cx="40" cy="46" rx="20" ry="18" fill="white"/>
+  <!-- Long ears -->
+  <ellipse cx="30" cy="14" rx="6" ry="18" fill="white"/><ellipse cx="30" cy="14" rx="3" ry="14" fill="#F9A8D4"/>
+  <ellipse cx="50" cy="14" rx="6" ry="18" fill="white"/><ellipse cx="50" cy="14" rx="3" ry="14" fill="#F9A8D4"/>
+  <!-- Eyes -->
+  <circle cx="33" cy="44" r="3.5" fill="#DC2626"/><circle cx="34" cy="43" r="1.2" fill="white"/>
+  <circle cx="47" cy="44" r="3.5" fill="#DC2626"/><circle cx="48" cy="43" r="1.2" fill="white"/>
+  <!-- Nose -->
+  <ellipse cx="40" cy="50" rx="2" ry="1.5" fill="#F9A8D4"/>
+  <!-- Mouth + teeth -->
+  <path d="M40 51.5v2" stroke="#E0A0B0" stroke-width="0.8" stroke-linecap="round"/>
+  <path d="M37 53c1.5 1 4.5 1 6 0" stroke="#E0A0B0" stroke-width="0.8" stroke-linecap="round" fill="none"/>
+  <rect x="38" y="53" width="2" height="3" rx="0.5" fill="white" stroke="#E0C0C0" stroke-width="0.3"/>
+  <rect x="40.5" y="53" width="2" height="3" rx="0.5" fill="white" stroke="#E0C0C0" stroke-width="0.3"/>
+  <circle cx="26" cy="50" r="4" fill="#F9A8D4" opacity="0.3"/>
+  <circle cx="54" cy="50" r="4" fill="#F9A8D4" opacity="0.3"/>
+</svg>

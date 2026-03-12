@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <defs><radialGradient id="b8" cx="50%" cy="40%" r="50%"><stop offset="0%" stop-color="#E9D5FF"/><stop offset="100%" stop-color="#C084FC"/></radialGradient></defs>
+  <circle cx="40" cy="40" r="40" fill="url(#b8)"/>
+  <!-- 양 (Sheep) -->
+  <!-- Fluffy wool body -->
+  <circle cx="28" cy="34" r="8" fill="white"/><circle cx="40" cy="30" r="9" fill="white"/><circle cx="52" cy="34" r="8" fill="white"/>
+  <circle cx="24" cy="42" r="7" fill="white"/><circle cx="56" cy="42" r="7" fill="white"/>
+  <circle cx="32" cy="26" r="7" fill="white"/><circle cx="48" cy="26" r="7" fill="white"/>
+  <!-- Face -->
+  <ellipse cx="40" cy="46" rx="14" ry="14" fill="#F5E6D3"/>
+  <!-- Ears -->
+  <ellipse cx="22" cy="46" rx="4" ry="7" fill="#F5E6D3" transform="rotate(-15 22 46)"/>
+  <ellipse cx="58" cy="46" rx="4" ry="7" fill="#F5E6D3" transform="rotate(15 58 46)"/>
+  <!-- Eyes -->
+  <circle cx="34" cy="44" r="3" fill="white"/><circle cx="34.5" cy="44.5" r="2" fill="#1A1A1A"/><circle cx="35.5" cy="43.5" r="0.8" fill="white"/>
+  <circle cx="46" cy="44" r="3" fill="white"/><circle cx="46.5" cy="44.5" r="2" fill="#1A1A1A"/><circle cx="47.5" cy="43.5" r="0.8" fill="white"/>
+  <!-- Nose -->
+  <ellipse cx="40" cy="50" rx="2" ry="1.5" fill="#D4A06A"/>
+  <!-- Mouth -->
+  <path d="M37 53c1.5 1 4.5 1 6 0" stroke="#C4945A" stroke-width="0.8" stroke-linecap="round" fill="none"/>
+  <circle cx="28" cy="50" r="3" fill="#F9A8D4" opacity="0.25"/>
+  <circle cx="52" cy="50" r="3" fill="#F9A8D4" opacity="0.25"/>
+</svg>
