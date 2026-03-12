@@ -762,7 +762,7 @@ WHERE NOT EXISTS (SELECT 1 FROM public.evaluation_items LIMIT 1);
 -- 평가 기간
 INSERT INTO public.evaluation_periods (id, year, quarter, status, start_date, end_date) VALUES
   ('30000000-0000-0000-0000-000000000001', 2026, 1, 'in_progress', '2026-01-01', '2026-03-31')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (year, quarter) DO NOTHING;
 
 -- 등급 기준
 INSERT INTO public.grade_criteria (grade, min_score, max_score, label) VALUES
@@ -773,13 +773,24 @@ INSERT INTO public.grade_criteria (grade, min_score, max_score, label) VALUES
   ('D', 0,  59,  '부진')
 ON CONFLICT (grade) DO NOTHING;
 
--- 기본 가중치
-INSERT INTO public.evaluation_weights (period_id, evaluator_role, weight) VALUES
-  ('30000000-0000-0000-0000-000000000001', 'self',     0.10),
-  ('30000000-0000-0000-0000-000000000001', 'leader',   0.40),
-  ('30000000-0000-0000-0000-000000000001', 'director', 0.30),
-  ('30000000-0000-0000-0000-000000000001', 'ceo',      0.20)
-ON CONFLICT (period_id, evaluator_role) DO UPDATE SET weight = EXCLUDED.weight;
+-- 기본 가중치 (2026 Q1 평가 기간의 실제 ID를 동적으로 조회)
+DO $$
+DECLARE
+  v_period_id uuid;
+BEGIN
+  SELECT id INTO v_period_id FROM public.evaluation_periods WHERE year = 2026 AND quarter = 1 LIMIT 1;
+  IF v_period_id IS NULL THEN
+    RAISE NOTICE '2026 Q1 평가 기간이 없어 가중치를 건너뜁니다.';
+    RETURN;
+  END IF;
+
+  INSERT INTO public.evaluation_weights (period_id, evaluator_role, weight) VALUES
+    (v_period_id, 'self',     0.10),
+    (v_period_id, 'leader',   0.40),
+    (v_period_id, 'director', 0.30),
+    (v_period_id, 'ceo',      0.20)
+  ON CONFLICT (period_id, evaluator_role) DO UPDATE SET weight = EXCLUDED.weight;
+END $$;
 
 -- =====================================================================
 -- 8. 관리자 계정 (없으면 생성)
