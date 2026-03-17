@@ -86,23 +86,35 @@ export default function RecruitmentJobDetail() {
   return (
     <div className="space-y-6">
       {/* 헤더 */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/admin/recruitment/jobs')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold text-gray-900">{posting.title}</h1>
-            <Badge variant="default" className={POSTING_STATUS_COLORS[posting.status as PostingStatus] || ''}>
-              {POSTING_STATUS_LABELS[posting.status as PostingStatus]}
-            </Badge>
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/admin/recruitment/jobs')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm text-gray-500">채용공고</span>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 break-words">{posting.title}</h1>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <Badge variant="default" className={POSTING_STATUS_COLORS[posting.status as PostingStatus] || ''}>
+                {POSTING_STATUS_LABELS[posting.status as PostingStatus]}
+              </Badge>
+              <span className="text-sm text-gray-500">
+                {EMPLOYMENT_TYPE_LABELS[posting.employment_type]} · {EXPERIENCE_LEVEL_LABELS[posting.experience_level]}
+                {posting.salary_range && ` · ${posting.salary_range}`}
+                {posting.deadline && ` · 마감: ${formatDate(posting.deadline, 'yyyy.MM.dd')}`}
+              </span>
+            </div>
+          </div>
+          <div className="shrink-0">
+            <Select
+              value={posting.status}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              options={Object.entries(POSTING_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+            />
           </div>
         </div>
-        <Select
-          value={posting.status}
-          onChange={(e) => handleStatusChange(e.target.value)}
-          options={Object.entries(POSTING_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))}
-        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
