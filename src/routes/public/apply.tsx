@@ -92,12 +92,16 @@ export default function PublicApply() {
         coverLetterUrl = clUrlData.publicUrl
       }
 
-      const { error: insertErr } = await supabase.from('candidates').insert({
-        job_posting_id: postingId,
-        name: form.name, email: form.email, phone: form.phone || null,
-        source_channel: source, source_detail: ref || null,
-        resume_url: resumeUrlData.publicUrl, cover_letter_url: coverLetterUrl,
-        cover_letter_text: form.cover_letter_text || null, status: 'applied',
+      const { error: insertErr } = await supabase.rpc('submit_application', {
+        p_job_posting_id: postingId,
+        p_name: form.name,
+        p_email: form.email,
+        p_phone: form.phone || null,
+        p_source_channel: source,
+        p_source_detail: ref || null,
+        p_resume_url: resumeUrlData.publicUrl,
+        p_cover_letter_url: coverLetterUrl,
+        p_cover_letter_text: form.cover_letter_text || null,
       })
       if (insertErr) throw new Error('지원서 제출 실패: ' + insertErr.message)
       setStep('done')
