@@ -22,6 +22,7 @@ import SurveyManage from '@/routes/recruitment/survey-manage'
 import TalentProfiles from '@/routes/recruitment/talent'
 import AITrustDashboard from '@/routes/recruitment/trust'
 import FaceToFaceEval from '@/routes/recruitment/face-to-face'
+import InterviewSchedules from '@/routes/recruitment/schedules'
 
 // OJT/수습
 import OJTPrograms from '@/routes/ojt/programs'
@@ -90,6 +91,7 @@ function App() {
               <Route path="admin/recruitment/survey" element={<AdminRoute><SurveyManage /></AdminRoute>} />
               <Route path="admin/recruitment/talent" element={<AdminRoute><TalentProfiles /></AdminRoute>} />
               <Route path="admin/recruitment/trust" element={<AdminRoute><AITrustDashboard /></AdminRoute>} />
+              <Route path="admin/recruitment/schedules" element={<AdminRoute><InterviewSchedules /></AdminRoute>} />
               <Route path="admin/recruitment/interview/:candidateId/face-to-face" element={<AdminRoute><FaceToFaceEval /></AdminRoute>} />
 
               {/* OJT/수습 (관리자/임원) */}
