@@ -36,7 +36,6 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 import type { EmployeeRole } from '@/types/database'
-import { MethodologyFooter } from '@/components/layout/MethodologyFooter'
 import logoSvg from '@/assets/logo.svg'
 
 // ─── Sidebar props ──────────────────────────────────────────────
@@ -287,9 +286,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       {/* ─── Desktop sidebar ──────────────────────────────────── */}
       <aside className="hidden w-60 shrink-0 border-r border-gray-200 bg-white md:flex md:flex-col md:h-full">
         {navContent}
-        <div className="mt-auto">
-          <MethodologyFooter mode="compact" />
-        </div>
       </aside>
 
       {/* ─── Mobile overlay ───────────────────────────────────── */}
@@ -308,7 +304,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <div className="flex items-center gap-2">
                 <img src={logoSvg} alt="InterOhrigin" className="h-7 w-7" />
                 <span className="text-lg font-bold text-gray-900">
-                  인터오리진 <span className="text-brand-600">HR</span>
+                  인터오리진 <span className="text-brand-600">HR Platform</span>
                 </span>
               </div>
               <button
@@ -321,9 +317,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </div>
 
             {navContent}
-            <div className="mt-auto">
-              <MethodologyFooter mode="compact" />
-            </div>
           </aside>
         </div>
       )}

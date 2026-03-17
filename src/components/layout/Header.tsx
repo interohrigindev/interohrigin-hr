@@ -27,7 +27,7 @@ export function Header({ onMenuToggle }: HeaderProps) {
           <img src={logoSvg} alt="InterOhrigin" className="h-8 w-8" />
           <h1 className="text-lg font-bold tracking-tight text-gray-900">
             인터오리진{' '}
-            <span className="text-brand-600">인사평가</span>
+            <span className="text-brand-600">HR Platform</span>
           </h1>
         </div>
 

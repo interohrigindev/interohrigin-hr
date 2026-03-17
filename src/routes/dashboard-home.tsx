@@ -17,6 +17,7 @@ import { GradeBadge } from '@/components/evaluation/GradeBadge'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
 import { EVALUATION_STATUS_LABELS, EVALUATION_STATUS_COLORS } from '@/lib/constants'
+import { MethodologyFooter } from '@/components/layout/MethodologyFooter'
 
 export default function DashboardHome() {
   const { profile, hasRole } = useAuth()
@@ -332,6 +333,9 @@ function AdminDashboard({
           <DeviationAlerts data={filteredDeviations} />
         </div>
       </div>
+
+      {/* 평가 방법론 안내 — 인사평가 화면에서만 표시 */}
+      <MethodologyFooter mode="expanded" />
     </div>
   )
 }

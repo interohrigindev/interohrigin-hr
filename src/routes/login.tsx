@@ -4,7 +4,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card, CardContent } from '@/components/ui/Card'
-import { MethodologyFooter } from '@/components/layout/MethodologyFooter'
 import logoSvg from '@/assets/logo.svg'
 
 export default function Login() {
@@ -47,7 +46,7 @@ export default function Login() {
           <h1 className="text-2xl font-bold text-gray-900">
             인터오리진
           </h1>
-          <p className="mt-1 text-sm text-gray-500">HR Evaluation System</p>
+          <p className="mt-1 text-sm text-gray-500">HR Platform</p>
         </div>
 
         {/* 로그인 카드 */}
@@ -92,7 +91,6 @@ export default function Login() {
           계정이 없으신가요? 관리자에게 문의하세요.
         </p>
 
-        <MethodologyFooter mode="expanded" />
       </div>
     </div>
   )
