@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   BarChart3,
@@ -6,6 +7,21 @@ import {
   FileText,
   Settings,
   X,
+  Briefcase,
+  FileSearch,
+  MessageSquare,
+  Star,
+  Shield,
+  Users,
+  Search,
+  Sparkles,
+  AlertCircle,
+  LogOut,
+  GraduationCap,
+  UserCheck,
+  ClipboardCheck,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
@@ -23,16 +39,24 @@ interface SidebarProps {
 // ─── Menu definition ────────────────────────────────────────────
 
 interface NavItem {
-  to: string | (() => string) // static path or factory
+  to: string | (() => string)
   label: string
   icon: React.ReactNode
   minRole?: EmployeeRole
-  /** 이 역할 목록에 포함되면 메뉴 숨김 */
   hideForRoles?: EmployeeRole[]
   end?: boolean
 }
 
-const navItems: NavItem[] = [
+interface NavGroup {
+  id: string
+  label: string
+  icon: React.ReactNode
+  minRole?: EmployeeRole
+  items: NavItem[]
+}
+
+// 기존 평가 시스템 메뉴 (그룹 없는 개별 항목)
+const standaloneItems: NavItem[] = [
   {
     to: '/',
     label: '대시보드',
@@ -54,16 +78,50 @@ const navItems: NavItem[] = [
     hideForRoles: ['admin'],
   },
   {
-    to: 'REPORT_SELF', // placeholder – resolved at render time
+    to: 'REPORT_SELF',
     label: '내 결과',
     icon: <FileText className="h-5 w-5" />,
     hideForRoles: ['director', 'division_head', 'ceo', 'admin'],
   },
+]
+
+// 그룹 메뉴
+const navGroups: NavGroup[] = [
   {
-    to: '/settings',
-    label: '설정',
-    icon: <Settings className="h-5 w-5" />,
+    id: 'recruitment',
+    label: '채용관리',
+    icon: <Briefcase className="h-5 w-5" />,
     minRole: 'director',
+    items: [
+      { to: '/admin/recruitment', label: '채용 대시보드', icon: <BarChart3 className="h-4 w-4" />, end: true },
+      { to: '/admin/recruitment/jobs', label: '채용공고', icon: <FileSearch className="h-4 w-4" /> },
+      { to: '/admin/recruitment/survey', label: '사전 질의서', icon: <MessageSquare className="h-4 w-4" /> },
+      { to: '/admin/recruitment/talent', label: '인재상 설정', icon: <Star className="h-4 w-4" /> },
+      { to: '/admin/recruitment/trust', label: 'AI 신뢰도', icon: <Shield className="h-4 w-4" /> },
+    ],
+  },
+  {
+    id: 'employees',
+    label: '직원관리',
+    icon: <Users className="h-5 w-5" />,
+    minRole: 'director',
+    items: [
+      { to: '/admin/employees/search', label: '통합 프로필 검색', icon: <Search className="h-4 w-4" /> },
+      { to: '/admin/employees/analysis', label: '사주/MBTI 분석', icon: <Sparkles className="h-4 w-4" /> },
+      { to: '/admin/employees/notes', label: '특이사항 관리', icon: <AlertCircle className="h-4 w-4" /> },
+      { to: '/admin/employees/exit', label: '퇴사 관리', icon: <LogOut className="h-4 w-4" /> },
+    ],
+  },
+  {
+    id: 'ojt',
+    label: 'OJT/수습',
+    icon: <GraduationCap className="h-5 w-5" />,
+    minRole: 'director',
+    items: [
+      { to: '/admin/ojt', label: 'OJT 프로그램', icon: <GraduationCap className="h-4 w-4" />, end: true },
+      { to: '/admin/ojt/mentor', label: '멘토-멘티', icon: <UserCheck className="h-4 w-4" /> },
+      { to: '/admin/probation', label: '수습 평가', icon: <ClipboardCheck className="h-4 w-4" /> },
+    ],
   },
 ]
 
@@ -71,22 +129,31 @@ const navItems: NavItem[] = [
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { profile, hasRole } = useAuth()
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
 
   function resolvePath(item: NavItem): string {
     if (item.to === 'REPORT_SELF') return `/report/${profile?.id ?? ''}`
     return item.to as string
   }
 
-  const visibleItems = navItems.filter((item) => {
+  function isItemVisible(item: NavItem): boolean {
     if (item.hideForRoles && profile?.role && item.hideForRoles.includes(profile.role as EmployeeRole)) {
       return false
     }
     return !item.minRole || hasRole(item.minRole)
-  })
+  }
+
+  function toggleGroup(groupId: string) {
+    setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }))
+  }
+
+  const visibleStandaloneItems = standaloneItems.filter(isItemVisible)
+  const visibleGroups = navGroups.filter((g) => !g.minRole || hasRole(g.minRole))
 
   const navContent = (
-    <nav className="flex flex-col gap-1 p-4">
-      {visibleItems.map((item) => {
+    <nav className="flex flex-col gap-1 p-4 overflow-y-auto">
+      {/* 기존 개별 메뉴 */}
+      {visibleStandaloneItems.map((item) => {
         const path = resolvePath(item)
         return (
           <NavLink
@@ -106,6 +173,78 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             {item.icon}
             {item.label}
           </NavLink>
+        )
+      })}
+
+      {/* 설정 (기존 위치 유지) */}
+      {hasRole('director') && (
+        <NavLink
+          to="/settings"
+          onClick={onClose}
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+              isActive
+                ? 'bg-brand-50 text-brand-700'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            )
+          }
+        >
+          <Settings className="h-5 w-5" />
+          설정
+        </NavLink>
+      )}
+
+      {/* 구분선 */}
+      {visibleGroups.length > 0 && (
+        <div className="my-2 border-t border-gray-200" />
+      )}
+
+      {/* 그룹 메뉴 */}
+      {visibleGroups.map((group) => {
+        const isExpanded = expandedGroups[group.id] ?? false
+        return (
+          <div key={group.id}>
+            <button
+              onClick={() => toggleGroup(group.id)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+            >
+              {group.icon}
+              <span className="flex-1 text-left">{group.label}</span>
+              {isExpanded ? (
+                <ChevronDown className="h-4 w-4 text-gray-400" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-gray-400" />
+              )}
+            </button>
+
+            {isExpanded && (
+              <div className="ml-4 flex flex-col gap-0.5">
+                {group.items.map((item) => {
+                  const path = resolvePath(item)
+                  return (
+                    <NavLink
+                      key={path}
+                      to={path}
+                      end={item.end}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        cn(
+                          'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
+                          isActive
+                            ? 'bg-brand-50 text-brand-700 font-medium'
+                            : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                        )
+                      }
+                    >
+                      {item.icon}
+                      {item.label}
+                    </NavLink>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         )
       })}
     </nav>
@@ -137,7 +276,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <div className="flex items-center gap-2">
                 <img src={logoSvg} alt="InterOhrigin" className="h-7 w-7" />
                 <span className="text-lg font-bold text-gray-900">
-                  인터오리진 <span className="text-brand-600">인사평가</span>
+                  인터오리진 <span className="text-brand-600">HR</span>
                 </span>
               </div>
               <button
