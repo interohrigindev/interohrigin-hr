@@ -7,6 +7,7 @@ import Login from '@/routes/login'
 import ResetPassword from '@/routes/reset-password'
 import MyProfile from '@/routes/my-profile'
 import DashboardLayout from '@/routes/dashboard'
+import Home from '@/routes/home'
 import DashboardHome from '@/routes/dashboard-home'
 import SelfEvaluation from '@/routes/self-evaluation'
 import EvaluateList from '@/routes/evaluate-list'
@@ -84,8 +85,9 @@ function App() {
                 </ProtectedRoute>
               }
             >
-              {/* 기존 라우트 */}
-              <Route index element={<DashboardHome />} />
+              {/* 홈 (랜딩 페이지) */}
+              <Route index element={<Home />} />
+              <Route path="eval-dashboard" element={<DashboardHome />} />
               <Route path="my-profile" element={<MyProfile />} />
               <Route path="self-evaluation" element={<SelfEvaluation />} />
               <Route path="evaluate" element={<EvaluateList />} />

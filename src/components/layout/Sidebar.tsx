@@ -144,7 +144,7 @@ const navGroups: NavGroup[] = [
     icon: <LineChart className="h-5 w-5" />,
     minRole: 'director',
     items: [
-      { to: '/', label: '평가 대시보드', icon: <BarChart3 className="h-4 w-4" />, end: true },
+      { to: '/eval-dashboard', label: '평가 대시보드', icon: <BarChart3 className="h-4 w-4" /> },
       { to: '/settings/evaluation', label: '평가 설정', icon: <Settings className="h-4 w-4" /> },
       { to: '/admin/hr/ai-report', label: 'AI 평가 리포트', icon: <FileBarChart className="h-4 w-4" /> },
       { to: '/admin/hr/verification', label: 'AI 검증', icon: <ShieldCheck className="h-4 w-4" /> },
