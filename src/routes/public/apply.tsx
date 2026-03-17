@@ -73,14 +73,20 @@ export default function PublicApply() {
 
     setSubmitting(true)
     try {
-      const resumePath = `${postingId}/${Date.now()}_${resumeFile.name}`
+      // 파일명에서 확장자만 추출 (한글 등 특수문자 제거)
+      const getExt = (name: string) => {
+        const dot = name.lastIndexOf('.')
+        return dot >= 0 ? name.slice(dot).toLowerCase() : ''
+      }
+
+      const resumePath = `${postingId}/${Date.now()}_resume${getExt(resumeFile.name)}`
       const { error: uploadErr } = await supabase.storage.from('resumes').upload(resumePath, resumeFile)
       if (uploadErr) throw new Error('이력서 업로드 실패: ' + uploadErr.message)
       const { data: resumeUrlData } = supabase.storage.from('resumes').getPublicUrl(resumePath)
 
       let coverLetterUrl = null
       if (coverLetterFile) {
-        const clPath = `${postingId}/${Date.now()}_${coverLetterFile.name}`
+        const clPath = `${postingId}/${Date.now()}_cover_letter${getExt(coverLetterFile.name)}`
         await supabase.storage.from('resumes').upload(clPath, coverLetterFile)
         const { data: clUrlData } = supabase.storage.from('resumes').getPublicUrl(clPath)
         coverLetterUrl = clUrlData.publicUrl
