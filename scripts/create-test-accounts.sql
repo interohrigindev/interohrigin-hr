@@ -37,7 +37,8 @@ DECLARE
   v_dept_id      uuid;
   v_period_id    uuid;
   v_now          timestamptz := now();
-  v_password     text := crypt('Test1234!', gen_salt('bf'));
+  -- bcrypt hash of 'Test1234!' (pre-computed via bcryptjs)
+  v_password     text := '$2b$10$bldkLgWILJ8rttKzgaHbXe.nfh8nyoG2HLTXCcJ8UUqp3tMKOh/eG';
 BEGIN
 
   -- 부서 ID 조회 (첫 번째 부서 사용)

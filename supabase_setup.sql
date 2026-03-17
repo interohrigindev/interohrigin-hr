@@ -261,7 +261,8 @@ DELETE FROM public.employees;
 DELETE FROM auth.identities;
 DELETE FROM auth.users;
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- pgcrypto는 더 이상 사용하지 않음 (bcryptjs로 클라이언트에서 해싱)
+-- CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- CHANGE Role Constraints to 4-Role System
 ALTER TABLE public.employees DROP CONSTRAINT IF EXISTS employees_role_check;
@@ -494,7 +495,7 @@ AS $$
 DECLARE
   v_user_id uuid;
   v_now     timestamptz := now();
-  v_password_hash text;
+  p_password text;
   v_has_is_sso_user boolean;
 BEGIN
   IF NOT is_admin() THEN
@@ -509,7 +510,7 @@ BEGIN
     RAISE EXCEPTION '이미 등록된 이메일입니다: %', p_email;
   END IF;
 
-  v_password_hash := crypt(p_password, gen_salt('bf'));
+  -- p_password는 클라이언트에서 bcrypt 해싱된 값을 그대로 사용
   v_user_id := gen_random_uuid();
 
   SELECT EXISTS (
@@ -527,7 +528,7 @@ BEGIN
     ) VALUES (
       v_user_id, '00000000-0000-0000-0000-000000000000',
       'authenticated', 'authenticated',
-      p_email, v_password_hash, v_now,
+      p_email, p_password, v_now,
       '{"provider":"email","providers":["email"]}'::jsonb,
       jsonb_build_object('name', p_name),
       v_now, v_now, '', '', false
@@ -542,7 +543,7 @@ BEGIN
     ) VALUES (
       v_user_id, '00000000-0000-0000-0000-000000000000',
       'authenticated', 'authenticated',
-      p_email, v_password_hash, v_now,
+      p_email, p_password, v_now,
       '{"provider":"email","providers":["email"]}'::jsonb,
       jsonb_build_object('name', p_name),
       v_now, v_now, '', ''
@@ -896,7 +897,8 @@ DO $$
 DECLARE
   v_user_id uuid := gen_random_uuid();
   v_now     timestamptz := now();
-  v_password text := crypt('AdminPassword123!', gen_salt('bf'));
+  -- bcrypt hash of 'AdminPassword123!' (pre-computed via bcryptjs)
+  v_password text := '$2b$10$sauaon2gucBpCcutAFqAquelsF5fS1.lxiSSl3khcxHvzOEhXW2CW';
   v_has_is_sso_user boolean;
 BEGIN
   SELECT EXISTS (

@@ -297,7 +297,7 @@ BEGIN
     RAISE EXCEPTION '이미 등록된 이메일입니다: %', p_email;
   END IF;
 
-  v_password_hash := crypt(p_password, gen_salt('bf'));
+  v_password_hash := p_password -- 클라이언트에서 bcrypt 해싱된 값;
   v_user_id := gen_random_uuid();
 
   -- auth.users 스키마 호환성 체크
@@ -617,7 +617,7 @@ DO $$
 DECLARE
   v_user_id uuid := gen_random_uuid();
   v_now     timestamptz := now();
-  v_password text := crypt('AdminPassword123!', gen_salt('bf'));
+  v_password text := '$2b$10$1TAZCOhC3rAz5Nb3tscFpuy/Thv8H03WGZb0f62q65wRt9p2QlX.a' -- bcrypt hash of AdminPassword123!;
   v_has_is_sso_user boolean;
 BEGIN
   SELECT EXISTS (

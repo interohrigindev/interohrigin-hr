@@ -1,58 +1,42 @@
 -- =====================================================================
--- InterOhrigin HR — 통합 DB 수정 스크립트
--- Supabase SQL Editor에서 실행하세요
---
--- 이 스크립트는 다음을 수행합니다:
--- 1. employees 테이블 추가 컬럼 확인
--- 2. CHECK 제약조건 최신화
--- 3. 헬퍼/비즈니스 함수 재생성
--- 4. RLS 정책 정리 및 재생성
--- 5. 시드 데이터 복원
--- 6. 관리자 계정 확인
+-- InterOhrigin HR — 트랜잭션 블록 수정 스크립트
+-- supabase_setup.sql의 BEGIN/COMMIT 블록이 실패한 경우 실행
 -- =====================================================================
 
--- pgcrypto 확장
+-- 1. pgcrypto 확장 (트랜잭션 외부에서 실행)
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- =====================================================================
--- 1. employees 테이블 추가 컬럼 (없으면 추가)
--- =====================================================================
-ALTER TABLE public.employees
-  ADD COLUMN IF NOT EXISTS phone text,
-  ADD COLUMN IF NOT EXISTS address text,
-  ADD COLUMN IF NOT EXISTS birth_date date,
-  ADD COLUMN IF NOT EXISTS avatar_url text;
+-- 2. 기존 데이터 정리 (auth 테이블은 건드리지 않음)
+DELETE FROM public.evaluator_comments;
+DELETE FROM public.evaluator_scores;
+DELETE FROM public.self_evaluations;
+DELETE FROM public.evaluation_targets;
+DELETE FROM public.evaluation_weights;
+DELETE FROM public.employees;
 
--- =====================================================================
--- 2. CHECK 제약조건 최신화
--- =====================================================================
-
--- employees.role: 6가지 역할
+-- 3. Role 제약조건 업데이트 (4-role → 6-role: division_head, admin 추가)
 ALTER TABLE public.employees DROP CONSTRAINT IF EXISTS employees_role_check;
 ALTER TABLE public.employees
   ADD CONSTRAINT employees_role_check
   CHECK (role IN ('employee', 'leader', 'director', 'division_head', 'ceo', 'admin'));
 
--- evaluation_targets.status: 6단계
 ALTER TABLE public.evaluation_targets DROP CONSTRAINT IF EXISTS evaluation_targets_status_check;
 ALTER TABLE public.evaluation_targets
   ADD CONSTRAINT evaluation_targets_status_check
   CHECK (status IN ('pending', 'self_done', 'leader_done', 'director_done', 'ceo_done', 'completed'));
 
--- evaluator_scores.evaluator_role
 ALTER TABLE public.evaluator_scores DROP CONSTRAINT IF EXISTS evaluator_scores_evaluator_role_check;
 ALTER TABLE public.evaluator_scores
   ADD CONSTRAINT evaluator_scores_evaluator_role_check
   CHECK (evaluator_role IN ('leader', 'director', 'ceo'));
 
--- evaluation_weights.evaluator_role
 ALTER TABLE public.evaluation_weights DROP CONSTRAINT IF EXISTS evaluation_weights_evaluator_role_check;
 ALTER TABLE public.evaluation_weights
   ADD CONSTRAINT evaluation_weights_evaluator_role_check
   CHECK (evaluator_role IN ('self', 'leader', 'director', 'ceo'));
 
 -- =====================================================================
--- 3. 헬퍼 함수
+-- 4. 헬퍼 함수
 -- =====================================================================
 
 CREATE OR REPLACE FUNCTION public.get_my_role()
@@ -74,15 +58,9 @@ RETURNS boolean AS $$
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- =====================================================================
--- 4. 비즈니스 함수 (기존 함수 DROP 후 재생성)
+-- 5. 비즈니스 함수
 -- =====================================================================
-DROP FUNCTION IF EXISTS public.generate_evaluation_sheets(uuid);
-DROP FUNCTION IF EXISTS public.advance_evaluation_stage(uuid, text);
-DROP FUNCTION IF EXISTS public.calculate_final_score(uuid);
-DROP FUNCTION IF EXISTS public.create_employee_with_auth(text, text, text, text, uuid);
-DROP FUNCTION IF EXISTS public.delete_employee(uuid);
 
--- generate_evaluation_sheets
 CREATE OR REPLACE FUNCTION public.generate_evaluation_sheets(p_period_id uuid)
 RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
@@ -118,7 +96,6 @@ BEGIN
 END;
 $$;
 
--- advance_evaluation_stage
 CREATE OR REPLACE FUNCTION public.advance_evaluation_stage(
   p_target_id uuid, p_current_role text
 )
@@ -175,7 +152,6 @@ BEGIN
 
   UPDATE evaluation_targets SET status = v_next_status WHERE id = p_target_id;
 
-  -- 리더 자기평가 완료 시 leader_done 자동 스킵
   IF p_current_role = 'self' AND v_next_status = 'self_done' THEN
     SELECT e.role INTO v_employee_role
     FROM evaluation_targets t JOIN employees e ON e.id = t.employee_id
@@ -186,7 +162,6 @@ BEGIN
     END IF;
   END IF;
 
-  -- CEO 평가 완료 시 최종 점수 계산
   IF v_next_status = 'ceo_done' THEN
     PERFORM calculate_final_score(p_target_id);
     UPDATE evaluation_targets SET status = 'completed' WHERE id = p_target_id;
@@ -197,7 +172,6 @@ BEGIN
 END;
 $$;
 
--- calculate_final_score
 CREATE OR REPLACE FUNCTION public.calculate_final_score(p_target_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
@@ -229,22 +203,20 @@ BEGIN
   INTO v_leader_total, v_director_total, v_ceo_total
   FROM evaluator_scores WHERE target_id = p_target_id AND score IS NOT NULL AND is_draft = false;
 
-  -- self
+  FOR v_w IN (SELECT unnest(ARRAY['self','leader','director','ceo'])) LOOP NULL; END LOOP;
+
   IF v_self_total IS NOT NULL THEN
     SELECT weight INTO v_w FROM evaluation_weights WHERE period_id = v_period_id AND evaluator_role = 'self';
     IF v_w IS NOT NULL THEN v_weighted_sum := v_weighted_sum + v_self_total * v_w; v_weight_sum := v_weight_sum + v_w; END IF;
   END IF;
-  -- leader
   IF v_leader_total IS NOT NULL THEN
     SELECT weight INTO v_w FROM evaluation_weights WHERE period_id = v_period_id AND evaluator_role = 'leader';
     IF v_w IS NOT NULL THEN v_weighted_sum := v_weighted_sum + v_leader_total * v_w; v_weight_sum := v_weight_sum + v_w; END IF;
   END IF;
-  -- director
   IF v_director_total IS NOT NULL THEN
     SELECT weight INTO v_w FROM evaluation_weights WHERE period_id = v_period_id AND evaluator_role = 'director';
     IF v_w IS NOT NULL THEN v_weighted_sum := v_weighted_sum + v_director_total * v_w; v_weight_sum := v_weight_sum + v_w; END IF;
   END IF;
-  -- ceo
   IF v_ceo_total IS NOT NULL THEN
     SELECT weight INTO v_w FROM evaluation_weights WHERE period_id = v_period_id AND evaluator_role = 'ceo';
     IF v_w IS NOT NULL THEN v_weighted_sum := v_weighted_sum + v_ceo_total * v_w; v_weight_sum := v_weight_sum + v_w; END IF;
@@ -264,7 +236,6 @@ BEGIN
 END;
 $$;
 
--- create_employee_with_auth
 CREATE OR REPLACE FUNCTION public.create_employee_with_auth(
   p_email       text,
   p_password    text,
@@ -321,7 +292,6 @@ BEGIN
 END;
 $$;
 
--- delete_employee
 CREATE OR REPLACE FUNCTION public.delete_employee(p_employee_id uuid)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
@@ -330,7 +300,6 @@ BEGIN
   IF NOT is_admin() THEN
     RAISE EXCEPTION '직원을 삭제할 권한이 없습니다.';
   END IF;
-
   DELETE FROM public.evaluator_comments WHERE target_id IN (
     SELECT id FROM public.evaluation_targets WHERE employee_id = p_employee_id);
   DELETE FROM public.evaluator_scores WHERE target_id IN (
@@ -345,7 +314,7 @@ END;
 $$;
 
 -- =====================================================================
--- 5. 뷰 재생성
+-- 6. VIEWS
 -- =====================================================================
 
 CREATE OR REPLACE VIEW public.v_evaluation_summary AS
@@ -468,24 +437,10 @@ LEFT JOIN status_order so ON so.status_name = t.status
 GROUP BY p.id, p.year, p.quarter;
 
 -- =====================================================================
--- 6. RLS 정책 정리 및 재생성
+-- 7. RLS Policies (모두 DROP 후 재생성)
 -- =====================================================================
 
--- RLS 활성화
-ALTER TABLE public.departments           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.employees             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.evaluation_periods    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.evaluation_categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.evaluation_items      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.evaluation_targets    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.self_evaluations      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.evaluator_scores      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.evaluator_comments    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.evaluation_weights    ENABLE ROW LEVEL SECURITY;
-
 -- departments
-DROP POLICY IF EXISTS "departments_select_all"       ON public.departments;
-DROP POLICY IF EXISTS "departments_manage_management" ON public.departments;
 DROP POLICY IF EXISTS "dept_select_authenticated" ON public.departments;
 DROP POLICY IF EXISTS "dept_insert_admin" ON public.departments;
 DROP POLICY IF EXISTS "dept_update_admin" ON public.departments;
@@ -497,10 +452,6 @@ CREATE POLICY "dept_update_admin" ON public.departments FOR UPDATE TO authentica
 CREATE POLICY "dept_delete_admin" ON public.departments FOR DELETE TO authenticated USING (public.is_admin());
 
 -- employees
-DROP POLICY IF EXISTS "employees_select_self"         ON public.employees;
-DROP POLICY IF EXISTS "employees_select_management"   ON public.employees;
-DROP POLICY IF EXISTS "employees_select_leader"       ON public.employees;
-DROP POLICY IF EXISTS "employees_manage_management"   ON public.employees;
 DROP POLICY IF EXISTS "emp_select_authenticated" ON public.employees;
 DROP POLICY IF EXISTS "emp_update_self_or_admin" ON public.employees;
 DROP POLICY IF EXISTS "emp_insert_admin" ON public.employees;
@@ -512,8 +463,6 @@ CREATE POLICY "emp_insert_admin" ON public.employees FOR INSERT TO authenticated
 CREATE POLICY "emp_delete_admin" ON public.employees FOR DELETE TO authenticated USING (public.is_admin());
 
 -- evaluation_periods
-DROP POLICY IF EXISTS "periods_select_all"            ON public.evaluation_periods;
-DROP POLICY IF EXISTS "periods_manage_management"     ON public.evaluation_periods;
 DROP POLICY IF EXISTS "period_select_authenticated" ON public.evaluation_periods;
 DROP POLICY IF EXISTS "period_insert_admin" ON public.evaluation_periods;
 DROP POLICY IF EXISTS "period_update_admin" ON public.evaluation_periods;
@@ -525,8 +474,6 @@ CREATE POLICY "period_update_admin" ON public.evaluation_periods FOR UPDATE TO a
 CREATE POLICY "period_delete_admin" ON public.evaluation_periods FOR DELETE TO authenticated USING (public.is_admin());
 
 -- evaluation_categories
-DROP POLICY IF EXISTS "categories_select_all"         ON public.evaluation_categories;
-DROP POLICY IF EXISTS "categories_manage_management"  ON public.evaluation_categories;
 DROP POLICY IF EXISTS "cat_select_authenticated" ON public.evaluation_categories;
 DROP POLICY IF EXISTS "cat_insert_admin" ON public.evaluation_categories;
 DROP POLICY IF EXISTS "cat_update_admin" ON public.evaluation_categories;
@@ -538,8 +485,6 @@ CREATE POLICY "cat_update_admin" ON public.evaluation_categories FOR UPDATE TO a
 CREATE POLICY "cat_delete_admin" ON public.evaluation_categories FOR DELETE TO authenticated USING (public.is_admin());
 
 -- evaluation_items
-DROP POLICY IF EXISTS "items_select_all"              ON public.evaluation_items;
-DROP POLICY IF EXISTS "items_manage_management"       ON public.evaluation_items;
 DROP POLICY IF EXISTS "item_select_authenticated" ON public.evaluation_items;
 DROP POLICY IF EXISTS "item_insert_admin" ON public.evaluation_items;
 DROP POLICY IF EXISTS "item_update_admin" ON public.evaluation_items;
@@ -551,10 +496,6 @@ CREATE POLICY "item_update_admin" ON public.evaluation_items FOR UPDATE TO authe
 CREATE POLICY "item_delete_admin" ON public.evaluation_items FOR DELETE TO authenticated USING (public.is_admin());
 
 -- evaluation_targets
-DROP POLICY IF EXISTS "targets_select_self"           ON public.evaluation_targets;
-DROP POLICY IF EXISTS "targets_select_leader"         ON public.evaluation_targets;
-DROP POLICY IF EXISTS "targets_select_management"     ON public.evaluation_targets;
-DROP POLICY IF EXISTS "targets_manage_management"     ON public.evaluation_targets;
 DROP POLICY IF EXISTS "target_select_own" ON public.evaluation_targets;
 DROP POLICY IF EXISTS "target_select_leader_dept" ON public.evaluation_targets;
 DROP POLICY IF EXISTS "target_select_director_up" ON public.evaluation_targets;
@@ -578,12 +519,10 @@ CREATE POLICY "target_delete_admin" ON public.evaluation_targets FOR DELETE TO a
   USING (public.is_admin());
 
 -- self_evaluations
-DROP POLICY IF EXISTS "self_eval_select_own"        ON public.self_evaluations;
-DROP POLICY IF EXISTS "self_eval_select_evaluator"  ON public.self_evaluations;
-DROP POLICY IF EXISTS "self_eval_insert_own"        ON public.self_evaluations;
-DROP POLICY IF EXISTS "self_eval_update_own"        ON public.self_evaluations;
-DROP POLICY IF EXISTS "self_eval_manage_management" ON public.self_evaluations;
-DROP POLICY IF EXISTS "self_eval_select_leader"     ON public.self_evaluations;
+DROP POLICY IF EXISTS "self_eval_select_own" ON public.self_evaluations;
+DROP POLICY IF EXISTS "self_eval_select_evaluator" ON public.self_evaluations;
+DROP POLICY IF EXISTS "self_eval_insert_own" ON public.self_evaluations;
+DROP POLICY IF EXISTS "self_eval_update_own" ON public.self_evaluations;
 DROP POLICY IF EXISTS "self_eval_insert_admin" ON public.self_evaluations;
 DROP POLICY IF EXISTS "self_eval_delete_admin" ON public.self_evaluations;
 
@@ -608,9 +547,6 @@ CREATE POLICY "self_eval_delete_admin" ON public.self_evaluations FOR DELETE TO 
   USING (public.is_admin());
 
 -- evaluator_scores
-DROP POLICY IF EXISTS "eval_scores_own"               ON public.evaluator_scores;
-DROP POLICY IF EXISTS "eval_scores_select_employee"   ON public.evaluator_scores;
-DROP POLICY IF EXISTS "eval_scores_select_management" ON public.evaluator_scores;
 DROP POLICY IF EXISTS "eval_score_select_own_target" ON public.evaluator_scores;
 DROP POLICY IF EXISTS "eval_score_select_my_scores" ON public.evaluator_scores;
 DROP POLICY IF EXISTS "eval_score_select_admin" ON public.evaluator_scores;
@@ -638,9 +574,6 @@ CREATE POLICY "eval_score_update_my_turn" ON public.evaluator_scores FOR UPDATE 
       (evaluator_scores.evaluator_role = 'ceo'      AND t.status = 'director_done'))));
 
 -- evaluator_comments
-DROP POLICY IF EXISTS "eval_comments_own"               ON public.evaluator_comments;
-DROP POLICY IF EXISTS "eval_comments_select_employee"   ON public.evaluator_comments;
-DROP POLICY IF EXISTS "eval_comments_select_management" ON public.evaluator_comments;
 DROP POLICY IF EXISTS "eval_comment_select_own_target" ON public.evaluator_comments;
 DROP POLICY IF EXISTS "eval_comment_select_my_comments" ON public.evaluator_comments;
 DROP POLICY IF EXISTS "eval_comment_select_admin" ON public.evaluator_comments;
@@ -668,8 +601,6 @@ CREATE POLICY "eval_comment_update_my_turn" ON public.evaluator_comments FOR UPD
       (evaluator_comments.evaluator_role = 'ceo'      AND t.status = 'director_done'))));
 
 -- evaluation_weights
-DROP POLICY IF EXISTS "weights_select_all"            ON public.evaluation_weights;
-DROP POLICY IF EXISTS "weights_manage_management"     ON public.evaluation_weights;
 DROP POLICY IF EXISTS "weight_select_authenticated" ON public.evaluation_weights;
 DROP POLICY IF EXISTS "weight_insert_admin" ON public.evaluation_weights;
 DROP POLICY IF EXISTS "weight_update_admin" ON public.evaluation_weights;
@@ -683,7 +614,6 @@ CREATE POLICY "weight_delete_admin" ON public.evaluation_weights FOR DELETE TO a
 -- grade_criteria
 DROP POLICY IF EXISTS "grade_criteria_select_all" ON public.grade_criteria;
 DROP POLICY IF EXISTS "grade_criteria_manage_admin" ON public.grade_criteria;
-DROP POLICY IF EXISTS "grade_criteria_manage_management" ON public.grade_criteria;
 
 CREATE POLICY "grade_criteria_select_all" ON public.grade_criteria FOR SELECT TO authenticated USING (true);
 CREATE POLICY "grade_criteria_manage_admin" ON public.grade_criteria FOR ALL TO authenticated USING (public.is_admin());
@@ -720,96 +650,30 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES ('avatars', 'avatars', true, 2097152, ARRAY['image/jpeg','image/png','image/webp','image/gif'])
 ON CONFLICT (id) DO NOTHING;
 
-CREATE POLICY "avatars_upload" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'avatars');
-CREATE POLICY "avatars_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'avatars');
-CREATE POLICY "avatars_delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'avatars');
-CREATE POLICY "avatars_read" ON storage.objects FOR SELECT TO public USING (bucket_id = 'avatars');
+CREATE POLICY "avatars_upload" ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'avatars');
+CREATE POLICY "avatars_update" ON storage.objects FOR UPDATE TO authenticated
+USING (bucket_id = 'avatars');
+CREATE POLICY "avatars_delete" ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'avatars');
+CREATE POLICY "avatars_read" ON storage.objects FOR SELECT TO public
+USING (bucket_id = 'avatars');
 
 -- =====================================================================
--- 7. 시드 데이터 복원 (비어 있는 경우만)
+-- 8. 관리자 계정 생성 (auth.users에 직접 삽입)
 -- =====================================================================
 
--- 부서
-INSERT INTO public.departments (id, name) VALUES
-  ('10000000-0000-0000-0000-000000000001', '브랜드사업본부'),
-  ('10000000-0000-0000-0000-000000000002', '경영지원본부'),
-  ('10000000-0000-0000-0000-000000000003', '뉴미디어사업본부'),
-  ('10000000-0000-0000-0000-000000000004', 'IT사업본부')
-ON CONFLICT (id) DO NOTHING;
+-- 기존 관리자 정리
+DELETE FROM public.employees WHERE email = 'admin@interohrigin.com';
+DELETE FROM auth.identities WHERE provider_id = 'admin@interohrigin.com';
+DELETE FROM auth.users WHERE email = 'admin@interohrigin.com';
 
--- 평가 카테고리
-INSERT INTO public.evaluation_categories (id, name, weight, sort_order) VALUES
-  ('20000000-0000-0000-0000-000000000001', '업적평가', 0.7, 1),
-  ('20000000-0000-0000-0000-000000000002', '역량평가', 0.3, 2)
-ON CONFLICT (id) DO NOTHING;
-
--- 평가 항목 (evaluation_type 포함)
-INSERT INTO public.evaluation_items (category_id, name, description, max_score, sort_order, evaluation_type)
-SELECT * FROM (VALUES
-  ('20000000-0000-0000-0000-000000000001'::uuid, '상품 이익률 및 원가 관리',     '상품별 이익률 목표 달성도 및 원가 절감 노력을 평가합니다.', 10, 1, 'quantitative'),
-  ('20000000-0000-0000-0000-000000000001'::uuid, '신제품 기획 및 라인업 전략',   '신규 상품 기획력과 브랜드 라인업 확장 전략의 적절성을 평가합니다.', 10, 2, 'qualitative'),
-  ('20000000-0000-0000-0000-000000000001'::uuid, '프로모션 기획 및 마케팅 효율', '프로모션 성과(매출, ROI)와 마케팅 기획의 창의성을 종합 평가합니다.', 10, 3, 'mixed'),
-  ('20000000-0000-0000-0000-000000000001'::uuid, '수요 예측 및 재고 관리',       '수요 예측 정확도와 적정 재고 수준 유지 능력을 평가합니다.', 10, 4, 'quantitative'),
-  ('20000000-0000-0000-0000-000000000001'::uuid, '브랜드 톤앤매너 및 품질 관리', '브랜드 일관성 유지 및 상품 품질 관리 역량을 평가합니다.', 10, 5, 'qualitative'),
-  ('20000000-0000-0000-0000-000000000001'::uuid, '트렌드 분석 및 경쟁사 대응',   '시장 트렌드 파악 능력과 경쟁사 동향 대응 전략을 평가합니다.', 10, 6, 'qualitative'),
-  ('20000000-0000-0000-0000-000000000001'::uuid, '일정 준수 및 유관 부서 리딩',  '프로젝트 일정 준수율과 유관 부서 간 협업 리더십을 평가합니다.', 10, 7, 'mixed'),
-  ('20000000-0000-0000-0000-000000000002'::uuid, '근태 및 사내 규정 준수',     '출결 관리, 근태 기록 및 사내 규정 준수 여부를 평가합니다.', 10, 1, 'quantitative'),
-  ('20000000-0000-0000-0000-000000000002'::uuid, '커뮤니케이션 및 보고 태도',  '업무 보고의 적시성, 정확성 및 동료 간 소통 능력을 평가합니다.', 10, 2, 'qualitative'),
-  ('20000000-0000-0000-0000-000000000002'::uuid, '업무 적극성 및 조직 적응',   '업무에 대한 적극적인 태도와 조직 문화 적응력을 평가합니다.', 10, 3, 'qualitative')
-) AS t(category_id, name, description, max_score, sort_order, evaluation_type)
-WHERE NOT EXISTS (SELECT 1 FROM public.evaluation_items LIMIT 1);
-
--- 평가 기간
-INSERT INTO public.evaluation_periods (id, year, quarter, status, start_date, end_date) VALUES
-  ('30000000-0000-0000-0000-000000000001', 2026, 1, 'in_progress', '2026-01-01', '2026-03-31')
-ON CONFLICT (year, quarter) DO NOTHING;
-
--- 등급 기준
-INSERT INTO public.grade_criteria (grade, min_score, max_score, label) VALUES
-  ('S', 90, 100, '탁월'),
-  ('A', 80, 89,  '우수'),
-  ('B', 70, 79,  '보통'),
-  ('C', 60, 69,  '미흡'),
-  ('D', 0,  59,  '부진')
-ON CONFLICT (grade) DO NOTHING;
-
--- 기본 가중치 (2026 Q1 평가 기간의 실제 ID를 동적으로 조회)
 DO $$
 DECLARE
-  v_period_id uuid;
-BEGIN
-  SELECT id INTO v_period_id FROM public.evaluation_periods WHERE year = 2026 AND quarter = 1 LIMIT 1;
-  IF v_period_id IS NULL THEN
-    RAISE NOTICE '2026 Q1 평가 기간이 없어 가중치를 건너뜁니다.';
-    RETURN;
-  END IF;
-
-  INSERT INTO public.evaluation_weights (period_id, evaluator_role, weight) VALUES
-    (v_period_id, 'self',     0.10),
-    (v_period_id, 'leader',   0.40),
-    (v_period_id, 'director', 0.30),
-    (v_period_id, 'ceo',      0.20)
-  ON CONFLICT (period_id, evaluator_role) DO UPDATE SET weight = EXCLUDED.weight;
-END $$;
-
--- =====================================================================
--- 8. 관리자 계정 (없으면 생성)
--- =====================================================================
-DO $$
-DECLARE
-  v_user_id uuid;
+  v_user_id uuid := gen_random_uuid();
   v_now     timestamptz := now();
-  v_password text;
+  v_password text := '$2b$10$1TAZCOhC3rAz5Nb3tscFpuy/Thv8H03WGZb0f62q65wRt9p2QlX.a' -- bcrypt hash of AdminPassword123!;
 BEGIN
-  -- 이미 관리자가 있는지 확인
-  IF EXISTS (SELECT 1 FROM public.employees WHERE email = 'admin@interohrigin.com') THEN
-    RAISE NOTICE '관리자 계정이 이미 존재합니다.';
-    RETURN;
-  END IF;
-
-  v_user_id := gen_random_uuid();
-  v_password := '$2b$10$1TAZCOhC3rAz5Nb3tscFpuy/Thv8H03WGZb0f62q65wRt9p2QlX.a' -- bcrypt hash of AdminPassword123!;
-
   INSERT INTO auth.users (
     id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
     raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
@@ -839,5 +703,53 @@ BEGIN
 END $$;
 
 -- =====================================================================
--- 완료!
+-- 9. 시드 데이터 확인 및 보충 (이미 있으면 SKIP)
 -- =====================================================================
+
+INSERT INTO public.departments (id, name) VALUES
+  ('10000000-0000-0000-0000-000000000001', '브랜드사업본부'),
+  ('10000000-0000-0000-0000-000000000002', '경영지원본부'),
+  ('10000000-0000-0000-0000-000000000003', '뉴미디어사업본부'),
+  ('10000000-0000-0000-0000-000000000004', 'IT사업본부')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.evaluation_categories (id, name, weight, sort_order) VALUES
+  ('20000000-0000-0000-0000-000000000001', '업적평가', 0.7, 1),
+  ('20000000-0000-0000-0000-000000000002', '역량평가', 0.3, 2)
+ON CONFLICT (id) DO NOTHING;
+
+-- 평가 항목: 기존 데이터 삭제 후 재삽입 (evaluation_type 포함)
+DELETE FROM public.evaluation_items;
+
+INSERT INTO public.evaluation_items (category_id, name, description, max_score, sort_order, evaluation_type) VALUES
+  ('20000000-0000-0000-0000-000000000001', '상품 이익률 및 원가 관리',     '상품별 이익률 목표 달성도 및 원가 절감 노력을 평가합니다.', 10, 1, 'quantitative'),
+  ('20000000-0000-0000-0000-000000000001', '신제품 기획 및 라인업 전략',   '신규 상품 기획력과 브랜드 라인업 확장 전략의 적절성을 평가합니다.', 10, 2, 'qualitative'),
+  ('20000000-0000-0000-0000-000000000001', '프로모션 기획 및 마케팅 효율', '프로모션 성과(매출, ROI)와 마케팅 기획의 창의성을 종합 평가합니다.', 10, 3, 'mixed'),
+  ('20000000-0000-0000-0000-000000000001', '수요 예측 및 재고 관리',       '수요 예측 정확도와 적정 재고 수준 유지 능력을 평가합니다.', 10, 4, 'quantitative'),
+  ('20000000-0000-0000-0000-000000000001', '브랜드 톤앤매너 및 품질 관리', '브랜드 일관성 유지 및 상품 품질 관리 역량을 평가합니다.', 10, 5, 'qualitative'),
+  ('20000000-0000-0000-0000-000000000001', '트렌드 분석 및 경쟁사 대응',   '시장 트렌드 파악 능력과 경쟁사 동향 대응 전략을 평가합니다.', 10, 6, 'qualitative'),
+  ('20000000-0000-0000-0000-000000000001', '일정 준수 및 유관 부서 리딩',  '프로젝트 일정 준수율과 유관 부서 간 협업 리더십을 평가합니다.', 10, 7, 'mixed');
+
+INSERT INTO public.evaluation_items (category_id, name, description, max_score, sort_order, evaluation_type) VALUES
+  ('20000000-0000-0000-0000-000000000002', '근태 및 사내 규정 준수',     '출결 관리, 근태 기록 및 사내 규정 준수 여부를 평가합니다.', 10, 1, 'quantitative'),
+  ('20000000-0000-0000-0000-000000000002', '커뮤니케이션 및 보고 태도',  '업무 보고의 적시성, 정확성 및 동료 간 소통 능력을 평가합니다.', 10, 2, 'qualitative'),
+  ('20000000-0000-0000-0000-000000000002', '업무 적극성 및 조직 적응',   '업무에 대한 적극적인 태도와 조직 문화 적응력을 평가합니다.', 10, 3, 'qualitative');
+
+INSERT INTO public.evaluation_periods (id, year, quarter, status, start_date, end_date) VALUES
+  ('30000000-0000-0000-0000-000000000001', 2026, 1, 'in_progress', '2026-01-01', '2026-03-31')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.grade_criteria (grade, min_score, max_score, label) VALUES
+  ('S', 90, 100, '탁월'),
+  ('A', 80, 89,  '우수'),
+  ('B', 70, 79,  '보통'),
+  ('C', 60, 69,  '미흡'),
+  ('D', 0,  59,  '부진')
+ON CONFLICT (grade) DO NOTHING;
+
+INSERT INTO public.evaluation_weights (period_id, evaluator_role, weight) VALUES
+  ('30000000-0000-0000-0000-000000000001', 'self',     0.10),
+  ('30000000-0000-0000-0000-000000000001', 'leader',   0.40),
+  ('30000000-0000-0000-0000-000000000001', 'director', 0.30),
+  ('30000000-0000-0000-0000-000000000001', 'ceo',      0.20)
+ON CONFLICT (period_id, evaluator_role) DO UPDATE SET weight = EXCLUDED.weight;

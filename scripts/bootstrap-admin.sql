@@ -29,7 +29,8 @@ DO $$
 DECLARE
   v_user_id uuid := gen_random_uuid();
   v_now     timestamptz := now();
-  v_password text := crypt('AdminPassword123!', gen_salt('bf'));
+  -- bcrypt hash of 'AdminPassword123!' (pre-computed via bcryptjs)
+  v_password text := '$2b$10$1TAZCOhC3rAz5Nb3tscFpuy/Thv8H03WGZb0f62q65wRt9p2QlX.a';
 BEGIN
   -- auth.users에 삽입
   INSERT INTO auth.users (

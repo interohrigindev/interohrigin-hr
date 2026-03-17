@@ -101,7 +101,7 @@ CREATE OR REPLACE FUNCTION public.create_employee_with_auth(
 RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_user_id uuid := gen_random_uuid();
@@ -120,7 +120,7 @@ BEGIN
     RAISE EXCEPTION '이미 등록된 이메일입니다: %', p_email;
   END IF;
 
-  v_password_hash := crypt(p_password, gen_salt('bf'));
+  v_password_hash := extensions.crypt(p_password, extensions.gen_salt('bf'));
 
   INSERT INTO auth.users (
     id, instance_id, aud, role, email, encrypted_password,

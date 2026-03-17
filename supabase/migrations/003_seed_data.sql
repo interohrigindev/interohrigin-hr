@@ -13,8 +13,8 @@ DELETE FROM public.departments;
 DO $$
 DECLARE
   v_dept_id         uuid;
-  v_cat_performance uuid;
-  v_cat_competency  uuid;
+  v_cat_performance uuid := '20000000-0000-0000-0000-000000000001';
+  v_cat_competency  uuid := '20000000-0000-0000-0000-000000000002';
   v_period_id       uuid;
 BEGIN
 
@@ -28,15 +28,15 @@ BEGIN
   RAISE NOTICE '부서 생성 완료: 브랜드사업본부 (id=%)', v_dept_id;
 
   -- ═════════════════════════════════════════════════════════════════
-  -- 2. 평가 카테고리
+  -- 2. 평가 카테고리 (고정 ID 사용 — 다른 스크립트와 충돌 방지)
   -- ═════════════════════════════════════════════════════════════════
-  INSERT INTO public.evaluation_categories (name, weight, sort_order)
-  VALUES ('업적평가', 0.7, 1)
-  RETURNING id INTO v_cat_performance;
+  INSERT INTO public.evaluation_categories (id, name, weight, sort_order)
+  VALUES (v_cat_performance, '업적평가', 0.7, 1)
+  ON CONFLICT (id) DO NOTHING;
 
-  INSERT INTO public.evaluation_categories (name, weight, sort_order)
-  VALUES ('역량평가', 0.3, 2)
-  RETURNING id INTO v_cat_competency;
+  INSERT INTO public.evaluation_categories (id, name, weight, sort_order)
+  VALUES (v_cat_competency, '역량평가', 0.3, 2)
+  ON CONFLICT (id) DO NOTHING;
 
   RAISE NOTICE '카테고리 생성 완료: 업적평가(id=%), 역량평가(id=%)', v_cat_performance, v_cat_competency;
 
