@@ -8,8 +8,9 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { runComprehensiveAnalysis } from '@/lib/recruitment-ai'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
-import type { Candidate, CandidateStatus, SourceChannel, ResumeAnalysis } from '@/types/recruitment'
+import type { Candidate, CandidateStatus, SourceChannel, ResumeAnalysis, RecruitmentReport } from '@/types/recruitment'
 import { formatDate } from '@/lib/utils'
 
 export default function CandidateReport() {
@@ -21,6 +22,9 @@ export default function CandidateReport() {
   const [analysis, setAnalysis] = useState<ResumeAnalysis | null>(null)
   const [loading, setLoading] = useState(true)
   const [analyzing, setAnalyzing] = useState(false)
+  const [report, setReport] = useState<RecruitmentReport | null>(null)
+  const [comprehensiveAnalyzing, setComprehensiveAnalyzing] = useState(false)
+  const [, setActiveTab] = useState<'resume' | 'comprehensive'>('resume')
 
   useEffect(() => {
     if (!id) return
@@ -31,6 +35,18 @@ export default function CandidateReport() {
       ])
       if (candRes.data) setCandidate(candRes.data as Candidate)
       if (analysisRes.data) setAnalysis(analysisRes.data as ResumeAnalysis)
+
+      // 종합 리포트
+      const reportRes = await supabase
+        .from('recruitment_reports')
+        .select('*')
+        .eq('candidate_id', id)
+        .eq('report_type', 'comprehensive')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      if (reportRes.data) setReport(reportRes.data as RecruitmentReport)
+
       setLoading(false)
     }
     fetch()
@@ -143,6 +159,21 @@ ${postingInfo || '정보 없음'}
       toast('AI 분석 실패: ' + err.message, 'error')
     }
     setAnalyzing(false)
+  }
+
+  async function runComprehensive() {
+    if (!id) return
+    setComprehensiveAnalyzing(true)
+    try {
+      const { report: newReport } = await runComprehensiveAnalysis(id)
+      setReport(newReport as RecruitmentReport)
+      setCandidate((prev) => prev ? { ...prev, status: 'analyzed' } : prev)
+      toast('종합 분석이 완료되었습니다.', 'success')
+      setActiveTab('comprehensive')
+    } catch (err: any) {
+      toast('종합 분석 실패: ' + err.message, 'error')
+    }
+    setComprehensiveAnalyzing(false)
   }
 
   async function handleDecision(decision: 'proceed' | 'reject') {
@@ -352,6 +383,111 @@ ${postingInfo || '정보 없음'}
               )}
             </CardContent>
           </Card>
+
+          {/* 종합 AI 분석 리포트 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" /> AI 종합 분석
+                </CardTitle>
+                {!report && (
+                  <Button size="sm" onClick={runComprehensive} disabled={comprehensiveAnalyzing}>
+                    {comprehensiveAnalyzing ? (
+                      <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
+                    ) : (
+                      <><Sparkles className="h-4 w-4 mr-1" /> 종합 분석 실행</>
+                    )}
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!report ? (
+                <p className="text-gray-400 text-sm">이력서 분석, 사전 질의서, 면접 결과를 모두 종합한 AI 분석을 실행합니다.</p>
+              ) : (
+                <div className="space-y-4">
+                  {/* 종합 점수 + 추천 */}
+                  <div className="flex items-center gap-4">
+                    <div className="text-center p-4 bg-brand-50 rounded-xl">
+                      <p className="text-xs text-brand-600 mb-1">종합 점수</p>
+                      <p className="text-3xl font-bold text-brand-700">{report.overall_score}</p>
+                    </div>
+                    <div className="flex-1">
+                      <Badge variant={
+                        report.ai_recommendation === 'STRONG_HIRE' ? 'success' :
+                        report.ai_recommendation === 'HIRE' ? 'success' :
+                        report.ai_recommendation === 'REVIEW' ? 'warning' : 'danger'
+                      } className="text-sm px-3 py-1">
+                        {report.ai_recommendation === 'STRONG_HIRE' ? '강력 추천' :
+                         report.ai_recommendation === 'HIRE' ? '채용 추천' :
+                         report.ai_recommendation === 'REVIEW' ? '추가 검토' : '비추천'}
+                      </Badge>
+                      <p className="text-sm text-gray-700 mt-2">{report.summary}</p>
+                    </div>
+                  </div>
+
+                  {/* 세부 분석 */}
+                  {report.detailed_analysis && (
+                    <div className="grid grid-cols-2 gap-3">
+                      {Object.entries(report.detailed_analysis as Record<string, any>).map(([key, val]) => (
+                        <div key={key} className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500 mb-1">
+                            {key === 'resume_fit' ? '이력서 적합도' :
+                             key === 'interview_performance' ? '면접 수행' :
+                             key === 'cultural_fit' ? '조직 적합도' :
+                             key === 'growth_potential' ? '성장 가능성' : key}
+                          </p>
+                          <p className="text-lg font-bold text-gray-900">{val?.score ?? '-'}</p>
+                          <p className="text-xs text-gray-600 mt-1">{val?.comment || ''}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 인재상 매칭 */}
+                  {report.talent_match && (report.talent_match as any).best_match_profile && (
+                    <div className="p-3 bg-amber-50 rounded-lg">
+                      <p className="text-xs text-amber-600 mb-1">인재상 매칭</p>
+                      <p className="font-medium text-amber-800">
+                        {(report.talent_match as any).best_match_profile} ({(report.talent_match as any).match_percentage}%)
+                      </p>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {((report.talent_match as any).similar_traits || []).map((t: string, i: number) => (
+                          <Badge key={i} variant="warning">{t}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 추천 정보 */}
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div className="p-2 bg-gray-50 rounded text-center">
+                      <p className="text-xs text-gray-500">추천 부서</p>
+                      <p className="font-medium">{report.department_recommendation || '-'}</p>
+                    </div>
+                    <div className="p-2 bg-gray-50 rounded text-center">
+                      <p className="text-xs text-gray-500">추천 직급</p>
+                      <p className="font-medium">{report.position_recommendation || '-'}</p>
+                    </div>
+                    <div className="p-2 bg-gray-50 rounded text-center">
+                      <p className="text-xs text-gray-500">추천 연봉</p>
+                      <p className="font-medium">{report.salary_recommendation || '-'}</p>
+                    </div>
+                  </div>
+
+                  {/* 사주/MBTI */}
+                  {report.saju_mbti_analysis && (report.saju_mbti_analysis as any).personality_summary && (
+                    <div className="p-3 bg-purple-50 rounded-lg">
+                      <p className="text-xs text-purple-600 mb-1">성향 분석 (참고)</p>
+                      <p className="text-sm text-purple-800">{(report.saju_mbti_analysis as any).personality_summary}</p>
+                      <p className="text-xs text-purple-600 mt-1">업무 스타일: {(report.saju_mbti_analysis as any).work_style}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* 사이드바: 의사결정 */}
@@ -363,18 +499,42 @@ ${postingInfo || '정보 없음'}
             <CardContent className="space-y-3">
               {candidate.status === 'resume_reviewed' && analysis ? (
                 <>
-                  <Button
-                    className="w-full"
-                    onClick={() => handleDecision('proceed')}
-                  >
+                  <Button className="w-full" onClick={() => handleDecision('proceed')}>
                     <CheckCircle className="h-4 w-4 mr-1" /> OK — 사전 질의서 발송
                   </Button>
-                  <Button
-                    variant="danger"
-                    className="w-full"
-                    onClick={() => handleDecision('reject')}
-                  >
+                  <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
                     <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
+                  </Button>
+                </>
+              ) : candidate.status === 'analyzed' && report ? (
+                <>
+                  <Button className="w-full" onClick={async () => {
+                    await supabase.from('hiring_decisions').insert({
+                      candidate_id: id,
+                      decision: 'hired',
+                      decided_by: null,
+                      ai_recommendation: report.ai_recommendation,
+                      ai_score: report.overall_score,
+                    })
+                    await supabase.from('candidates').update({ status: 'hired' }).eq('id', id)
+                    setCandidate((p) => p ? { ...p, status: 'hired' } : p)
+                    toast('합격 처리되었습니다.', 'success')
+                  }}>
+                    <CheckCircle className="h-4 w-4 mr-1" /> 합격
+                  </Button>
+                  <Button variant="danger" className="w-full" onClick={async () => {
+                    await supabase.from('hiring_decisions').insert({
+                      candidate_id: id,
+                      decision: 'rejected',
+                      decided_by: null,
+                      ai_recommendation: report.ai_recommendation,
+                      ai_score: report.overall_score,
+                    })
+                    await supabase.from('candidates').update({ status: 'rejected' }).eq('id', id)
+                    setCandidate((p) => p ? { ...p, status: 'rejected' } : p)
+                    toast('불합격 처리되었습니다.', 'success')
+                  }}>
+                    <XCircle className="h-4 w-4 mr-1" /> 불합격
                   </Button>
                 </>
               ) : candidate.status === 'applied' ? (
