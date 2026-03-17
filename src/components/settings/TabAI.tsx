@@ -7,12 +7,12 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
-import { validateApiKey, GEMINI_MODELS, OPENAI_MODELS } from '@/lib/ai-client'
+import { validateApiKey, GEMINI_MODELS, OPENAI_MODELS, CLAUDE_MODELS } from '@/lib/ai-client'
 import { Bot, Key, CheckCircle, XCircle, Plus, Trash2 } from 'lucide-react'
 
 interface AISettingsRow {
   id: string
-  provider: 'gemini' | 'openai'
+  provider: 'gemini' | 'openai' | 'claude'
   api_key: string
   model: string
   is_active: boolean
@@ -27,7 +27,7 @@ export default function TabAI() {
   const [loading, setLoading] = useState(true)
 
   // Add/edit form
-  const [provider, setProvider] = useState<'gemini' | 'openai'>('gemini')
+  const [provider, setProvider] = useState<'gemini' | 'openai' | 'claude'>('gemini')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(GEMINI_MODELS[0].value)
   const [saving, setSaving] = useState(false)
@@ -51,7 +51,7 @@ export default function TabAI() {
 
   // Update model list when provider changes
   useEffect(() => {
-    const models = provider === 'gemini' ? GEMINI_MODELS : OPENAI_MODELS
+    const models = provider === 'gemini' ? GEMINI_MODELS : provider === 'claude' ? CLAUDE_MODELS : OPENAI_MODELS
     setModel(models[0].value)
     setValidationResult(null)
   }, [provider])
@@ -139,7 +139,7 @@ export default function TabAI() {
 
   if (loading) return <PageSpinner />
 
-  const modelOptions = provider === 'gemini' ? GEMINI_MODELS : OPENAI_MODELS
+  const modelOptions = provider === 'gemini' ? GEMINI_MODELS : provider === 'claude' ? CLAUDE_MODELS : OPENAI_MODELS
 
   return (
     <div className="space-y-6">
@@ -161,9 +161,10 @@ export default function TabAI() {
               options={[
                 { value: 'gemini', label: 'Google Gemini' },
                 { value: 'openai', label: 'OpenAI' },
+                { value: 'claude', label: 'Anthropic Claude' },
               ]}
               value={provider}
-              onChange={(e) => setProvider(e.target.value as 'gemini' | 'openai')}
+              onChange={(e) => setProvider(e.target.value as 'gemini' | 'openai' | 'claude')}
             />
             <Select
               id="ai-model"
@@ -180,7 +181,7 @@ export default function TabAI() {
               type="password"
               value={apiKey}
               onChange={(e) => { setApiKey(e.target.value); setValidationResult(null) }}
-              placeholder={provider === 'gemini' ? 'AIza...' : 'sk-...'}
+              placeholder={provider === 'gemini' ? 'AIza...' : provider === 'claude' ? 'sk-ant-...' : 'sk-...'}
             />
             {validationResult && (
               <div className={`mt-1.5 flex items-center gap-1.5 text-xs ${validationResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -221,7 +222,7 @@ export default function TabAI() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-gray-900">
-                          {s.provider === 'gemini' ? 'Google Gemini' : 'OpenAI'}
+                          {s.provider === 'gemini' ? 'Google Gemini' : s.provider === 'claude' ? 'Anthropic Claude' : 'OpenAI'}
                         </span>
                         <Badge variant={s.is_active ? 'success' : 'default'}>
                           {s.is_active ? '활성' : '비활성'}

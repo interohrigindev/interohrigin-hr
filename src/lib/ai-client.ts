@@ -3,7 +3,7 @@
  */
 
 export interface AIConfig {
-  provider: 'gemini' | 'openai'
+  provider: 'gemini' | 'openai' | 'claude'
   apiKey: string
   model: string
 }
@@ -74,12 +74,49 @@ async function callOpenAI(config: AIConfig, prompt: string): Promise<string> {
   return data.choices?.[0]?.message?.content ?? ''
 }
 
+// ─── Claude (Anthropic) API ──────────────────────────────────────
+
+async function callClaude(config: AIConfig, prompt: string): Promise<string> {
+  const url = 'https://api.anthropic.com/v1/messages'
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: 4096,
+      system: '당신은 인사평가 전문 분석가입니다. 한국어로 응답하며, 구조화된 마크다운 형식으로 분석 리포트를 작성합니다.',
+      messages: [
+        { role: 'user', content: prompt },
+      ],
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message || `Claude API error: ${res.status}`)
+  }
+
+  const data = await res.json()
+  return data.content?.[0]?.text ?? ''
+}
+
 // ─── Unified call ────────────────────────────────────────────────
 
 export async function generateAIContent(config: AIConfig, prompt: string): Promise<AIResponse> {
-  const content = config.provider === 'gemini'
-    ? await callGemini(config, prompt)
-    : await callOpenAI(config, prompt)
+  let content: string
+  if (config.provider === 'gemini') {
+    content = await callGemini(config, prompt)
+  } else if (config.provider === 'claude') {
+    content = await callClaude(config, prompt)
+  } else {
+    content = await callOpenAI(config, prompt)
+  }
 
   return {
     content,
@@ -95,6 +132,8 @@ export async function validateApiKey(config: AIConfig): Promise<{ valid: boolean
     const testPrompt = 'Say "OK" in one word.'
     if (config.provider === 'gemini') {
       await callGemini({ ...config }, testPrompt)
+    } else if (config.provider === 'claude') {
+      await callClaude({ ...config }, testPrompt)
     } else {
       await callOpenAI({ ...config }, testPrompt)
     }
@@ -117,6 +156,13 @@ export const OPENAI_MODELS = [
   { value: 'gpt-4o', label: 'GPT-4o' },
   { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
   { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+]
+
+export const CLAUDE_MODELS = [
+  { value: 'claude-sonnet-4-5-20250514', label: 'Claude Sonnet 4.5' },
+  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
 ]
 
 // ─── Evaluation report prompt builder ────────────────────────────

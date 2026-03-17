@@ -7,6 +7,8 @@ export type EmployeeRole =
   | 'ceo'
   | 'admin'
 
+export type EmploymentType = 'full_time' | 'contract' | 'intern' | 'part_time'
+
 export interface Employee {
   id: string
   name: string
@@ -18,6 +20,11 @@ export interface Employee {
   address: string | null
   birth_date: string | null
   avatar_url: string | null
+  employee_number: string | null
+  hire_date: string | null
+  position: string | null
+  employment_type: EmploymentType | null
+  emergency_contact: string | null
   created_at: string
   updated_at: string
 }
