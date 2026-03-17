@@ -32,7 +32,6 @@ import {
   RefreshCw,
   FileBarChart,
   ShieldCheck,
-  UserX,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
@@ -68,13 +67,6 @@ interface NavGroup {
 
 // 기존 평가 시스템 메뉴 (그룹 없는 개별 항목)
 const standaloneItems: NavItem[] = [
-  {
-    to: '/',
-    label: '대시보드',
-    icon: <BarChart3 className="h-5 w-5" />,
-    minRole: 'director',
-    end: true,
-  },
   {
     to: '/self-evaluation',
     label: '자기평가',
@@ -149,14 +141,15 @@ const navGroups: NavGroup[] = [
   },
   {
     id: 'hr-eval',
-    label: '인사평가 연동',
+    label: '인사평가',
     icon: <LineChart className="h-5 w-5" />,
     minRole: 'director',
     items: [
-      { to: '/admin/hr/sync', label: '데이터 동기화', icon: <RefreshCw className="h-4 w-4" /> },
+      { to: '/', label: '평가 대시보드', icon: <BarChart3 className="h-4 w-4" />, end: true },
+      { to: '/settings/evaluation', label: '평가 설정', icon: <Settings className="h-4 w-4" /> },
       { to: '/admin/hr/ai-report', label: 'AI 평가 리포트', icon: <FileBarChart className="h-4 w-4" /> },
       { to: '/admin/hr/verification', label: 'AI 검증', icon: <ShieldCheck className="h-4 w-4" /> },
-      { to: '/admin/hr/exit', label: '퇴사 관리', icon: <UserX className="h-4 w-4" /> },
+      { to: '/admin/hr/sync', label: '데이터 동기화', icon: <RefreshCw className="h-4 w-4" /> },
     ],
   },
 ]
@@ -212,25 +205,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         )
       })}
 
-      {/* 설정 (기존 위치 유지) */}
-      {hasRole('director') && (
-        <NavLink
-          to="/settings"
-          onClick={onClose}
-          className={({ isActive }) =>
-            cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-              isActive
-                ? 'bg-brand-50 text-brand-700'
-                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-            )
-          }
-        >
-          <Settings className="h-5 w-5" />
-          설정
-        </NavLink>
-      )}
-
       {/* 구분선 */}
       {visibleGroups.length > 0 && (
         <div className="my-2 border-t border-gray-200" />
@@ -283,6 +257,28 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
         )
       })}
+
+      {/* 구분선 + 일반 설정 */}
+      {hasRole('director') && (
+        <>
+          <div className="my-2 border-t border-gray-200" />
+          <NavLink
+            to="/settings/general"
+            onClick={onClose}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-brand-50 text-brand-700'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              )
+            }
+          >
+            <Settings className="h-5 w-5" />
+            일반 설정
+          </NavLink>
+        </>
+      )}
     </nav>
   )
 

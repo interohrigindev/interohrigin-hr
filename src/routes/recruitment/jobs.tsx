@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, Link2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Link2, Copy } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -78,6 +78,9 @@ export default function RecruitmentJobs() {
                   <div className="flex items-center gap-2 shrink-0">
                     <Button variant="ghost" size="sm" onClick={() => copyApplyLink(p.id)} title="지원 링크 복사">
                       <Link2 className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/recruitment/jobs/new?clone=${p.id}`)} title="공고 복제">
+                      <Copy className="h-4 w-4 text-brand-600" />
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/recruitment/jobs/${p.id}`)} title="수정">
                       <Pencil className="h-4 w-4" />

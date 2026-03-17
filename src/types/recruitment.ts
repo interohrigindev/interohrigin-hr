@@ -21,6 +21,16 @@ export interface JobPosting {
   ai_questions: string[]
   status: PostingStatus
   deadline: string | null
+  location: string | null
+  work_hours: string | null
+  headcount: number | null
+  benefits: string | null
+  hiring_process: string | null
+  contact_name: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  company_intro: string | null
+  team_intro: string | null
   created_by: string | null
   created_at: string
   updated_at: string

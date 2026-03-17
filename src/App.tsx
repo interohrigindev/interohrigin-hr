@@ -11,6 +11,8 @@ import EvaluateList from '@/routes/evaluate-list'
 import EvaluateDetail from '@/routes/evaluate-detail'
 import Report from '@/routes/report'
 import Settings from '@/routes/settings'
+import EvaluationSettings from '@/routes/settings/evaluation'
+import GeneralSettings from '@/routes/settings/general'
 
 // 채용관리
 import RecruitmentDashboard from '@/routes/recruitment/dashboard'
@@ -91,6 +93,22 @@ function App() {
                 element={
                   <AdminRoute>
                     <Settings />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="settings/evaluation"
+                element={
+                  <AdminRoute>
+                    <EvaluationSettings />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="settings/general"
+                element={
+                  <AdminRoute>
+                    <GeneralSettings />
                   </AdminRoute>
                 }
               />
