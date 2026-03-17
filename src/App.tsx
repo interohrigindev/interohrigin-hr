@@ -36,6 +36,19 @@ import PersonalityAnalysis from '@/routes/employees/analysis'
 import SpecialNotes from '@/routes/employees/notes'
 import ExitManage from '@/routes/employees/exit'
 
+// 업무관리 (Phase 2)
+import WorkDashboard from '@/routes/work/dashboard'
+import ProjectManage from '@/routes/work/projects'
+import TaskManage from '@/routes/work/tasks'
+import DailyReportPage from '@/routes/work/daily-report'
+import WorkChatbot from '@/routes/work/chat'
+
+// 인사평가 연동 (Phase 2)
+import DataSync from '@/routes/work/data-sync'
+import AIEvalReport from '@/routes/work/ai-eval-report'
+import AIVerification from '@/routes/work/ai-verification'
+import ExitManagement from '@/routes/work/exit-manage'
+
 // 외부 페이지 (로그인 불필요)
 import PublicApply from '@/routes/public/apply'
 import PublicSurvey from '@/routes/public/survey'
@@ -105,6 +118,19 @@ function App() {
               <Route path="admin/employees/analysis" element={<AdminRoute><PersonalityAnalysis /></AdminRoute>} />
               <Route path="admin/employees/notes" element={<AdminRoute><SpecialNotes /></AdminRoute>} />
               <Route path="admin/employees/exit" element={<AdminRoute><ExitManage /></AdminRoute>} />
+
+              {/* 업무관리 (Phase 2) */}
+              <Route path="admin/work" element={<AdminRoute><WorkDashboard /></AdminRoute>} />
+              <Route path="admin/work/projects" element={<AdminRoute><ProjectManage /></AdminRoute>} />
+              <Route path="admin/work/tasks" element={<TaskManage />} />
+              <Route path="work/daily-report" element={<DailyReportPage />} />
+              <Route path="work/chat" element={<WorkChatbot />} />
+
+              {/* 인사평가 연동 (Phase 2) */}
+              <Route path="admin/hr/sync" element={<AdminRoute><DataSync /></AdminRoute>} />
+              <Route path="admin/hr/ai-report" element={<AdminRoute><AIEvalReport /></AdminRoute>} />
+              <Route path="admin/hr/verification" element={<AdminRoute><AIVerification /></AdminRoute>} />
+              <Route path="admin/hr/exit" element={<AdminRoute><ExitManagement /></AdminRoute>} />
             </Route>
           </Routes>
         </BrowserRouter>

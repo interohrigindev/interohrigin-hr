@@ -23,6 +23,16 @@ import {
   ChevronDown,
   ChevronRight,
   Calendar,
+  Clipboard,
+  FolderKanban,
+  ListChecks,
+  CalendarDays,
+  Bot,
+  LineChart,
+  RefreshCw,
+  FileBarChart,
+  ShieldCheck,
+  UserX,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
@@ -125,6 +135,30 @@ const navGroups: NavGroup[] = [
       { to: '/admin/probation', label: '수습 평가', icon: <ClipboardCheck className="h-4 w-4" /> },
     ],
   },
+  {
+    id: 'work',
+    label: '업무관리',
+    icon: <Clipboard className="h-5 w-5" />,
+    items: [
+      { to: '/admin/work', label: '업무 대시보드', icon: <FolderKanban className="h-4 w-4" />, end: true, minRole: 'director' as EmployeeRole },
+      { to: '/admin/work/projects', label: '프로젝트', icon: <ListChecks className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+      { to: '/admin/work/tasks', label: '작업 관리', icon: <ClipboardCheck className="h-4 w-4" /> },
+      { to: '/work/daily-report', label: '일일 보고서', icon: <CalendarDays className="h-4 w-4" /> },
+      { to: '/work/chat', label: 'AI 챗봇', icon: <Bot className="h-4 w-4" /> },
+    ],
+  },
+  {
+    id: 'hr-eval',
+    label: '인사평가 연동',
+    icon: <LineChart className="h-5 w-5" />,
+    minRole: 'director',
+    items: [
+      { to: '/admin/hr/sync', label: '데이터 동기화', icon: <RefreshCw className="h-4 w-4" /> },
+      { to: '/admin/hr/ai-report', label: 'AI 평가 리포트', icon: <FileBarChart className="h-4 w-4" /> },
+      { to: '/admin/hr/verification', label: 'AI 검증', icon: <ShieldCheck className="h-4 w-4" /> },
+      { to: '/admin/hr/exit', label: '퇴사 관리', icon: <UserX className="h-4 w-4" /> },
+    ],
+  },
 ]
 
 // ─── Component ──────────────────────────────────────────────────
@@ -222,7 +256,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
             {isExpanded && (
               <div className="ml-4 flex flex-col gap-0.5">
-                {group.items.map((item) => {
+                {group.items.filter(isItemVisible).map((item) => {
                   const path = resolvePath(item)
                   return (
                     <NavLink
