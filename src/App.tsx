@@ -4,6 +4,8 @@ import { ToastProvider } from '@/components/ui/Toast'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AdminRoute } from '@/components/layout/AdminRoute'
 import Login from '@/routes/login'
+import ResetPassword from '@/routes/reset-password'
+import MyProfile from '@/routes/my-profile'
 import DashboardLayout from '@/routes/dashboard'
 import DashboardHome from '@/routes/dashboard-home'
 import SelfEvaluation from '@/routes/self-evaluation'
@@ -63,8 +65,9 @@ function App() {
       <ToastProvider>
         <BrowserRouter>
           <Routes>
-            {/* 로그인 */}
+            {/* 로그인 / 비밀번호 설정 */}
             <Route path="/login" element={<Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* 외부 페이지 (로그인 불필요) */}
             <Route path="/apply/:postingId" element={<PublicApply />} />
@@ -83,6 +86,7 @@ function App() {
             >
               {/* 기존 라우트 */}
               <Route index element={<DashboardHome />} />
+              <Route path="my-profile" element={<MyProfile />} />
               <Route path="self-evaluation" element={<SelfEvaluation />} />
               <Route path="evaluate" element={<EvaluateList />} />
               <Route path="evaluate/:employeeId" element={<EvaluateDetail />} />

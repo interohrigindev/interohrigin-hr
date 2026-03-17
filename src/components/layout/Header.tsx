@@ -1,8 +1,10 @@
-import { LogOut, Menu } from 'lucide-react'
+import { LogOut, Menu, User } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import logoSvg from '@/assets/logo.svg'
 import { ROLE_LABELS } from '@/lib/constants'
 import { Badge } from '@/components/ui/Badge'
+import type { EmployeeRole } from '@/types/database'
 
 interface HeaderProps {
   onMenuToggle: () => void
@@ -10,6 +12,7 @@ interface HeaderProps {
 
 export function Header({ onMenuToggle }: HeaderProps) {
   const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
@@ -34,11 +37,16 @@ export function Header({ onMenuToggle }: HeaderProps) {
         {/* Right: user info + logout */}
         {profile && (
           <div className="flex items-center gap-3">
-            {/* name + badge (hide name on very small screens) */}
-            <span className="hidden text-sm font-medium text-gray-700 sm:inline">
+            {/* 내 정보 링크 */}
+            <button
+              onClick={() => navigate('/my-profile')}
+              className="hidden sm:flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              title="내 정보"
+            >
+              <User className="h-4 w-4 text-gray-400" />
               {profile.name}
-            </span>
-            <Badge variant="primary">{ROLE_LABELS[profile.role] ?? profile.role}</Badge>
+            </button>
+            <Badge variant="primary">{ROLE_LABELS[profile.role as EmployeeRole] ?? profile.role}</Badge>
 
             <div className="h-5 w-px bg-gray-200" />
 
