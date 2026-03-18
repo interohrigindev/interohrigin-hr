@@ -54,6 +54,12 @@ import AIEvalReport from '@/routes/work/ai-eval-report'
 import AIVerification from '@/routes/work/ai-verification'
 import ExitManagement from '@/routes/work/exit-manage'
 
+// Phase 1.5: 긴급 업무 + 평가 간소화
+import UrgentDashboard from '@/routes/urgent/dashboard'
+import SimpleEvaluation from '@/routes/urgent/simple-evaluation'
+import PenaltiesDashboard from '@/routes/urgent/penalties'
+import DataMigration from '@/routes/urgent/migration'
+
 // 외부 페이지 (로그인 불필요)
 import PublicApply from '@/routes/public/apply'
 import PublicSurvey from '@/routes/public/survey'
@@ -142,6 +148,13 @@ function App() {
               <Route path="admin/employees/analysis" element={<AdminRoute><PersonalityAnalysis /></AdminRoute>} />
               <Route path="admin/employees/notes" element={<AdminRoute><SpecialNotes /></AdminRoute>} />
               <Route path="admin/employees/exit" element={<AdminRoute><ExitManage /></AdminRoute>} />
+
+              {/* Phase 1.5: 긴급 업무 + 평가 간소화 */}
+              <Route path="admin/urgent" element={<AdminRoute><UrgentDashboard /></AdminRoute>} />
+              <Route path="urgent" element={<UrgentDashboard />} />
+              <Route path="admin/urgent/simple-eval" element={<AdminRoute><SimpleEvaluation /></AdminRoute>} />
+              <Route path="admin/urgent/penalties" element={<AdminRoute><PenaltiesDashboard /></AdminRoute>} />
+              <Route path="admin/urgent/migration" element={<AdminRoute><DataMigration /></AdminRoute>} />
 
               {/* 업무관리 (Phase 2) */}
               <Route path="admin/work" element={<AdminRoute><WorkDashboard /></AdminRoute>} />

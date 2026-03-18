@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import {
   Briefcase,
   Users,
@@ -13,7 +15,10 @@ import {
   PenSquare,
   FileText,
   ClipboardList,
+  AlertTriangle,
+  ChevronRight,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface BlockItem {
   title: string
@@ -101,6 +106,9 @@ export default function Home() {
         </h1>
         <p className="text-sm text-gray-500 mt-1">인터오리진 HR Platform에 오신 것을 환영합니다.</p>
       </div>
+
+      {/* CEO 긴급 업무 배너 */}
+      <UrgentTasksBanner navigate={navigate} />
 
       {/* 메인 블록 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -205,6 +213,9 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
         <p className="text-sm text-gray-500 mt-1">오늘도 좋은 하루 되세요.</p>
       </div>
 
+      {/* CEO 긴급 업무 배너 */}
+      <UrgentTasksBanner navigate={navigate} />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {blocks.map((block) => (
           <button
@@ -221,6 +232,93 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
             </div>
           </button>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── CEO 긴급 업무 배너 (전 직원 표시) ───────────────────────────
+function UrgentTasksBanner({ navigate }: { navigate: ReturnType<typeof useNavigate> }) {
+  const [urgentTasks, setUrgentTasks] = useState<{
+    id: string
+    title: string
+    priority: number
+    deadline: string
+    status: string
+    reminder_count: number
+  }[]>([])
+
+  useEffect(() => {
+    async function fetch() {
+      const { data } = await supabase
+        .from('urgent_tasks')
+        .select('id, title, priority, deadline, status, reminder_count')
+        .in('status', ['pending', 'in_progress', 'overdue'])
+        .order('priority', { ascending: true })
+        .limit(5)
+
+      if (data) setUrgentTasks(data)
+    }
+    fetch()
+  }, [])
+
+  if (urgentTasks.length === 0) return null
+
+  return (
+    <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-red-500" />
+          <h2 className="font-semibold text-gray-900">CEO 긴급 업무</h2>
+          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+            {urgentTasks.length}건
+          </span>
+        </div>
+        <button
+          onClick={() => navigate('/admin/urgent')}
+          className="flex items-center gap-1 text-sm font-medium text-red-600 hover:text-red-700"
+        >
+          전체 보기
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {urgentTasks.map((task, i) => {
+          const dl = new Date(task.deadline)
+          const now = new Date()
+          const diffDays = Math.ceil((dl.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+          const ddayLabel = diffDays > 0 ? `D-${diffDays}` : diffDays === 0 ? 'D-Day' : `D+${Math.abs(diffDays)}`
+
+          return (
+            <button
+              key={task.id}
+              onClick={() => navigate('/admin/urgent')}
+              className="flex w-full items-center gap-3 rounded-lg bg-white p-3 text-left hover:bg-gray-50 transition-colors border border-red-100"
+            >
+              <span className={cn(
+                'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+                task.priority <= 3 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+              )}>
+                {i + 1}
+              </span>
+              <span className="flex-1 text-sm font-medium text-gray-900 truncate">
+                {task.title}
+              </span>
+              <span className={cn(
+                'text-xs font-medium',
+                diffDays <= 1 ? 'text-red-600' : 'text-gray-500'
+              )}>
+                {ddayLabel}
+              </span>
+              {task.reminder_count > 0 && (
+                <span className="text-xs text-gray-400">
+                  {task.reminder_count}회
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

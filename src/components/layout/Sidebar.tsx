@@ -32,6 +32,9 @@ import {
   RefreshCw,
   FileBarChart,
   ShieldCheck,
+  AlertTriangle,
+  Zap,
+  Database,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
@@ -89,6 +92,17 @@ const standaloneItems: NavItem[] = [
 
 // 그룹 메뉴
 const navGroups: NavGroup[] = [
+  {
+    id: 'urgent',
+    label: '긴급 업무',
+    icon: <AlertTriangle className="h-5 w-5 text-red-500" />,
+    items: [
+      { to: '/admin/urgent', label: 'CEO 긴급 대시보드', icon: <Zap className="h-4 w-4" />, end: true },
+      { to: '/admin/urgent/simple-eval', label: '간편 인사평가', icon: <ClipboardCheck className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+      { to: '/admin/urgent/penalties', label: '감점 현황', icon: <AlertTriangle className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+      { to: '/admin/urgent/migration', label: '데이터 마이그레이션', icon: <Database className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+    ],
+  },
   {
     id: 'recruitment',
     label: '채용관리',
