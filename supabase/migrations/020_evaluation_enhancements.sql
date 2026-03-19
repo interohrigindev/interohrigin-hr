@@ -65,7 +65,7 @@ CREATE INDEX IF NOT EXISTS idx_monthly_checkins_status ON public.monthly_checkin
 
 CREATE TABLE IF NOT EXISTS public.peer_reviews (
   id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  period_id       uuid        REFERENCES public.evaluations(id) ON DELETE CASCADE,
+  period_id       uuid        REFERENCES public.evaluation_periods(id) ON DELETE CASCADE,
   reviewer_id     uuid        NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
   reviewee_id     uuid        NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
   overall_score   integer     CHECK (overall_score BETWEEN 0 AND 100),
@@ -92,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_peer_reviews_reviewee ON public.peer_reviews(revi
 
 CREATE TABLE IF NOT EXISTS public.peer_review_assignments (
   id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  period_id       uuid        NOT NULL REFERENCES public.evaluations(id) ON DELETE CASCADE,
+  period_id       uuid        NOT NULL REFERENCES public.evaluation_periods(id) ON DELETE CASCADE,
   reviewer_id     uuid        NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
   reviewee_id     uuid        NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
   created_at      timestamptz DEFAULT now(),

@@ -51,7 +51,7 @@ export default function PeerReviewPage() {
 
   // Load periods
   useEffect(() => {
-    supabase.from('evaluations').select('id, title, status').order('created_at', { ascending: false })
+    supabase.from('evaluation_periods').select('id, title, status').order('created_at', { ascending: false })
       .then(({ data }) => {
         if (data) {
           setPeriods(data as EvaluationPeriod[])
