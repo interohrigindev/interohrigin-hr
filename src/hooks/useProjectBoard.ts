@@ -95,10 +95,17 @@ export function useProjectBoard() {
       let cursor = new Date()
 
       const stages = stageSource.map((s) => {
-        const deadline = new Date(cursor)
-        deadline.setDate(deadline.getDate() + s.default_duration_days)
-        const stageDeadline = deadline.toISOString().split('T')[0]
-        cursor = deadline
+        // deadline이 직접 지정되었으면 사용, 아니면 기간으로 계산
+        let stageDeadline: string
+        if (s.deadline) {
+          stageDeadline = s.deadline
+          cursor = new Date(s.deadline)
+        } else {
+          const dl = new Date(cursor)
+          dl.setDate(dl.getDate() + s.default_duration_days)
+          stageDeadline = dl.toISOString().split('T')[0]
+          cursor = dl
+        }
         return {
           project_id: project.id,
           stage_name: s.name,
@@ -119,6 +126,26 @@ export function useProjectBoard() {
   // ─── 부서별 템플릿 필터 ──────────────────────────────────
   function getTemplatesForDepartment(department: string): ProjectTemplate[] {
     return templates.filter((t) => t.department === department)
+  }
+
+  // ─── 커스텀 템플릿 저장 ──────────────────────────────────
+  async function saveTemplate(data: {
+    name: string
+    department: string
+    stages: TemplateStage[]
+  }): Promise<{ error: string | null }> {
+    const templateType = 'custom_' + Date.now()
+    const totalDays = data.stages.reduce((sum, s) => sum + s.default_duration_days, 0)
+    const { error } = await supabase.from('project_templates').insert({
+      name: data.name,
+      template_type: templateType,
+      department: data.department,
+      stages: data.stages.map((s) => ({ name: s.name, order: s.order, default_duration_days: s.default_duration_days })),
+      avg_total_days: totalDays,
+    })
+    if (error) return { error: error.message }
+    await fetchData()
+    return { error: null }
   }
 
   // ─── Update stage status ───────────────────────────────────
@@ -306,7 +333,7 @@ export function useProjectBoard() {
     updateStageStatus, updateStageDeadline,
     addStage, removeStage, updateStageName, reorderStages,
     addUpdate, fetchUpdates, updateRequestStatus,
-    getMyPermission, getTemplatesForDepartment,
+    getMyPermission, getTemplatesForDepartment, saveTemplate,
     refresh: fetchData,
   }
 }

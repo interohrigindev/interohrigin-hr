@@ -81,6 +81,7 @@ export interface TemplateStage {
   name: string
   order: number
   default_duration_days: number
+  deadline?: string
   editable_departments?: string[]
 }
 
