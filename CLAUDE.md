@@ -94,10 +94,21 @@ interohrigin-hr/
 - `profile_visibility_settings` — 열람 토글 (기본 OFF)
 
 **수습/OJT (4개)**
-- `probation_evaluations` — 단계별 수습 평가 (1주/2주/3주/1개월/2개월/3개월)
+- `probation_evaluations` — 단계별 수습 평가 (3회차: 2주/6주/10주, 4인 평가: 멘토/리더/임원/대표, 5항목 × 20점)
 - `mentor_assignments` — 멘토-멘티 배정
 - `mentor_daily_reports` — 멘토 일일 평가 (객관식+코멘트)
 - `special_notes` — 특이사항 기록 (긍정/부정 이벤트)
+
+**평가 확장 (3개)**
+- `monthly_checkins` — 월간 업무 점검 (태그: 이슈/칭찬/제안/기타, 리더→임원→대표 피드백)
+- `peer_reviews` — 동료 다면 평가 (익명 100점, 최종 점수의 20% 반영)
+- `peer_review_assignments` — 동료 평가 배정
+
+**사내 메신저 (4개)**
+- `chat_rooms` — 채팅방 (dm/group/project/department/mentor/recruitment)
+- `chat_room_members` — 채팅방 멤버 + 읽음 추적 + 알림 설정
+- `messages` — 메시지 (text/image/file/ai_bot/system/urgent_alert/task_update)
+- `message_reactions` — 이모지 반응
 
 **업무 연동 (1개)**
 - `work_metrics` — work-milestone에서 동기화된 분기 데이터

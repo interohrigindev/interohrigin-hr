@@ -141,19 +141,80 @@ export interface MentorDailyReport {
 }
 
 // ─── 수습 평가 ──────────────────────────────────────────────────
-export type ProbationStage = 'week1' | 'week2' | 'week3' | 'month1' | 'month2' | 'month3'
+export type ProbationStage = 'round1' | 'round2' | 'round3'
+export type ProbationEvaluatorRole = 'mentor' | 'leader' | 'executive' | 'ceo'
 export type ContinuationRecommendation = 'continue' | 'warning' | 'terminate'
+
+export const PROBATION_CRITERIA = [
+  { key: 'understanding', label: '업무 이해도 & 숙련도', desc: '업무 프로세스 이해, 오류율, 처리 속도' },
+  { key: 'attitude', label: '업무 태도 & 협업', desc: '소통 능력, 피드백 수용, 협업 자세' },
+  { key: 'responsibility', label: '근태 & 책임감', desc: '규정 준수, 보고 체계, 책임감' },
+  { key: 'growth', label: '열정 & 성장 의지', desc: '자기주도성, 학습 태도, 적극성' },
+  { key: 'culture', label: '조직 문화 적응도', desc: '규칙 준수, 문화 적응, 예절, 기본자세' },
+] as const
+
+export type ProbationCriteriaKey = typeof PROBATION_CRITERIA[number]['key']
 
 export interface ProbationEvaluation {
   id: string
   employee_id: string
   stage: ProbationStage
   evaluator_id: string | null
-  evaluator_role: string | null
-  scores: Record<string, unknown>
+  evaluator_role: ProbationEvaluatorRole | string | null
+  scores: Record<string, number>
   ai_assessment: string | null
   continuation_recommendation: ContinuationRecommendation | null
   comments: string | null
+  praise: string | null
+  improvement: string | null
+  mentor_summary: string | null
+  leader_summary: string | null
+  exec_one_liner: string | null
+  strengths: string | null
+  created_at: string
+  updated_at?: string
+}
+
+// ─── 월간 업무 점검 ────────────────────────────────────────────
+export type CheckinTag = '이슈' | '칭찬' | '제안' | '기타'
+export type CheckinStatus = 'draft' | 'submitted' | 'leader_reviewed' | 'exec_reviewed' | 'ceo_reviewed'
+
+export interface MonthlyCheckin {
+  id: string
+  employee_id: string
+  year: number
+  month: number
+  tag: CheckinTag
+  content: string | null
+  leader_feedback: string | null
+  exec_feedback: string | null
+  ceo_feedback: string | null
+  status: CheckinStatus
+  is_locked: boolean
+  created_at: string
+  updated_at: string
+}
+
+// ─── 동료 다면 평가 ────────────────────────────────────────────
+export interface PeerReview {
+  id: string
+  period_id: string | null
+  reviewer_id: string
+  reviewee_id: string
+  overall_score: number | null
+  strengths: string | null
+  improvements: string | null
+  is_anonymous: boolean
+  is_submitted: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface PeerReviewAssignment {
+  id: string
+  period_id: string
+  reviewer_id: string
+  reviewee_id: string
   created_at: string
 }
 

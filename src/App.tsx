@@ -34,6 +34,13 @@ import OJTPrograms from '@/routes/ojt/programs'
 import MentorManage from '@/routes/ojt/mentor'
 import ProbationManage from '@/routes/ojt/probation'
 
+// 월간 점검 / 동료 평가
+import MonthlyCheckin from '@/routes/monthly-checkin'
+import PeerReview from '@/routes/peer-review'
+
+// 사내 메신저
+import MessengerPage from '@/routes/messenger/index'
+
 // 직원 확장
 import EmployeeProfile from '@/routes/employees/profile'
 import EmployeeSearch from '@/routes/employees/search'
@@ -141,6 +148,14 @@ function App() {
               <Route path="admin/ojt" element={<AdminRoute><OJTPrograms /></AdminRoute>} />
               <Route path="admin/ojt/mentor" element={<AdminRoute><MentorManage /></AdminRoute>} />
               <Route path="admin/probation" element={<AdminRoute><ProbationManage /></AdminRoute>} />
+
+              {/* 월간 점검 / 동료 평가 */}
+              <Route path="monthly-checkin" element={<MonthlyCheckin />} />
+              <Route path="peer-review" element={<PeerReview />} />
+
+              {/* 사내 메신저 */}
+              <Route path="messenger" element={<MessengerPage />} />
+              <Route path="messenger/:roomId" element={<MessengerPage />} />
 
               {/* 직원관리 확장 (관리자/임원) */}
               <Route path="admin/employees/:id/profile" element={<AdminRoute><EmployeeProfile /></AdminRoute>} />

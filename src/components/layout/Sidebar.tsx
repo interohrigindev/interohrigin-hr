@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   BarChart3,
@@ -29,6 +29,8 @@ import {
   CalendarDays,
   Bot,
   LineChart,
+  CalendarCheck,
+  UsersRound,
   RefreshCw,
   FileBarChart,
   ShieldCheck,
@@ -37,6 +39,7 @@ import {
   Database,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import type { EmployeeRole } from '@/types/database'
 import logoSvg from '@/assets/logo.svg'
@@ -87,6 +90,11 @@ const standaloneItems: NavItem[] = [
     label: '내 결과',
     icon: <FileText className="h-5 w-5" />,
     hideForRoles: ['director', 'division_head', 'ceo', 'admin'],
+  },
+  {
+    to: '/messenger',
+    label: '메신저',
+    icon: <MessageSquare className="h-5 w-5" />,
   },
 ]
 
@@ -156,13 +164,14 @@ const navGroups: NavGroup[] = [
     id: 'hr-eval',
     label: '인사평가',
     icon: <LineChart className="h-5 w-5" />,
-    minRole: 'director',
     items: [
-      { to: '/eval-dashboard', label: '평가 대시보드', icon: <BarChart3 className="h-4 w-4" /> },
-      { to: '/settings/evaluation', label: '평가 설정', icon: <Settings className="h-4 w-4" /> },
-      { to: '/admin/hr/ai-report', label: 'AI 평가 리포트', icon: <FileBarChart className="h-4 w-4" /> },
-      { to: '/admin/hr/verification', label: 'AI 검증', icon: <ShieldCheck className="h-4 w-4" /> },
-      { to: '/admin/hr/sync', label: '데이터 동기화', icon: <RefreshCw className="h-4 w-4" /> },
+      { to: '/monthly-checkin', label: '월간 업무 점검', icon: <CalendarCheck className="h-4 w-4" /> },
+      { to: '/peer-review', label: '동료 평가', icon: <UsersRound className="h-4 w-4" /> },
+      { to: '/eval-dashboard', label: '평가 대시보드', icon: <BarChart3 className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+      { to: '/settings/evaluation', label: '평가 설정', icon: <Settings className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+      { to: '/admin/hr/ai-report', label: 'AI 평가 리포트', icon: <FileBarChart className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+      { to: '/admin/hr/verification', label: 'AI 검증', icon: <ShieldCheck className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+      { to: '/admin/hr/sync', label: '데이터 동기화', icon: <RefreshCw className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
     ],
   },
 ]
@@ -172,6 +181,38 @@ const navGroups: NavGroup[] = [
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { profile, hasRole } = useAuth()
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const [messengerUnread, setMessengerUnread] = useState(0)
+
+  // Fetch unread count for messenger badge
+  useEffect(() => {
+    if (!profile?.id) return
+
+    async function fetchUnread() {
+      const { data } = await supabase
+        .from('chat_room_members')
+        .select('unread_count')
+        .eq('user_id', profile!.id)
+
+      if (data) {
+        const total = data.reduce((sum: number, m: { unread_count: number }) => sum + (m.unread_count || 0), 0)
+        setMessengerUnread(total)
+      }
+    }
+
+    fetchUnread()
+
+    const channel = supabase
+      .channel('sidebar-unread')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'chat_room_members',
+        filter: `user_id=eq.${profile.id}`,
+      }, () => { fetchUnread() })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [profile?.id])
 
   function resolvePath(item: NavItem): string {
     if (item.to === 'REPORT_SELF') return `/report/${profile?.id ?? ''}`
@@ -213,7 +254,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             }
           >
             {item.icon}
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {item.to === '/messenger' && messengerUnread > 0 && (
+              <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+                {messengerUnread > 99 ? '99+' : messengerUnread}
+              </span>
+            )}
           </NavLink>
         )
       })}

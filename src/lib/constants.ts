@@ -50,12 +50,29 @@ export const EVALUATION_STATUS_COLORS: Record<string, string> = {
 
 // ─── 등급 설정 ─────────────────────────────────────────────────
 export const GRADE_CONFIG = {
-  S: { min: 90, color: 'amber', label: 'S (탁월)', bg: 'bg-amber-100 text-amber-800' },
-  A: { min: 80, color: 'blue', label: 'A (우수)', bg: 'bg-blue-100 text-blue-800' },
+  S: { min: 95, color: 'amber', label: 'S (탁월)', bg: 'bg-amber-100 text-amber-800' },
+  A: { min: 85, color: 'blue', label: 'A (우수)', bg: 'bg-blue-100 text-blue-800' },
   B: { min: 70, color: 'green', label: 'B (보통)', bg: 'bg-green-100 text-green-800' },
-  C: { min: 60, color: 'yellow', label: 'C (미흡)', bg: 'bg-yellow-100 text-yellow-800' },
+  C: { min: 50, color: 'yellow', label: 'C (미흡)', bg: 'bg-yellow-100 text-yellow-800' },
   D: { min: 0, color: 'red', label: 'D (부진)', bg: 'bg-red-100 text-red-800' },
 } as const
+
+// ─── 수습 평가 등급 (항목별 20점 만점) ──────────────────────────
+export const PROBATION_GRADE_CONFIG = {
+  S: { min: 19, label: 'S (탁월)', bg: 'bg-amber-100 text-amber-800' },
+  A: { min: 16, label: 'A (우수)', bg: 'bg-blue-100 text-blue-800' },
+  B: { min: 13, label: 'B (보통)', bg: 'bg-green-100 text-green-800' },
+  C: { min: 10, label: 'C (미흡)', bg: 'bg-yellow-100 text-yellow-800' },
+  D: { min: 0, label: 'D (부진)', bg: 'bg-red-100 text-red-800' },
+} as const
+
+export function getProbationGrade(score: number): keyof typeof PROBATION_GRADE_CONFIG {
+  if (score >= 19) return 'S'
+  if (score >= 16) return 'A'
+  if (score >= 13) return 'B'
+  if (score >= 10) return 'C'
+  return 'D'
+}
 
 export const GRADES = ['S', 'A', 'B', 'C', 'D'] as const
 
