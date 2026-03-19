@@ -41,13 +41,20 @@ export async function getOrCreateDM(userId1: string, userId2: string): Promise<C
     .select()
     .single()
 
-  if (error || !room) return null
+  if (error || !room) {
+    console.error('Failed to create DM room:', error)
+    return null
+  }
 
   // Add both members
-  await supabase.from('chat_room_members').insert([
+  const { error: memberErr } = await supabase.from('chat_room_members').insert([
     { room_id: room.id, user_id: userId1, role: 'admin' },
     { room_id: room.id, user_id: userId2, role: 'member' },
   ])
+
+  if (memberErr) {
+    console.error('Failed to add DM members:', memberErr)
+  }
 
   return room as ChatRoom
 }

@@ -244,22 +244,34 @@ ${recentMsgs}
   async function handleCreateChat() {
     if (!profile?.id) return
 
-    if (newChatType === 'dm') {
-      if (!newChatTarget) { toast('대상을 선택하세요', 'error'); return }
-      const room = await getOrCreateDM(profile.id, newChatTarget)
-      if (room) {
-        await refreshRooms()
-        selectRoom(room.id)
+    try {
+      if (newChatType === 'dm') {
+        if (!newChatTarget) { toast('대상을 선택하세요', 'error'); return }
+        const room = await getOrCreateDM(profile.id, newChatTarget)
+        if (room) {
+          await refreshRooms()
+          selectRoom(room.id)
+        } else {
+          toast('채팅방 생성 실패. 콘솔을 확인하세요.', 'error')
+          return
+        }
+      } else {
+        if (!newChatGroupName.trim()) { toast('그룹 이름을 입력하세요', 'error'); return }
+        if (newChatMembers.length === 0) { toast('멤버를 선택하세요', 'error'); return }
+        const allMembers = [...new Set([profile.id, ...newChatMembers])]
+        const room = await createGroupRoom(newChatGroupName, allMembers, profile.id)
+        if (room) {
+          await refreshRooms()
+          selectRoom(room.id)
+        } else {
+          toast('채팅방 생성 실패. 콘솔을 확인하세요.', 'error')
+          return
+        }
       }
-    } else {
-      if (!newChatGroupName.trim()) { toast('그룹 이름을 입력하세요', 'error'); return }
-      if (newChatMembers.length === 0) { toast('멤버를 선택하세요', 'error'); return }
-      const allMembers = [...new Set([profile.id, ...newChatMembers])]
-      const room = await createGroupRoom(newChatGroupName, allMembers, profile.id)
-      if (room) {
-        await refreshRooms()
-        selectRoom(room.id)
-      }
+    } catch (err) {
+      console.error('Chat creation error:', err)
+      toast('채팅방 생성 중 오류가 발생했습니다.', 'error')
+      return
     }
     setShowNewChat(false)
     setNewChatTarget('')
