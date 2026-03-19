@@ -28,8 +28,8 @@ export function useAIAgent() {
   const [conversations, setConversations] = useState<AgentConversation[]>([])
   const [activeConvId, setActiveConvId] = useState<string | null>(null)
   const [messages, setMessages] = useState<AgentMessage[]>([])
-  const [loading] = useState(false)
   const [sending, setSending] = useState(false)
+  const [lastError, setLastError] = useState<string | null>(null)
 
   // ─── 대화 목록 로드 ──────────────────────────────────────
   const loadConversations = useCallback(async () => {
@@ -72,7 +72,11 @@ export function useAIAgent() {
         table: 'agent_messages',
         filter: `conversation_id=eq.${activeConvId}`,
       }, (payload) => {
-        setMessages((prev) => [...prev, payload.new as AgentMessage])
+        setMessages((prev) => {
+          // 중복 방지
+          if (prev.some((m) => m.id === (payload.new as AgentMessage).id)) return prev
+          return [...prev, payload.new as AgentMessage]
+        })
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -80,36 +84,34 @@ export function useAIAgent() {
 
   // ─── AI 설정 로드 ────────────────────────────────────────
   async function getAIConfig(): Promise<AIConfig | null> {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('ai_settings')
       .select('*')
       .eq('is_active', true)
       .limit(1)
       .single()
-    if (!data) return null
+    if (error || !data) {
+      console.error('[AIAgent] ai_settings 조회 실패:', error?.message)
+      return null
+    }
     return { provider: data.provider, apiKey: data.api_key, model: data.model }
   }
 
   // ─── 시스템 프롬프트 빌드 ────────────────────────────────
-  function buildSystemPrompt(contextType: AgentContextType, projectName?: string): string {
+  function buildSystemPrompt(contextType: AgentContextType): string {
     let prompt = SYSTEM_PROMPT_BASE
-
     if (profile) {
       prompt += `\n\n현재 사용자: ${profile.name} (${profile.role})`
     }
-
-    if (contextType === 'project' && projectName) {
-      prompt += `\n현재 프로젝트: ${projectName}`
-      prompt += `\n프로젝트 맥락에서 실질적인 업무 지원을 제공하세요. 시장 트렌드, 경쟁사 분석, 실행 전략 등을 포함해주세요.`
+    if (contextType === 'project') {
+      prompt += `\n프로젝트 맥락에서 실질적인 업무 지원을 제공하세요.`
     }
-
     return prompt
   }
 
   // ─── 새 대화 시작 ────────────────────────────────────────
   async function startNewConversation(projectId?: string) {
     if (!profile?.id) return null
-
     const contextType = detectContextType(location.pathname)
     const { data, error } = await supabase
       .from('agent_conversations')
@@ -122,7 +124,10 @@ export function useAIAgent() {
       .select()
       .single()
 
-    if (error || !data) return null
+    if (error || !data) {
+      console.error('[AIAgent] 대화 생성 실패:', error?.message)
+      return null
+    }
 
     const conv = data as AgentConversation
     setActiveConvId(conv.id)
@@ -136,43 +141,77 @@ export function useAIAgent() {
     if (!profile?.id || !content.trim()) return { error: '입력 필요' }
 
     setSending(true)
+    setLastError(null)
 
     // 대화가 없으면 자동 생성
     let convId = activeConvId
     if (!convId) {
       const conv = await startNewConversation()
-      if (!conv) { setSending(false); return { error: '대화 생성 실패' } }
+      if (!conv) {
+        setSending(false)
+        setLastError('대화 생성에 실패했습니다.')
+        return { error: '대화 생성 실패' }
+      }
       convId = conv.id
     }
 
-    // 유저 메시지 저장
-    await supabase.from('agent_messages').insert({
+    // 유저 메시지를 로컬 state에 즉시 추가 (낙관적 업데이트)
+    const optimisticUserMsg: AgentMessage = {
+      id: 'temp-' + Date.now(),
+      conversation_id: convId,
+      role: 'user',
+      content,
+      provider: null,
+      model: null,
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimisticUserMsg])
+
+    // 유저 메시지 DB 저장
+    const { error: insertErr } = await supabase.from('agent_messages').insert({
       conversation_id: convId,
       role: 'user',
       content,
     })
+    if (insertErr) {
+      console.error('[AIAgent] 메시지 저장 실패:', insertErr.message)
+      setSending(false)
+      setLastError('메시지 저장에 실패했습니다: ' + insertErr.message)
+      return { error: insertErr.message }
+    }
 
     // AI 호출
     const aiConfig = await getAIConfig()
     if (!aiConfig) {
+      const errMsg = 'AI 설정이 없습니다. 관리자 설정에서 API 키를 등록하세요.'
+      setLastError(errMsg)
+      // 에러 메시지를 로컬 state에 추가
+      setMessages((prev) => [...prev, {
+        id: 'err-' + Date.now(),
+        conversation_id: convId,
+        role: 'assistant',
+        content: errMsg,
+        provider: null, model: null,
+        created_at: new Date().toISOString(),
+      }])
       setSending(false)
-      return { error: 'AI 설정이 없습니다. 관리자 설정에서 API 키를 등록하세요.' }
+      return { error: errMsg }
     }
 
     try {
-      // 최근 메시지 20개 + 현재 메시지로 컨텍스트 구성
-      const recentMsgs = [...messages.slice(-20), { role: 'user' as const, content }]
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+      // 최근 메시지로 컨텍스트 구성
+      const recentMsgs = [...messages.filter((m) => m.role !== 'system').slice(-20), { role: 'user' as const, content }]
+        .map((m) => ({ role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant', content: m.content }))
 
-      const activeConv = conversations.find((c) => c.id === convId)
-      const contextType = activeConv?.context_type || detectContextType(location.pathname)
+      const contextType = detectContextType(location.pathname)
       const systemPrompt = buildSystemPrompt(contextType)
 
+      console.log('[AIAgent] AI 호출:', aiConfig.provider, aiConfig.model, '메시지 수:', recentMsgs.length)
       const response = await generateAIChat(aiConfig, systemPrompt, recentMsgs)
+      console.log('[AIAgent] AI 응답 수신, 길이:', response.content.length)
 
-      // AI 응답 저장
-      await supabase.from('agent_messages').insert({
+      // AI 응답 DB 저장
+      const { error: aiInsertErr } = await supabase.from('agent_messages').insert({
         conversation_id: convId,
         role: 'assistant',
         content: response.content,
@@ -180,18 +219,50 @@ export function useAIAgent() {
         model: response.model,
       })
 
+      if (aiInsertErr) {
+        console.error('[AIAgent] AI 응답 저장 실패:', aiInsertErr.message)
+        // DB 저장 실패해도 로컬에 표시
+        setMessages((prev) => [...prev, {
+          id: 'local-' + Date.now(),
+          conversation_id: convId,
+          role: 'assistant',
+          content: response.content,
+          provider: response.provider, model: response.model,
+          created_at: new Date().toISOString(),
+        }])
+      }
+
+      // 메시지 다시 로드 (Realtime과 별개로 확실히 동기화)
+      await loadMessages(convId)
+
       // 첫 응답이면 자동 제목 생성
       const conv = conversations.find((c) => c.id === convId)
-      if (conv && !conv.title && messages.length <= 1) {
+      if (conv && !conv.title && messages.length <= 2) {
         generateTitle(convId, content, response.content)
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'AI 응답 실패'
-      await supabase.from('agent_messages').insert({
+      const errMsg = err instanceof Error ? err.message : 'AI 응답 실패'
+      console.error('[AIAgent] AI 호출 실패:', errMsg)
+      setLastError(errMsg)
+
+      // 에러를 로컬 state에 즉시 표시
+      setMessages((prev) => [...prev, {
+        id: 'err-' + Date.now(),
         conversation_id: convId,
         role: 'assistant',
-        content: `오류가 발생했습니다: ${msg}`,
-      })
+        content: `오류가 발생했습니다: ${errMsg}`,
+        provider: null, model: null,
+        created_at: new Date().toISOString(),
+      }])
+
+      // DB에도 저장 시도 (실패해도 무시)
+      try {
+        await supabase.from('agent_messages').insert({
+          conversation_id: convId,
+          role: 'assistant',
+          content: `오류가 발생했습니다: ${errMsg}`,
+        })
+      } catch { /* ignore */ }
     }
 
     setSending(false)
@@ -199,7 +270,7 @@ export function useAIAgent() {
     return { error: null }
   }
 
-  // ─── 제목 자동 생성 (비동기) ─────────────────────────────
+  // ─── 제목 자동 생성 (비동기, 실패 무시) ──────────────────
   async function generateTitle(convId: string, userMsg: string, aiMsg: string) {
     try {
       const aiConfig = await getAIConfig()
@@ -213,12 +284,13 @@ export function useAIAgent() {
         await supabase.from('agent_conversations').update({ title }).eq('id', convId)
         await loadConversations()
       }
-    } catch { /* ignore title generation errors */ }
+    } catch { /* title 생성 실패 무시 */ }
   }
 
   // ─── 대화 관리 ───────────────────────────────────────────
   async function selectConversation(id: string) {
     setActiveConvId(id)
+    setLastError(null)
   }
 
   async function toggleBookmark(id: string) {
@@ -240,7 +312,6 @@ export function useAIAgent() {
     await loadConversations()
   }
 
-  // ─── 아카이브 검색 ───────────────────────────────────────
   async function searchArchive(query: string): Promise<AgentConversation[]> {
     if (!query.trim()) return []
     const { data } = await supabase
@@ -259,8 +330,8 @@ export function useAIAgent() {
     conversations,
     activeConversation,
     messages,
-    loading,
     sending,
+    lastError,
 
     startNewConversation,
     selectConversation,

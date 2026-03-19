@@ -20,7 +20,7 @@ const CONTEXT_LABELS: Record<string, string> = {
 export default function FloatingAIAgent() {
   const { profile } = useAuth()
   const {
-    conversations, activeConversation, messages, sending,
+    conversations, activeConversation, messages, sending, lastError,
     startNewConversation, selectConversation, sendMessage,
     toggleBookmark, archiveConversation, deleteConversation, searchArchive,
   } = useAIAgent()
@@ -242,6 +242,13 @@ export default function FloatingAIAgent() {
                 )}
                 <div ref={messagesEndRef} />
               </div>
+
+              {/* 에러 표시 */}
+              {lastError && (
+                <div className="px-3 py-1.5 bg-red-50 border-t border-red-100">
+                  <p className="text-[11px] text-red-600 truncate">{lastError}</p>
+                </div>
+              )}
 
               {/* 입력 */}
               <div className="px-3 py-3 border-t border-gray-100 shrink-0">
