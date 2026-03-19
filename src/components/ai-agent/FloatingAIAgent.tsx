@@ -32,13 +32,13 @@ export default function FloatingAIAgent() {
   const [searchResults, setSearchResults] = useState<AgentConversation[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // 로그인 안 되어 있으면 렌더링 안 함
-  if (!profile) return null
-
-  // 메시지 스크롤
+  // 메시지 스크롤 (hook은 조건부 return 전에 선언)
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // 로그인 안 되어 있으면 렌더링 안 함
+  if (!profile) return null
 
   async function handleSend() {
     if (!input.trim() || sending) return
