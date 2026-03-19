@@ -71,6 +71,7 @@ export interface ProjectTemplate {
   id: string
   name: string
   template_type: string
+  department: string | null
   stages: TemplateStage[]
   avg_total_days: number | null
   created_at: string

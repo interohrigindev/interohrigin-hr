@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import type {
   ProjectBoard, PipelineStage, ProjectUpdate,
   ProjectWithStages, ProjectTemplate, BoardPermission,
-  StageStatus,
+  StageStatus, TemplateStage,
 } from '@/types/project-board'
 
 interface EmployeeBasic { id: string; name: string; department_id: string | null }
@@ -69,10 +69,11 @@ export function useProjectBoard() {
     template_type: string
     assignee_ids: string[]
     shared_departments?: string[]
+    custom_stages?: TemplateStage[]
   }): Promise<{ error: string | null; id?: string }> {
     if (!profile?.id) return { error: '로그인 필요' }
 
-    const { shared_departments, ...rest } = data
+    const { shared_departments, custom_stages, ...rest } = data
     const { data: project, error } = await supabase
       .from('project_boards')
       .insert({
@@ -86,12 +87,14 @@ export function useProjectBoard() {
 
     if (error || !project) return { error: error?.message || '생성 실패' }
 
-    // Find template and create stages
+    // custom_stages가 있으면 사용, 없으면 템플릿에서 가져옴
     const template = templates.find((t) => t.template_type === data.template_type)
-    if (template) {
+    const stageSource = custom_stages || (template?.stages as TemplateStage[]) || []
+
+    if (stageSource.length > 0) {
       let cursor = new Date()
 
-      const stages = (template.stages as { name: string; order: number; default_duration_days: number; editable_departments?: string[] }[]).map((s) => {
+      const stages = stageSource.map((s) => {
         const deadline = new Date(cursor)
         deadline.setDate(deadline.getDate() + s.default_duration_days)
         const stageDeadline = deadline.toISOString().split('T')[0]
@@ -102,7 +105,7 @@ export function useProjectBoard() {
           stage_order: s.order,
           status: '시작전',
           deadline: stageDeadline,
-          editable_departments: s.editable_departments || ['브랜드사업본부'],
+          editable_departments: s.editable_departments || [data.brand],
         }
       })
 
@@ -111,6 +114,11 @@ export function useProjectBoard() {
 
     await fetchData()
     return { error: null, id: project.id }
+  }
+
+  // ─── 부서별 템플릿 필터 ──────────────────────────────────
+  function getTemplatesForDepartment(department: string): ProjectTemplate[] {
+    return templates.filter((t) => t.department === department)
   }
 
   // ─── Update stage status ───────────────────────────────────
@@ -261,7 +269,7 @@ export function useProjectBoard() {
     createProject, updateProject, deleteProject,
     updateStageStatus, updateStageDeadline,
     addUpdate, fetchUpdates, updateRequestStatus,
-    getMyPermission,
+    getMyPermission, getTemplatesForDepartment,
     refresh: fetchData,
   }
 }
