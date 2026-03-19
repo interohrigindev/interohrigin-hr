@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 
 // 전체 권한 자동 부여 대상
 const FULL_ACCESS_DEPTS = ['임원', '시스템관리자']
+const EXCLUDED_DEPTS = ['대표']
 
 // 권한 필드 정의 (4가지만)
 const PERMISSION_FIELDS = [
@@ -22,6 +23,12 @@ const PERMISSION_FIELDS = [
 
 type PermField = typeof PERMISSION_FIELDS[number]['key']
 
+interface DeptRow {
+  name: string
+  permId: string | null
+  isFullAccess: boolean
+}
+
 export default function ProjectSettingsPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
@@ -31,32 +38,33 @@ export default function ProjectSettingsPage() {
 
   if (loading) return <PageSpinner />
 
-  // DB에서 가져온 부서 기반으로 권한 정렬: 본부 먼저, 전체 권한 대상은 맨 아래
-  const deptNames = departments.map((d) => d.name).filter((n) => n !== '대표')
-  const sortedPermissions = [...permissions]
-    .filter((p) => !FULL_ACCESS_DEPTS.includes(p.department) ? deptNames.includes(p.department) : true)
-    .sort((a, b) => {
-      const aFull = FULL_ACCESS_DEPTS.includes(a.department)
-      const bFull = FULL_ACCESS_DEPTS.includes(b.department)
-      if (aFull !== bFull) return aFull ? 1 : -1
-      const aIdx = deptNames.indexOf(a.department)
-      const bIdx = deptNames.indexOf(b.department)
-      return aIdx - bIdx
-    })
-
-  function isFullAccessDept(dept: string): boolean {
-    return FULL_ACCESS_DEPTS.includes(dept)
-  }
+  // departments 테이블에서 대표 제외한 모든 부서 + 임원/시스템관리자
+  const deptRows: DeptRow[] = [
+    // 실제 부서 (대표 제외)
+    ...departments
+      .filter((d) => !EXCLUDED_DEPTS.includes(d.name))
+      .map((d) => ({
+        name: d.name,
+        permId: permissions.find((p) => p.department === d.name)?.id || null,
+        isFullAccess: false,
+      })),
+    // 임원/시스템관리자 (맨 아래)
+    ...FULL_ACCESS_DEPTS.map((name) => ({
+      name,
+      permId: permissions.find((p) => p.department === name)?.id || null,
+      isFullAccess: true,
+    })),
+  ]
 
   function getFieldValue(dept: string, field: PermField): boolean {
-    if (isFullAccessDept(dept)) return true
+    if (FULL_ACCESS_DEPTS.includes(dept)) return true
     if (fieldEdits[dept]?.[field] !== undefined) return fieldEdits[dept][field]
     const perm = permissions.find((p) => p.department === dept)
     return perm?.[field] ?? false
   }
 
   function toggleField(dept: string, field: string) {
-    if (isFullAccessDept(dept)) return
+    if (FULL_ACCESS_DEPTS.includes(dept)) return
     setFieldEdits((prev) => ({
       ...prev,
       [dept]: { ...(prev[dept] || {}), [field]: !getFieldValue(dept, field as PermField) },
@@ -65,24 +73,40 @@ export default function ProjectSettingsPage() {
 
   async function handleSave() {
     setSaving(true)
-    for (const perm of permissions) {
-      if (isFullAccessDept(perm.department)) continue
 
-      const deptFieldEdits = fieldEdits[perm.department]
+    for (const row of deptRows) {
+      if (row.isFullAccess) continue
+      const deptFieldEdits = fieldEdits[row.name]
       if (!deptFieldEdits) continue
 
-      const updateData: Record<string, unknown> = {}
-      for (const [field, value] of Object.entries(deptFieldEdits)) {
-        updateData[field] = value
-      }
-
-      if (Object.keys(updateData).length > 0) {
-        await supabase
-          .from('board_permissions')
-          .update(updateData)
-          .eq('id', perm.id)
+      if (row.permId) {
+        // 기존 레코드 업데이트
+        const updateData: Record<string, unknown> = {}
+        for (const [field, value] of Object.entries(deptFieldEdits)) {
+          updateData[field] = value
+        }
+        if (Object.keys(updateData).length > 0) {
+          await supabase
+            .from('board_permissions')
+            .update(updateData)
+            .eq('id', row.permId)
+        }
+      } else {
+        // board_permissions에 없는 부서 → 새로 생성
+        const newPerm: Record<string, unknown> = {
+          department: row.name,
+          can_create_project: false,
+          can_delete_project: false,
+          can_comment: true,
+          can_view: true,
+        }
+        for (const [field, value] of Object.entries(deptFieldEdits)) {
+          newPerm[field] = value
+        }
+        await supabase.from('board_permissions').insert(newPerm)
       }
     }
+
     setSaving(false)
     toast('권한이 저장되었습니다', 'success')
     setFieldEdits({})
@@ -140,48 +164,48 @@ export default function ProjectSettingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedPermissions.map((perm) => {
-                  const fullAccess = isFullAccessDept(perm.department)
-                  return (
-                    <tr
-                      key={perm.id}
-                      className={`border-b border-gray-100 ${fullAccess ? 'bg-amber-50/50' : ''}`}
-                    >
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-800">{perm.department}</span>
-                          {fullAccess && (
-                            <Badge variant="warning" className="text-[10px] flex items-center gap-0.5">
-                              <Lock className="h-3 w-3" />
-                              전체
-                            </Badge>
-                          )}
-                        </div>
+                {deptRows.map((row) => (
+                  <tr
+                    key={row.name}
+                    className={`border-b border-gray-100 ${row.isFullAccess ? 'bg-amber-50/50' : ''}`}
+                  >
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-800">{row.name}</span>
+                        {row.isFullAccess && (
+                          <Badge variant="warning" className="text-[10px] flex items-center gap-0.5">
+                            <Lock className="h-3 w-3" />
+                            전체
+                          </Badge>
+                        )}
+                        {!row.isFullAccess && !row.permId && (
+                          <Badge variant="default" className="text-[10px]">미설정</Badge>
+                        )}
+                      </div>
+                    </td>
+                    {PERMISSION_FIELDS.map((f) => (
+                      <td key={f.key} className="py-3 px-4 text-center">
+                        {row.isFullAccess ? (
+                          <span className="text-amber-600 font-bold text-xs">ALL</span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={getFieldValue(row.name, f.key)}
+                            onChange={() => toggleField(row.name, f.key)}
+                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                          />
+                        )}
                       </td>
-                      {PERMISSION_FIELDS.map((f) => (
-                        <td key={f.key} className="py-3 px-4 text-center">
-                          {fullAccess ? (
-                            <span className="text-amber-600 font-bold text-xs">ALL</span>
-                          ) : (
-                            <input
-                              type="checkbox"
-                              checked={getFieldValue(perm.department, f.key)}
-                              onChange={() => toggleField(perm.department, f.key)}
-                              className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                            />
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  )
-                })}
+                    ))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
           <div className="flex items-center justify-between mt-4">
             <p className="text-xs text-gray-400">
-              * 임원/시스템관리자 권한은 변경할 수 없습니다.
+              * 임원/시스템관리자 권한은 변경할 수 없습니다. 미설정 부서는 저장 시 자동 생성됩니다.
             </p>
             <Button onClick={handleSave} disabled={saving || !hasChanges}>
               {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
