@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { ToastProvider } from '@/components/ui/Toast'
+import FloatingAIAgent from '@/components/ai-agent/FloatingAIAgent'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AdminRoute } from '@/components/layout/AdminRoute'
 import Login from '@/routes/login'
@@ -195,6 +196,7 @@ function App() {
               <Route path="admin/hr/exit" element={<AdminRoute><ExitManagement /></AdminRoute>} />
             </Route>
           </Routes>
+          <FloatingAIAgent />
         </BrowserRouter>
       </ToastProvider>
     </AuthProvider>

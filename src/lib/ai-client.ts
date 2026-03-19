@@ -125,6 +125,90 @@ export async function generateAIContent(config: AIConfig, prompt: string): Promi
   }
 }
 
+// ─── Multi-turn chat (AI Agent용) ────────────────────────────────
+
+export async function generateAIChat(
+  config: AIConfig,
+  systemPrompt: string,
+  messages: { role: 'user' | 'assistant'; content: string }[]
+): Promise<AIResponse> {
+  let content: string
+
+  if (config.provider === 'gemini') {
+    // Gemini: system instruction + contents 배열
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`
+    const contents = messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }))
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.error?.message || `Gemini API error: ${res.status}`)
+    }
+    const data = await res.json()
+    content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
+  } else if (config.provider === 'claude') {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.error?.message || `Claude API error: ${res.status}`)
+    }
+    const data = await res.json()
+    content = data.content?.[0]?.text ?? ''
+
+  } else {
+    // OpenAI
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...messages.map((m) => ({ role: m.role, content: m.content })),
+        ],
+        temperature: 0.7,
+        max_tokens: 4096,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.error?.message || `OpenAI API error: ${res.status}`)
+    }
+    const data = await res.json()
+    content = data.choices?.[0]?.message?.content ?? ''
+  }
+
+  return { content, provider: config.provider, model: config.model }
+}
+
 // ─── API key validation ─────────────────────────────────────────
 
 export async function validateApiKey(config: AIConfig): Promise<{ valid: boolean; error?: string }> {
