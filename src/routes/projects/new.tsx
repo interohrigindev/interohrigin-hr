@@ -143,47 +143,41 @@ export default function NewProjectPage() {
         <h1 className="text-2xl font-bold text-gray-900">새 프로젝트</h1>
       </div>
 
-      {/* ─── Step 1: 부서 선택 ─── */}
+      {/* ─── Step 1: 부서 탭 + 템플릿 선택 ─── */}
       <Card>
-        <CardHeader><CardTitle className="text-base">1. 부서 선택</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-3">
+        <CardHeader>
+          <CardTitle className="text-base">1. 부서 / 템플릿 선택</CardTitle>
+          <p className="text-xs text-gray-500 mt-1">
+            부서를 선택하고 프로젝트 유형을 선택하세요. 선택 후 파이프라인을 수정할 수 있습니다.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* 부서 탭 */}
+          <div className="flex gap-1 border-b border-gray-200">
             {shareableDepts.map((dept) => {
               const tmplCount = getTemplatesForDepartment(dept.name).length
-              const isSelected = selectedDept === dept.name
+              const isActive = selectedDept === dept.name
               return (
                 <button
                   key={dept.id}
                   onClick={() => setSelectedDept(dept.name)}
-                  className={`p-4 rounded-lg border-2 text-left transition-colors ${
-                    isSelected
-                      ? 'border-brand-500 bg-brand-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                  className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    isActive
+                      ? 'text-brand-700 border-brand-500'
+                      : 'text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Building2 className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm font-bold text-gray-900">{dept.name}</span>
-                  </div>
-                  <p className="text-xs text-gray-500">템플릿 {tmplCount}개</p>
+                  <Building2 className="h-4 w-4" />
+                  {dept.name}
+                  <Badge variant={isActive ? 'primary' : 'default'} className="text-[10px]">{tmplCount}</Badge>
                 </button>
               )
             })}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* ─── Step 2: 템플릿 선택 ─── */}
-      {selectedDept && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">2. 템플릿 선택</CardTitle>
-            <p className="text-xs text-gray-500 mt-1">
-              {selectedDept}의 프로젝트 유형을 선택하세요. 선택 후 파이프라인 단계를 수정할 수 있습니다.
-            </p>
-          </CardHeader>
-          <CardContent>
-            {deptTemplates.length > 0 ? (
+          {/* 선택된 부서의 템플릿 */}
+          {selectedDept ? (
+            deptTemplates.length > 0 ? (
               <div className="grid grid-cols-3 gap-3">
                 {deptTemplates.map((tmpl) => {
                   const stages = (tmpl.stages as TemplateStage[])
@@ -220,10 +214,14 @@ export default function NewProjectPage() {
               <p className="text-sm text-gray-500 py-4 text-center">
                 이 부서에 등록된 템플릿이 없습니다.
               </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+            )
+          ) : (
+            <p className="text-sm text-gray-400 py-6 text-center">
+              부서를 선택하면 템플릿이 표시됩니다.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ─── Step 3: 파이프라인 편집 ─── */}
       {editableStages.length > 0 && (
@@ -233,7 +231,7 @@ export default function NewProjectPage() {
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Pencil className="h-4 w-4" />
-                  3. 파이프라인 편집
+                  2. 파이프라인 편집
                 </CardTitle>
                 <p className="text-xs text-gray-500 mt-1">
                   단계를 추가/삭제/순서변경/이름수정할 수 있습니다. 총 {totalDays}일
@@ -319,7 +317,7 @@ export default function NewProjectPage() {
       {/* ─── Step 4: 프로젝트 정보 ─── */}
       {editableStages.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">4. 프로젝트 정보</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">3. 프로젝트 정보</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Input
@@ -384,7 +382,7 @@ export default function NewProjectPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Shield className="h-4 w-4" />
-              5. 부서 공유 설정
+              4. 부서 공유 설정
             </CardTitle>
             <p className="text-xs text-gray-500 mt-1">
               프로젝트를 공유할 부서를 선택하세요.

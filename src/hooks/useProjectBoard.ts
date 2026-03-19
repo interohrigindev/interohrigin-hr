@@ -243,6 +243,42 @@ export function useProjectBoard() {
     return { error: null }
   }
 
+  // ─── Pipeline stage CRUD (기존 프로젝트 편집용) ────────────
+  async function addStage(projectId: string, stageName: string, order: number, deadline?: string): Promise<{ error: string | null }> {
+    const { error } = await supabase.from('pipeline_stages').insert({
+      project_id: projectId,
+      stage_name: stageName,
+      stage_order: order,
+      status: '시작전',
+      deadline: deadline || null,
+    })
+    if (error) return { error: error.message }
+    await fetchData()
+    return { error: null }
+  }
+
+  async function removeStage(stageId: string): Promise<{ error: string | null }> {
+    const { error } = await supabase.from('pipeline_stages').delete().eq('id', stageId)
+    if (error) return { error: error.message }
+    await fetchData()
+    return { error: null }
+  }
+
+  async function updateStageName(stageId: string, name: string): Promise<{ error: string | null }> {
+    const { error } = await supabase.from('pipeline_stages').update({ stage_name: name }).eq('id', stageId)
+    if (error) return { error: error.message }
+    return { error: null }
+  }
+
+  async function reorderStages(stages: { id: string; order: number }[]): Promise<{ error: string | null }> {
+    for (const s of stages) {
+      const { error } = await supabase.from('pipeline_stages').update({ stage_order: s.order }).eq('id', s.id)
+      if (error) return { error: error.message }
+    }
+    await fetchData()
+    return { error: null }
+  }
+
   // ─── Delete project ────────────────────────────────────────
   async function deleteProject(projectId: string): Promise<{ error: string | null }> {
     const { error } = await supabase
@@ -268,6 +304,7 @@ export function useProjectBoard() {
     projects, templates, permissions, employees, departments, loading,
     createProject, updateProject, deleteProject,
     updateStageStatus, updateStageDeadline,
+    addStage, removeStage, updateStageName, reorderStages,
     addUpdate, fetchUpdates, updateRequestStatus,
     getMyPermission, getTemplatesForDepartment,
     refresh: fetchData,

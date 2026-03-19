@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Send, FileText, Bell,
   BarChart3, CheckCircle, Loader2, AlertTriangle, ListChecks,
+  Pencil, X, ChevronUp, ChevronDown, Trash2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -26,7 +27,12 @@ export default function ProjectDetailPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { profile } = useAuth()
-  const { projects, employees, departments, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates, updateRequestStatus } = useProjectBoard()
+  const {
+    projects, employees, departments,
+    updateStageStatus, updateStageDeadline,
+    addStage, removeStage, updateStageName, reorderStages,
+    addUpdate, fetchUpdates, updateRequestStatus,
+  } = useProjectBoard()
 
   const project = projects.find((p) => p.id === id)
 
@@ -53,6 +59,12 @@ export default function ProjectDetailPage() {
   const [requestContent, setRequestContent] = useState('')
   const [requestDept, setRequestDept] = useState('')
   const [requestStageId, setRequestStageId] = useState('')
+
+  // Pipeline editing
+  const [pipelineEditMode, setPipelineEditMode] = useState(false)
+  const [editingNames, setEditingNames] = useState<Record<string, string>>({})
+  const [newStageName, setNewStageName] = useState('')
+  const [pipelineSaving, setPipelineSaving] = useState(false)
 
   const loadUpdates = useCallback(async () => {
     if (!id) return
@@ -197,28 +209,55 @@ export default function ProjectDetailPage() {
         <CardContent className="py-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium text-gray-700">파이프라인 진행 ({completedStages}/{stages.length})</span>
-            <span className="text-sm font-bold text-brand-600">{progressPercent}%</span>
-          </div>
-          <div className="h-2 bg-gray-100 rounded-full mb-4">
-            <div className="h-2 bg-brand-500 rounded-full transition-all" style={{ width: `${progressPercent}%` }} />
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-brand-600">{progressPercent}%</span>
+              <button
+                onClick={() => {
+                  if (pipelineEditMode) {
+                    setEditingNames({})
+                    setNewStageName('')
+                  }
+                  setPipelineEditMode(!pipelineEditMode)
+                }}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors ${
+                  pipelineEditMode
+                    ? 'bg-brand-50 border-brand-300 text-brand-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                }`}
+              >
+                {pipelineEditMode ? <><X className="h-3 w-3" /> 편집 종료</> : <><Pencil className="h-3 w-3" /> 편집</>}
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-2">
-            {stages.map((stage) => {
-              const today = new Date()
-              const deadline = stage.deadline ? new Date(stage.deadline) : null
-              const isOverdue = deadline && stage.status !== '완료' && deadline < today
+          {!pipelineEditMode && (
+            <div className="h-2 bg-gray-100 rounded-full mb-4">
+              <div className="h-2 bg-brand-500 rounded-full transition-all" style={{ width: `${progressPercent}%` }} />
+            </div>
+          )}
 
-              return (
-                <div key={stage.id} className={`p-2 rounded-lg border ${isOverdue ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
-                  <div className="flex items-center gap-1 mb-1">
-                    <div className={`w-2 h-2 rounded-full ${STAGE_STATUS_DOT[stage.status]}`} />
-                    <span className="text-[11px] font-medium text-gray-700 truncate">{stage.stage_name}</span>
-                  </div>
+          {pipelineEditMode ? (
+            /* ── 편집 모드 ── */
+            <div className="space-y-2">
+              {stages.map((stage, i) => (
+                <div key={stage.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                  <Badge variant="default" className="shrink-0 w-6 justify-center text-[10px]">{i + 1}</Badge>
+                  <input
+                    type="text"
+                    value={editingNames[stage.id] ?? stage.stage_name}
+                    onChange={(e) => setEditingNames((prev) => ({ ...prev, [stage.id]: e.target.value }))}
+                    onBlur={async () => {
+                      const newName = editingNames[stage.id]
+                      if (newName && newName !== stage.stage_name) {
+                        await updateStageName(stage.id, newName)
+                      }
+                    }}
+                    className="flex-1 text-sm font-medium bg-white border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-brand-400"
+                  />
                   <select
                     value={stage.status}
                     onChange={(e) => handleStatusChange(stage.id, e.target.value as StageStatus)}
-                    className={`w-full text-[10px] rounded px-1 py-0.5 border-0 ${STAGE_STATUS_COLORS[stage.status]}`}
+                    className={`text-[10px] rounded px-1.5 py-1 border-0 ${STAGE_STATUS_COLORS[stage.status]}`}
                   >
                     {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -226,17 +265,130 @@ export default function ProjectDetailPage() {
                     type="date"
                     value={stage.deadline || ''}
                     onChange={(e) => handleDeadlineChange(stage.id, e.target.value)}
-                    className="w-full text-[9px] text-gray-500 mt-1 border-0 bg-transparent"
+                    className="text-[10px] text-gray-500 border border-gray-200 rounded px-1 py-1 bg-white"
                   />
-                  {isOverdue && (
-                    <span className="text-[9px] text-red-600 font-bold flex items-center gap-0.5 mt-0.5">
-                      <AlertTriangle className="h-2.5 w-2.5" /> 지연
-                    </span>
-                  )}
+                  <div className="flex flex-col shrink-0">
+                    <button
+                      onClick={async () => {
+                        if (i === 0) return
+                        const reordered = stages.map((s, j) => ({
+                          id: s.id,
+                          order: j === i ? i : j === i - 1 ? i + 1 : j + 1,
+                        }))
+                        setPipelineSaving(true)
+                        await reorderStages(reordered)
+                        setPipelineSaving(false)
+                      }}
+                      disabled={i === 0 || pipelineSaving}
+                      className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                    >
+                      <ChevronUp className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (i === stages.length - 1) return
+                        const reordered = stages.map((s, j) => ({
+                          id: s.id,
+                          order: j === i ? i + 2 : j === i + 1 ? i + 1 : j + 1,
+                        }))
+                        setPipelineSaving(true)
+                        await reorderStages(reordered)
+                        setPipelineSaving(false)
+                      }}
+                      disabled={i === stages.length - 1 || pipelineSaving}
+                      className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                    >
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`"${stage.stage_name}" 단계를 삭제하시겠습니까?`)) return
+                      setPipelineSaving(true)
+                      await removeStage(stage.id)
+                      setPipelineSaving(false)
+                      toast('단계가 삭제되었습니다', 'success')
+                    }}
+                    disabled={pipelineSaving}
+                    className="p-1 text-gray-300 hover:text-red-500 transition-colors shrink-0"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              )
-            })}
-          </div>
+              ))}
+
+              {/* 단계 추가 */}
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="text"
+                  value={newStageName}
+                  onChange={(e) => setNewStageName(e.target.value)}
+                  placeholder="새 단계 이름"
+                  className="flex-1 text-sm bg-white border border-dashed border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-brand-400"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newStageName.trim()) {
+                      (async () => {
+                        setPipelineSaving(true)
+                        await addStage(project.id, newStageName.trim(), stages.length + 1)
+                        setNewStageName('')
+                        setPipelineSaving(false)
+                        toast('단계가 추가되었습니다', 'success')
+                      })()
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  disabled={!newStageName.trim() || pipelineSaving}
+                  onClick={async () => {
+                    setPipelineSaving(true)
+                    await addStage(project.id, newStageName.trim(), stages.length + 1)
+                    setNewStageName('')
+                    setPipelineSaving(false)
+                    toast('단계가 추가되었습니다', 'success')
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> 추가
+                </Button>
+              </div>
+            </div>
+          ) : (
+            /* ── 기본 보기 ── */
+            <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${Math.min(stages.length, 7)}, minmax(0, 1fr))` }}>
+              {stages.map((stage) => {
+                const today = new Date()
+                const deadline = stage.deadline ? new Date(stage.deadline) : null
+                const isOverdue = deadline && stage.status !== '완료' && deadline < today
+
+                return (
+                  <div key={stage.id} className={`p-2 rounded-lg border ${isOverdue ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
+                    <div className="flex items-center gap-1 mb-1">
+                      <div className={`w-2 h-2 rounded-full ${STAGE_STATUS_DOT[stage.status]}`} />
+                      <span className="text-[11px] font-medium text-gray-700 truncate">{stage.stage_name}</span>
+                    </div>
+                    <select
+                      value={stage.status}
+                      onChange={(e) => handleStatusChange(stage.id, e.target.value as StageStatus)}
+                      className={`w-full text-[10px] rounded px-1 py-0.5 border-0 ${STAGE_STATUS_COLORS[stage.status]}`}
+                    >
+                      {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <input
+                      type="date"
+                      value={stage.deadline || ''}
+                      onChange={(e) => handleDeadlineChange(stage.id, e.target.value)}
+                      className="w-full text-[9px] text-gray-500 mt-1 border-0 bg-transparent"
+                    />
+                    {isOverdue && (
+                      <span className="text-[9px] text-red-600 font-bold flex items-center gap-0.5 mt-0.5">
+                        <AlertTriangle className="h-2.5 w-2.5" /> 지연
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
