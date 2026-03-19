@@ -120,20 +120,29 @@ export default function PersonalityAnalysisPage() {
     if (!selectedEmployee) return
     const profile = selectedEmployee.employee_profiles?.[0]
     if (!profile?.birth_date && !profile?.mbti) {
-      toast('생년월일 또는 MBTI 정보가 필요합니다', 'error')
+      toast('생년월일 또는 MBTI 정보가 필요합니다. 설정 > 직원 관리에서 등록하세요.', 'error')
       return
     }
 
     setAiRunning(true)
     try {
-      const apiKey = localStorage.getItem('ai_api_key') || ''
-      const provider = (localStorage.getItem('ai_provider') || 'gemini') as 'gemini' | 'openai'
-      const model = localStorage.getItem('ai_model') || 'gemini-2.5-flash'
+      // DB에서 활성 AI 설정 조회
+      const { data: aiSetting } = await supabase
+        .from('ai_settings')
+        .select('*')
+        .eq('is_active', true)
+        .eq('module', 'hr')
+        .limit(1)
+        .maybeSingle()
 
-      if (!apiKey) {
-        toast('AI 설정에서 API 키를 먼저 등록하세요', 'error')
+      if (!aiSetting) {
+        toast('AI 설정에서 API 키를 먼저 등록하세요 (설정 > AI 설정)', 'error')
         return
       }
+
+      const provider = aiSetting.provider as 'gemini' | 'openai' | 'claude'
+      const apiKey = aiSetting.api_key
+      const model = aiSetting.model
 
       const prompt = `다음 직원의 사주/MBTI 기반 성향 분석을 해주세요.
 

@@ -586,14 +586,23 @@ function SummaryTab({ employee }: { employee: Employee }) {
   const handleGenerate = useCallback(async () => {
     setGenerating(true)
     try {
-      const apiKey = localStorage.getItem('ai_api_key') || ''
-      const provider = (localStorage.getItem('ai_provider') || 'gemini') as 'gemini' | 'openai'
-      const model = localStorage.getItem('ai_model') || 'gemini-2.5-flash'
+      // DB에서 활성 AI 설정 조회
+      const { data: aiSetting } = await supabase
+        .from('ai_settings')
+        .select('*')
+        .eq('is_active', true)
+        .eq('module', 'hr')
+        .limit(1)
+        .maybeSingle()
 
-      if (!apiKey) {
-        toast('AI 설정에서 API 키를 먼저 등록하세요', 'error')
+      if (!aiSetting) {
+        toast('AI 설정에서 API 키를 먼저 등록하세요 (설정 > AI 설정)', 'error')
         return
       }
+
+      const provider = aiSetting.provider as 'gemini' | 'openai' | 'claude'
+      const apiKey = aiSetting.api_key
+      const model = aiSetting.model
 
       // Fetch all data for this employee
       const [
