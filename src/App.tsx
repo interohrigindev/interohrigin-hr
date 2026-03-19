@@ -41,7 +41,8 @@ import PeerReview from '@/routes/peer-review'
 // 사내 메신저
 import MessengerPage from '@/routes/messenger/index'
 
-// 프로젝트 보드
+// 프로젝트 & 업무 (통합)
+import UnifiedDashboard from '@/routes/projects/unified-dashboard'
 import ProjectBoardPage from '@/routes/projects/index'
 import ProjectDetailPage from '@/routes/projects/detail'
 import NewProjectPage from '@/routes/projects/new'
@@ -163,8 +164,9 @@ function App() {
               <Route path="messenger" element={<MessengerPage />} />
               <Route path="messenger/:roomId" element={<MessengerPage />} />
 
-              {/* 프로젝트 보드 */}
-              <Route path="admin/projects" element={<ProjectBoardPage />} />
+              {/* 프로젝트 & 업무 (통합) */}
+              <Route path="admin/projects" element={<UnifiedDashboard />} />
+              <Route path="admin/projects/board" element={<ProjectBoardPage />} />
               <Route path="admin/projects/new" element={<NewProjectPage />} />
               <Route path="admin/projects/settings" element={<AdminRoute><ProjectSettingsPage /></AdminRoute>} />
               <Route path="admin/projects/:id" element={<ProjectDetailPage />} />

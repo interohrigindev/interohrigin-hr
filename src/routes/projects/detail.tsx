@@ -2,17 +2,21 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Send, FileText, Bell,
-  BarChart3, CheckCircle, Loader2, AlertTriangle,
+  BarChart3, CheckCircle, Loader2, AlertTriangle, ListChecks,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
 import { Select } from '@/components/ui/Select'
+import { Input } from '@/components/ui/Input'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 import type { ProjectUpdate, StageStatus } from '@/types/project-board'
+import type { Task, TaskPriority, TaskStatus } from '@/types/work'
 import { STAGE_STATUS_COLORS, STAGE_STATUS_DOT, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from '@/types/project-board'
 
 const STATUS_OPTIONS: StageStatus[] = ['시작전', '진행중', '완료', '홀딩']
@@ -21,13 +25,22 @@ export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { toast } = useToast()
-  const { projects, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates, updateRequestStatus } = useProjectBoard()
+  const { profile } = useAuth()
+  const { projects, employees, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates, updateRequestStatus } = useProjectBoard()
 
   const project = projects.find((p) => p.id === id)
 
-  const [activeTab, setActiveTab] = useState<'updates' | 'requests' | 'stats'>('updates')
+  const [activeTab, setActiveTab] = useState<'updates' | 'tasks' | 'requests' | 'stats'>('updates')
   const [updates, setUpdates] = useState<(ProjectUpdate & { author_name: string })[]>([])
   const [updatesLoading, setUpdatesLoading] = useState(false)
+
+  // Tasks
+  const [linkedTasks, setLinkedTasks] = useState<Task[]>([])
+  const [showTaskForm, setShowTaskForm] = useState(false)
+  const [taskTitle, setTaskTitle] = useState('')
+  const [taskAssignee, setTaskAssignee] = useState('')
+  const [taskPriority, setTaskPriority] = useState<TaskPriority>('normal')
+  const [taskDueDate, setTaskDueDate] = useState('')
 
   // Update form
   const [showUpdateForm, setShowUpdateForm] = useState(false)
@@ -51,6 +64,41 @@ export default function ProjectDetailPage() {
   }, [id])
 
   useEffect(() => { loadUpdates() }, [loadUpdates])
+
+  // Load linked tasks
+  const loadTasks = useCallback(async () => {
+    if (!id) return
+    const { data } = await supabase.from('tasks').select('*').eq('linked_board_id', id).order('sort_order').order('created_at', { ascending: false })
+    setLinkedTasks((data || []) as Task[])
+  }, [id])
+
+  useEffect(() => { loadTasks() }, [loadTasks])
+
+  async function handleAddTask() {
+    if (!taskTitle.trim() || !profile?.id || !id) return
+    setSaving(true)
+    const { error } = await supabase.from('tasks').insert({
+      linked_board_id: id,
+      title: taskTitle,
+      assignee_id: taskAssignee || null,
+      priority: taskPriority,
+      status: 'todo',
+      due_date: taskDueDate || null,
+      sort_order: linkedTasks.length,
+    })
+    setSaving(false)
+    if (error) { toast('작업 추가 실패: ' + error.message, 'error'); return }
+    toast('작업이 추가되었습니다', 'success')
+    setTaskTitle(''); setTaskAssignee(''); setTaskPriority('normal'); setTaskDueDate('')
+    setShowTaskForm(false)
+    loadTasks()
+  }
+
+  async function toggleTaskStatus(task: Task) {
+    const next: Record<TaskStatus, TaskStatus> = { todo: 'in_progress', in_progress: 'done', done: 'todo', cancelled: 'todo' }
+    await supabase.from('tasks').update({ status: next[task.status] }).eq('id', task.id)
+    loadTasks()
+  }
 
   if (!project) return <PageSpinner />
 
@@ -196,6 +244,7 @@ export default function ProjectDetailPage() {
       <div className="flex gap-1 border-b border-gray-200">
         {([
           { key: 'updates' as const, icon: FileText, label: '업데이트', count: regularUpdates.length },
+          { key: 'tasks' as const, icon: ListChecks, label: '작업', count: linkedTasks.length },
           { key: 'requests' as const, icon: Bell, label: '요청', count: requests.length },
           { key: 'stats' as const, icon: BarChart3, label: '통계' },
         ]).map(({ key, icon: Icon, label, count }) => (
@@ -270,6 +319,74 @@ export default function ProjectDetailPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'tasks' && (
+        <div className="space-y-3">
+          <Button size="sm" onClick={() => setShowTaskForm(true)}>
+            <Plus className="h-4 w-4 mr-1" /> 작업 추가
+          </Button>
+
+          {showTaskForm && (
+            <Card>
+              <CardContent className="space-y-3 py-4">
+                <Input label="작업명 *" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="작업 제목" />
+                <div className="grid grid-cols-3 gap-3">
+                  <Select
+                    label="담당자"
+                    value={taskAssignee}
+                    onChange={(e) => setTaskAssignee(e.target.value)}
+                    options={[{ value: '', label: '미지정' }, ...employees.map((e) => ({ value: e.id, label: e.name }))]}
+                  />
+                  <Select
+                    label="우선순위"
+                    value={taskPriority}
+                    onChange={(e) => setTaskPriority(e.target.value as TaskPriority)}
+                    options={[{ value: 'urgent', label: '긴급' }, { value: 'high', label: '높음' }, { value: 'normal', label: '보통' }, { value: 'low', label: '낮음' }]}
+                  />
+                  <Input label="마감일" type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowTaskForm(false)}>취소</Button>
+                  <Button onClick={handleAddTask} disabled={saving}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : '추가'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="space-y-1">
+            {linkedTasks.length === 0 ? (
+              <p className="text-center py-8 text-gray-400">이 프로젝트에 연결된 작업이 없습니다</p>
+            ) : linkedTasks.map((task) => {
+              const priorityColor = task.priority === 'urgent' ? 'bg-red-100 text-red-700' : task.priority === 'high' ? 'bg-amber-100 text-amber-700' : task.priority === 'normal' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+              const statusIcon = task.status === 'done' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜'
+              const isOverdue = task.status !== 'done' && task.due_date && new Date(task.due_date) < new Date()
+              const assigneeName = employees.find((e) => e.id === task.assignee_id)?.name
+
+              return (
+                <div key={task.id} className={`flex items-center gap-3 p-3 border rounded-lg ${isOverdue ? 'border-red-300 bg-red-50' : 'border-gray-200'} ${task.status === 'done' ? 'opacity-60' : ''}`}>
+                  <button onClick={() => toggleTaskStatus(task)} className="text-lg shrink-0" title="상태 변경">
+                    {statusIcon}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-sm ${task.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                      {task.title}
+                    </span>
+                  </div>
+                  <Badge className={`text-[10px] ${priorityColor}`}>{task.priority}</Badge>
+                  {assigneeName && <span className="text-xs text-gray-500">{assigneeName}</span>}
+                  {task.due_date && (
+                    <span className={`text-[10px] ${isOverdue ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
+                      {task.due_date.slice(5)}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 

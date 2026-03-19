@@ -23,6 +23,7 @@ export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'cancelled'
 export interface Task {
   id: string
   project_id: string | null
+  linked_board_id: string | null
   title: string
   description: string | null
   assignee_id: string | null
