@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import bcrypt from 'bcryptjs'
+// bcrypt 해싱은 DB에서 처리 (create_employee_with_auth 함수)
 import { supabase } from '@/lib/supabase'
 import type { Department, Employee, EmployeeRole } from '@/types/database'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -287,13 +287,10 @@ export default function TabEmployees() {
     }
     setInviting(true)
 
-    // Step 1: 비밀번호를 클라이언트에서 bcrypt 해싱 후 RPC 호출
-    const salt = bcrypt.genSaltSync(10)
-    const hashedPassword = bcrypt.hashSync(inviteForm.password, salt)
-
+    // Step 1: RPC 호출 (비밀번호는 DB에서 bcrypt 해싱)
     const { data, error } = await supabase.rpc('create_employee_with_auth', {
       p_email: inviteForm.email,
-      p_password: hashedPassword,
+      p_password: inviteForm.password,
       p_name: inviteForm.name,
       p_role: inviteForm.role,
       p_department_id: inviteForm.department_id || null,
