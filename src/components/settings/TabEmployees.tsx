@@ -321,13 +321,16 @@ export default function TabEmployees() {
 
       // Step 3: employee_profiles에 MBTI/혈액형/한자이름 저장
       if (employeeId && (inviteForm.mbti || inviteForm.blood_type || inviteForm.hanja_name)) {
-        await supabase.from('employee_profiles').upsert({
+        const { error: profileErr } = await supabase.from('employee_profiles').upsert({
           employee_id: employeeId,
           mbti: inviteForm.mbti || null,
           blood_type: inviteForm.blood_type || null,
           hanja_name: inviteForm.hanja_name || null,
           birth_date: inviteForm.birth_date || null,
         }, { onConflict: 'employee_id' })
+        if (profileErr) {
+          toast('MBTI/혈액형 저장 실패: ' + profileErr.message, 'error')
+        }
       }
 
       toast(`${inviteForm.name}님이 등록되었습니다. 임시 비밀번호: ${inviteForm.password}`, 'info')
@@ -402,13 +405,16 @@ export default function TabEmployees() {
 
     // employee_profiles 업데이트
     if (editForm.mbti || editForm.blood_type || editForm.hanja_name) {
-      await supabase.from('employee_profiles').upsert({
+      const { error: profileErr } = await supabase.from('employee_profiles').upsert({
         employee_id: editingEmployee.id,
         mbti: editForm.mbti || null,
         blood_type: editForm.blood_type || null,
         hanja_name: editForm.hanja_name || null,
         birth_date: editForm.birth_date || null,
       }, { onConflict: 'employee_id' })
+      if (profileErr) {
+        toast('MBTI/혈액형 저장 실패: ' + profileErr.message, 'error')
+      }
     }
 
     toast('직원 정보가 수정되었습니다')

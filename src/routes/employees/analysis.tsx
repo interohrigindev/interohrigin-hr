@@ -119,7 +119,10 @@ export default function PersonalityAnalysisPage() {
   async function handleRunAIAnalysis() {
     if (!selectedEmployee) return
     const profile = selectedEmployee.employee_profiles?.[0]
-    if (!profile?.birth_date && !profile?.mbti) {
+    // employees 테이블의 birth_date도 fallback으로 사용
+    const birthDate = profile?.birth_date || selectedEmployee.birth_date
+    const mbti = profile?.mbti
+    if (!birthDate && !mbti) {
       toast('생년월일 또는 MBTI 정보가 필요합니다. 설정 > 직원 관리에서 등록하세요.', 'error')
       return
     }
@@ -147,10 +150,10 @@ export default function PersonalityAnalysisPage() {
       const prompt = `다음 직원의 사주/MBTI 기반 성향 분석을 해주세요.
 
 이름: ${selectedEmployee.name}
-생년월일: ${profile?.birth_date ?? '미제공'}
+생년월일: ${birthDate ?? '미제공'}
 출생시간: ${profile?.birth_time ?? '미제공'}
 음력 여부: ${profile?.lunar_birth ? '음력' : '양력'}
-MBTI: ${profile?.mbti ?? '미제공'}
+MBTI: ${mbti ?? '미제공'}
 혈액형: ${profile?.blood_type ?? '미제공'}
 
 다음 항목을 JSON 형식으로 분석해주세요:
@@ -181,7 +184,7 @@ MBTI: ${profile?.mbti ?? '미제공'}
 
       const { error } = await supabase.from('personality_analysis').insert({
         employee_id: selectedEmployee.id,
-        analysis_type: profile?.mbti && profile?.birth_date ? 'comprehensive' : profile?.mbti ? 'mbti' : 'saju',
+        analysis_type: mbti && birthDate ? 'comprehensive' : mbti ? 'mbti' : 'saju',
         result: parsed,
         strengths,
         cautions,
@@ -247,7 +250,10 @@ MBTI: ${profile?.mbti ?? '미제공'}
                       {profile?.blood_type && (
                         <Badge variant="info">{profile.blood_type}형</Badge>
                       )}
-                      {!profile?.mbti && !profile?.blood_type && (
+                      {emp.birth_date && !profile?.mbti && (
+                        <Badge variant="info">생년월일 등록됨</Badge>
+                      )}
+                      {!profile?.mbti && !profile?.blood_type && !emp.birth_date && (
                         <Badge variant="default">미등록</Badge>
                       )}
                     </div>
