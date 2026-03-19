@@ -18,6 +18,7 @@ export interface ProjectBoard {
   priority: number
   assignee_ids: string[]
   department: string
+  shared_departments: string[]
   template_type: string | null
   created_by: string | null
   created_at: string

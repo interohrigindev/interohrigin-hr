@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Loader2, Calendar } from 'lucide-react'
+import { ArrowLeft, Loader2, Calendar, Shield, Building2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -8,12 +8,19 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
+import { useAuth } from '@/hooks/useAuth'
 import type { TemplateStage } from '@/types/project-board'
+
+// 대표 부서 제외, 실제 본부만 표시
+const SHAREABLE_DEPARTMENTS = ['경영관리본부', '마케팅영업본부', '브랜드사업본부']
+// 임원/관리자 자동 전체 권한 역할
+const FULL_ACCESS_ROLES = ['ceo', 'director', 'division_head', 'admin']
 
 export default function NewProjectPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const { templates, employees, departments, createProject } = useProjectBoard()
+  const { templates, employees, departments, permissions, createProject } = useProjectBoard()
+  const { profile } = useAuth()
 
   const [brand, setBrand] = useState('')
   const [category, setCategory] = useState('제품')
@@ -21,7 +28,12 @@ export default function NewProjectPage() {
   const [launchDate, setLaunchDate] = useState('')
   const [templateType, setTemplateType] = useState('new_product')
   const [assigneeIds, setAssigneeIds] = useState<string[]>([])
+  const [sharedDepts, setSharedDepts] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+
+  // 임원/관리자인 경우 자동 전체 권한
+  const isFullAccess = profile?.role && FULL_ACCESS_ROLES.includes(profile.role)
+
 
   const selectedTemplate = templates.find((t) => t.template_type === templateType)
   const templateStages = (selectedTemplate?.stages || []) as TemplateStage[]
@@ -41,6 +53,10 @@ export default function NewProjectPage() {
     if (assigneeIds.length === 0) { toast('담당자를 선택하세요', 'error'); return }
 
     setSaving(true)
+    // 임원/관리자는 모든 부서 공유가 기본
+    const finalSharedDepts = isFullAccess
+      ? SHAREABLE_DEPARTMENTS
+      : sharedDepts
     const result = await createProject({
       brand,
       category,
@@ -48,6 +64,7 @@ export default function NewProjectPage() {
       launch_date: launchDate || null,
       template_type: templateType,
       assignee_ids: assigneeIds,
+      shared_departments: finalSharedDepts,
     })
     setSaving(false)
 
@@ -158,6 +175,92 @@ export default function NewProjectPage() {
               <p className="text-xs text-gray-500 mt-1">{assigneeIds.length}명 선택</p>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Department sharing / permissions */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            부서 권한 설정
+          </CardTitle>
+          <p className="text-xs text-gray-500 mt-1">
+            프로젝트를 공유할 부서를 선택하세요. 선택된 부서는 프로젝트를 조회하고 협업 요청을 주고받을 수 있습니다.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* 임원/관리자 전체 권한 안내 */}
+          {isFullAccess && (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <Shield className="h-4 w-4 text-amber-600 flex-shrink-0" />
+              <p className="text-sm text-amber-800">
+                임원 및 시스템 관리자는 모든 부서에 대해 전체 권한이 자동 부여됩니다.
+              </p>
+            </div>
+          )}
+
+          {/* 부서 체크박스 목록 */}
+          <div className="space-y-2">
+            {SHAREABLE_DEPARTMENTS.map((deptName) => {
+              const deptPerm = permissions.find((p) => p.department === deptName)
+              const checked = isFullAccess || sharedDepts.includes(deptName)
+              const isBrandDept = deptName === brand
+
+              return (
+                <label
+                  key={deptName}
+                  className={`flex items-center justify-between p-3 rounded-lg border transition-colors cursor-pointer ${
+                    checked
+                      ? 'border-brand-300 bg-brand-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  } ${isFullAccess ? 'opacity-80 cursor-default' : ''}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={isFullAccess}
+                      onChange={() => {
+                        if (isFullAccess) return
+                        setSharedDepts((prev) =>
+                          prev.includes(deptName)
+                            ? prev.filter((d) => d !== deptName)
+                            : [...prev, deptName]
+                        )
+                      }}
+                      className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-gray-400" />
+                        <span className="text-sm font-medium text-gray-800">{deptName}</span>
+                        {isBrandDept && (
+                          <Badge variant="default" className="text-[10px]">소속</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5 ml-6">
+                        {deptPerm?.can_edit_all_stages
+                          ? '전체 단계 편집 가능'
+                          : deptPerm?.editable_stages?.length
+                            ? `편집 가능: ${deptPerm.editable_stages.join(', ')}`
+                            : '조회 및 코멘트'}
+                      </p>
+                    </div>
+                  </div>
+                  {checked && (
+                    <Badge variant="success" className="text-[10px]">공유</Badge>
+                  )}
+                </label>
+              )
+            })}
+          </div>
+
+          {!isFullAccess && sharedDepts.length > 0 && (
+            <p className="text-xs text-gray-500">
+              {sharedDepts.length}개 부서와 공유됩니다.
+            </p>
+          )}
         </CardContent>
       </Card>
 

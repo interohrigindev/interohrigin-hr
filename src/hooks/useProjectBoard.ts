@@ -68,13 +68,16 @@ export function useProjectBoard() {
     launch_date: string | null
     template_type: string
     assignee_ids: string[]
+    shared_departments?: string[]
   }): Promise<{ error: string | null; id?: string }> {
     if (!profile?.id) return { error: '로그인 필요' }
 
+    const { shared_departments, ...rest } = data
     const { data: project, error } = await supabase
       .from('project_boards')
       .insert({
-        ...data,
+        ...rest,
+        shared_departments: shared_departments || [],
         status: 'active',
         created_by: profile.id,
       })
