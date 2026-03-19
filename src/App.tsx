@@ -55,9 +55,7 @@ import PersonalityAnalysis from '@/routes/employees/analysis'
 import SpecialNotes from '@/routes/employees/notes'
 import ExitManage from '@/routes/employees/exit'
 
-// 업무관리 (Phase 2)
-import WorkDashboard from '@/routes/work/dashboard'
-import ProjectManage from '@/routes/work/projects'
+// 업무관리 (통합 — 작업/보고서/챗봇만 유지)
 import TaskManage from '@/routes/work/tasks'
 import DailyReportPage from '@/routes/work/daily-report'
 import WorkChatbot from '@/routes/work/chat'
@@ -185,9 +183,7 @@ function App() {
               <Route path="admin/urgent/penalties" element={<AdminRoute><PenaltiesDashboard /></AdminRoute>} />
               <Route path="admin/urgent/migration" element={<AdminRoute><DataMigration /></AdminRoute>} />
 
-              {/* 업무관리 (Phase 2) */}
-              <Route path="admin/work" element={<AdminRoute><WorkDashboard /></AdminRoute>} />
-              <Route path="admin/work/projects" element={<AdminRoute><ProjectManage /></AdminRoute>} />
+              {/* 작업관리 (통합 메뉴에서 접근) */}
               <Route path="admin/work/tasks" element={<TaskManage />} />
               <Route path="work/daily-report" element={<DailyReportPage />} />
               <Route path="work/chat" element={<WorkChatbot />} />
