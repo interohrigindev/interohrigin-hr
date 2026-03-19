@@ -54,8 +54,11 @@ export default function Login() {
       }
     }
 
+    console.log('[Login] signIn 호출:', loginEmail)
     const result = await signIn(loginEmail, password)
+    console.log('[Login] signIn 결과:', result)
     if (result.error) {
+      console.error('[Login] 로그인 에러:', result.error)
       setError(
         result.error.includes('Invalid login')
           ? '이메일/사원번호 또는 비밀번호가 올바르지 않습니다.'

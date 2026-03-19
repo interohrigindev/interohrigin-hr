@@ -62,10 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    console.log('[Auth] signInWithPassword 호출:', email)
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
+      console.error('[Auth] signIn 에러:', error.message, error.status, error)
       return { error: error.message }
     }
+    console.log('[Auth] signIn 성공, user:', data.user?.id)
     return { error: null }
   }
 
