@@ -209,6 +209,42 @@ export async function generateAIChat(
   return { content, provider: config.provider, model: config.model }
 }
 
+// ─── Whisper STT (음성→텍스트) ────────────────────────────────────
+
+export async function transcribeAudio(
+  apiKey: string,
+  audioBlob: Blob,
+  language = 'ko'
+): Promise<{ text: string; segments: { start: number; end: number; text: string }[] }> {
+  const formData = new FormData()
+  formData.append('file', audioBlob, 'meeting.webm')
+  formData.append('model', 'whisper-1')
+  formData.append('language', language)
+  formData.append('response_format', 'verbose_json')
+  formData.append('timestamp_granularities[]', 'segment')
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message || `Whisper API error: ${res.status}`)
+  }
+
+  const data = await res.json()
+  return {
+    text: data.text || '',
+    segments: (data.segments || []).map((s: { start: number; end: number; text: string }) => ({
+      start: s.start,
+      end: s.end,
+      text: s.text,
+    })),
+  }
+}
+
 // ─── API key validation ─────────────────────────────────────────
 
 export async function validateApiKey(config: AIConfig): Promise<{ valid: boolean; error?: string }> {

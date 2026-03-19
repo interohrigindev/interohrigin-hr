@@ -2,9 +2,12 @@ import { useState, useRef, useEffect } from 'react'
 import {
   Bot, X, Send, Plus, Loader2, Bookmark, Archive,
   Trash2, ArrowLeft, Search, Sparkles, MessageSquare,
+  Mic, MicOff, Square, FileText, Users, CheckCircle,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAIAgent } from '@/hooks/useAIAgent'
+import { useMeetingRecorder } from '@/hooks/useMeetingRecorder'
+import { useProjectBoard } from '@/hooks/useProjectBoard'
 import type { AgentConversation } from '@/types/ai-agent'
 
 const CONTEXT_LABELS: Record<string, string> = {
@@ -25,12 +28,20 @@ export default function FloatingAIAgent() {
     toggleBookmark, archiveConversation, deleteConversation, searchArchive,
   } = useAIAgent()
 
+  const meeting = useMeetingRecorder()
+  const { employees } = useProjectBoard()
+
   const [isOpen, setIsOpen] = useState(false)
   const [input, setInput] = useState('')
-  const [view, setView] = useState<'list' | 'chat' | 'search'>('list')
+  const [view, setView] = useState<'list' | 'chat' | 'search' | 'meeting'>('list')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<AgentConversation[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // 회의 녹음 관련
+  const [meetingTitle, setMeetingTitle] = useState('')
+  const [meetingParticipants, setMeetingParticipants] = useState<string[]>([])
+  const [meetingSent, setMeetingSent] = useState(false)
 
   // 메시지 스크롤 (hook은 조건부 return 전에 선언)
   useEffect(() => {
@@ -107,9 +118,18 @@ export default function FloatingAIAgent() {
             </div>
             <div className="flex items-center gap-1">
               {view === 'list' && (
-                <button onClick={() => setView('search')} className="p-1.5 hover:bg-violet-500 rounded" title="아카이브 검색">
-                  <Search className="h-4 w-4" />
-                </button>
+                <>
+                  <button onClick={() => setView('search')} className="p-1.5 hover:bg-violet-500 rounded" title="아카이브 검색">
+                    <Search className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => { setView('meeting'); setMeetingTitle(''); setMeetingParticipants([]); setMeetingSent(false) }}
+                    className="p-1.5 hover:bg-violet-500 rounded"
+                    title="회의 녹음"
+                  >
+                    <Mic className="h-4 w-4" />
+                  </button>
+                </>
               )}
               <button onClick={handleNewChat} className="p-1.5 hover:bg-violet-500 rounded" title="새 대화">
                 <Plus className="h-4 w-4" />
@@ -180,6 +200,159 @@ export default function FloatingAIAgent() {
                   <ConvItem key={conv.id} conv={conv} onSelect={handleSelectConv} onBookmark={toggleBookmark} onArchive={archiveConversation} onDelete={deleteConversation} />
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* ─── 회의 녹음 ─── */}
+          {view === 'meeting' && (
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+              {meeting.status === 'idle' && (
+                <>
+                  {/* 회의 설정 */}
+                  <div className="space-y-3">
+                    <div className="text-center py-2">
+                      <Mic className="h-8 w-8 text-violet-400 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-gray-700">회의 녹음</p>
+                      <p className="text-xs text-gray-400">녹음 → 텍스트 변환 → AI 회의록 생성</p>
+                    </div>
+                    <input
+                      type="text"
+                      value={meetingTitle}
+                      onChange={(e) => setMeetingTitle(e.target.value)}
+                      placeholder="회의 제목 *"
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-violet-400"
+                    />
+                    <div>
+                      <p className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+                        <Users className="h-3 w-3" /> 참석자 선택
+                      </p>
+                      <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-0.5">
+                        {employees.map((emp) => (
+                          <label key={emp.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={meetingParticipants.includes(emp.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) setMeetingParticipants((p) => [...p, emp.id])
+                                else setMeetingParticipants((p) => p.filter((id) => id !== emp.id))
+                              }}
+                              className="rounded border-gray-300 text-violet-600"
+                            />
+                            <span className="text-xs text-gray-700">{emp.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {meetingParticipants.length > 0 && (
+                        <p className="text-[10px] text-gray-400 mt-1">{meetingParticipants.length}명 선택</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!meetingTitle.trim()) return
+                        meeting.startRecording()
+                      }}
+                      disabled={!meetingTitle.trim()}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-xl font-medium text-sm transition-colors"
+                    >
+                      <Mic className="h-4 w-4" /> 녹음 시작
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {meeting.status === 'recording' && (
+                <div className="text-center space-y-4 py-8">
+                  <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto animate-pulse">
+                    <Mic className="h-8 w-8 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-gray-900 font-mono">{meeting.formatTime(meeting.elapsed)}</p>
+                    <p className="text-xs text-red-500 font-medium mt-1">녹음 중...</p>
+                  </div>
+                  <p className="text-sm text-gray-600 font-medium">{meetingTitle}</p>
+                  <button
+                    onClick={() => meeting.stopRecording(meetingTitle, meetingParticipants, profile?.department_id || undefined)}
+                    className="flex items-center justify-center gap-2 mx-auto px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl font-medium text-sm transition-colors"
+                  >
+                    <Square className="h-4 w-4" /> 녹음 종료
+                  </button>
+                </div>
+              )}
+
+              {(meeting.status === 'uploading' || meeting.status === 'transcribing' || meeting.status === 'summarizing') && (
+                <div className="text-center space-y-4 py-8">
+                  <Loader2 className="h-10 w-10 text-violet-500 animate-spin mx-auto" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">
+                      {meeting.status === 'uploading' && '파일 업로드 중...'}
+                      {meeting.status === 'transcribing' && '음성을 텍스트로 변환 중...'}
+                      {meeting.status === 'summarizing' && 'AI가 회의록을 작성 중...'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">잠시만 기다려주세요</p>
+                  </div>
+                </div>
+              )}
+
+              {meeting.status === 'completed' && meeting.result && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-emerald-600">
+                    <CheckCircle className="h-5 w-5" />
+                    <span className="text-sm font-bold">회의록 생성 완료</span>
+                  </div>
+
+                  {/* 요약 */}
+                  {meeting.result.summary && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">AI 회의록</p>
+                      <div className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto"
+                        dangerouslySetInnerHTML={{
+                          __html: meeting.result.summary
+                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                            .replace(/## (.*)/g, '<p class="font-bold text-gray-900 mt-2 mb-1">$1</p>')
+                            .replace(/\n/g, '<br/>')
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* 발송 */}
+                  {!meetingSent ? (
+                    <button
+                      onClick={async () => {
+                        const res = await meeting.sendToParticipants(meeting.result!.id)
+                        if (!res.error) setMeetingSent(true)
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-medium transition-colors"
+                    >
+                      <FileText className="h-4 w-4" /> 참석자에게 발송 & 아카이브
+                    </button>
+                  ) : (
+                    <div className="flex items-center justify-center gap-2 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-sm font-medium">
+                      <CheckCircle className="h-4 w-4" /> 발송 및 아카이브 완료
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => { setView('list') }}
+                    className="w-full py-2 text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    돌아가기
+                  </button>
+                </div>
+              )}
+
+              {meeting.status === 'error' && (
+                <div className="text-center space-y-3 py-8">
+                  <MicOff className="h-10 w-10 text-red-400 mx-auto" />
+                  <p className="text-sm text-red-600">{meeting.error}</p>
+                  <button
+                    onClick={() => setView('list')}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    돌아가기
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
