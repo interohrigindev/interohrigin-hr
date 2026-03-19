@@ -41,6 +41,12 @@ import PeerReview from '@/routes/peer-review'
 // 사내 메신저
 import MessengerPage from '@/routes/messenger/index'
 
+// 프로젝트 보드
+import ProjectBoardPage from '@/routes/projects/index'
+import ProjectDetailPage from '@/routes/projects/detail'
+import NewProjectPage from '@/routes/projects/new'
+import ProjectSettingsPage from '@/routes/projects/settings'
+
 // 직원 확장
 import EmployeeProfile from '@/routes/employees/profile'
 import EmployeeSearch from '@/routes/employees/search'
@@ -156,6 +162,12 @@ function App() {
               {/* 사내 메신저 */}
               <Route path="messenger" element={<MessengerPage />} />
               <Route path="messenger/:roomId" element={<MessengerPage />} />
+
+              {/* 프로젝트 보드 */}
+              <Route path="admin/projects" element={<ProjectBoardPage />} />
+              <Route path="admin/projects/new" element={<NewProjectPage />} />
+              <Route path="admin/projects/settings" element={<AdminRoute><ProjectSettingsPage /></AdminRoute>} />
+              <Route path="admin/projects/:id" element={<ProjectDetailPage />} />
 
               {/* 직원관리 확장 (관리자/임원) */}
               <Route path="admin/employees/:id/profile" element={<AdminRoute><EmployeeProfile /></AdminRoute>} />

@@ -37,6 +37,9 @@ import {
   AlertTriangle,
   Zap,
   Database,
+  LayoutGrid,
+  Columns3,
+  Plus,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -158,6 +161,16 @@ const navGroups: NavGroup[] = [
       { to: '/admin/work/tasks', label: '작업 관리', icon: <ClipboardCheck className="h-4 w-4" /> },
       { to: '/work/daily-report', label: '일일 보고서', icon: <CalendarDays className="h-4 w-4" /> },
       { to: '/work/chat', label: 'AI 챗봇', icon: <Bot className="h-4 w-4" /> },
+    ],
+  },
+  {
+    id: 'project-board',
+    label: '프로젝트 보드',
+    icon: <LayoutGrid className="h-5 w-5" />,
+    items: [
+      { to: '/admin/projects', label: '보드', icon: <Columns3 className="h-4 w-4" />, end: true },
+      { to: '/admin/projects/new', label: '새 프로젝트', icon: <Plus className="h-4 w-4" /> },
+      { to: '/admin/projects/settings', label: '권한 설정', icon: <Settings className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
     ],
   },
   {
