@@ -309,7 +309,7 @@ export default function TabEmployees() {
       if (inviteForm.address) extraFields.address = inviteForm.address
       if (inviteForm.phone) extraFields.phone = inviteForm.phone
       if (inviteForm.avatar_url) extraFields.avatar_url = inviteForm.avatar_url
-      if (inviteForm.employee_number) extraFields.employee_number = inviteForm.employee_number
+      // employee_number는 hire_date 설정 시 DB 트리거로 자동 생성
       if (inviteForm.hire_date) extraFields.hire_date = inviteForm.hire_date
       if (inviteForm.position) extraFields.position = inviteForm.position
       if (inviteForm.employment_type) extraFields.employment_type = inviteForm.employment_type
@@ -390,7 +390,6 @@ export default function TabEmployees() {
         address: editForm.address || null,
         phone: editForm.phone || null,
         avatar_url: editForm.avatar_url || null,
-        employee_number: editForm.employee_number || null,
         hire_date: editForm.hire_date || null,
         position: editForm.position || null,
         employment_type: editForm.employment_type || null,
@@ -797,16 +796,20 @@ export default function TabEmployees() {
           </div>
           {/* 사원번호 / 입사일 */}
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              id="invite-empno"
-              label="사원번호"
-              value={inviteForm.employee_number}
-              onChange={(e) => setInviteForm({ ...inviteForm, employee_number: e.target.value })}
-              placeholder="IO-2026-001"
-            />
+            <div>
+              <Input
+                id="invite-empno"
+                label="사원번호"
+                value={inviteForm.employee_number}
+                onChange={(e) => setInviteForm({ ...inviteForm, employee_number: e.target.value })}
+                placeholder="자동 생성 (입사일 기반)"
+                disabled
+              />
+              <p className="text-[10px] text-gray-400 mt-1">입사일 저장 시 자동 생성 (YYMMDDRR)</p>
+            </div>
             <Input
               id="invite-hire-date"
-              label="입사일"
+              label="입사일 *"
               type="date"
               value={inviteForm.hire_date}
               onChange={(e) => setInviteForm({ ...inviteForm, hire_date: e.target.value })}
@@ -946,13 +949,17 @@ export default function TabEmployees() {
         <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           {/* 사원번호 / 입사일 */}
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              id="edit-empno"
-              label="사원번호"
-              value={editForm.employee_number}
-              onChange={(e) => setEditForm({ ...editForm, employee_number: e.target.value })}
-              placeholder="IO-2026-001"
-            />
+            <div>
+              <Input
+                id="edit-empno"
+                label="사원번호"
+                value={editForm.employee_number}
+                onChange={(e) => setEditForm({ ...editForm, employee_number: e.target.value })}
+                placeholder="자동 생성"
+                disabled
+              />
+              <p className="text-[10px] text-gray-400 mt-1">입사일 기반 자동 생성 (YYMMDDRR)</p>
+            </div>
             <Input
               id="edit-hire-date"
               label="입사일"
