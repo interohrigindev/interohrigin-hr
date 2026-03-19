@@ -72,10 +72,25 @@ export function useAIAgent() {
         table: 'agent_messages',
         filter: `conversation_id=eq.${activeConvId}`,
       }, (payload) => {
+        const newMsg = payload.new as AgentMessage
         setMessages((prev) => {
-          // 중복 방지
-          if (prev.some((m) => m.id === (payload.new as AgentMessage).id)) return prev
-          return [...prev, payload.new as AgentMessage]
+          // 이미 실제 ID로 존재하면 무시
+          if (prev.some((m) => m.id === newMsg.id)) return prev
+          // 낙관적 업데이트(temp-/local-/err-)를 실제 메시지로 교체
+          const hasTemp = prev.some((m) => m.id.startsWith('temp-') || m.id.startsWith('local-') || m.id.startsWith('err-'))
+          if (hasTemp) {
+            // 같은 role+content의 temp 메시지를 찾아서 교체
+            const tempIdx = prev.findIndex((m) =>
+              (m.id.startsWith('temp-') || m.id.startsWith('local-') || m.id.startsWith('err-'))
+              && m.role === newMsg.role && m.content === newMsg.content
+            )
+            if (tempIdx >= 0) {
+              const next = [...prev]
+              next[tempIdx] = newMsg
+              return next
+            }
+          }
+          return [...prev, newMsg]
         })
       })
       .subscribe()
@@ -231,9 +246,6 @@ export function useAIAgent() {
           created_at: new Date().toISOString(),
         }])
       }
-
-      // 메시지 다시 로드 (Realtime과 별개로 확실히 동기화)
-      await loadMessages(convId)
 
       // 첫 응답이면 자동 제목 생성
       const conv = conversations.find((c) => c.id === convId)
