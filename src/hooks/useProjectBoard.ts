@@ -184,15 +184,20 @@ export function useProjectBoard() {
 
   // ─── Fetch updates for a project ───────────────────────────
   async function fetchUpdates(projectId: string): Promise<(ProjectUpdate & { author_name: string })[]> {
-    const { data } = await supabase
-      .from('project_updates')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: false })
+    const [updRes, empRes] = await Promise.all([
+      supabase
+        .from('project_updates')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false }),
+      supabase.from('employees').select('id, name').eq('is_active', true),
+    ])
 
-    return ((data || []) as ProjectUpdate[]).map((u) => ({
+    const emps = (empRes.data || []) as { id: string; name: string }[]
+
+    return ((updRes.data || []) as ProjectUpdate[]).map((u) => ({
       ...u,
-      author_name: employees.find((e) => e.id === u.author_id)?.name || '?',
+      author_name: emps.find((e) => e.id === u.author_id)?.name || '?',
     }))
   }
 

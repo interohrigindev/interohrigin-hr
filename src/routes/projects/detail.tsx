@@ -47,7 +47,8 @@ export default function ProjectDetailPage() {
     const data = await fetchUpdates(id)
     setUpdates(data)
     setUpdatesLoading(false)
-  }, [id, fetchUpdates])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
 
   useEffect(() => { loadUpdates() }, [loadUpdates])
 
