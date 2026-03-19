@@ -51,11 +51,10 @@ export default function PersonalityAnalysisPage() {
   }, [fetchEmployees])
 
   async function handleSelectEmployee(emp: EmployeeWithProfile) {
-    setSelectedEmployee(emp)
     setShowDetail(true)
     setAnalysisLoading(true)
     try {
-      const [analysisRes, visRes] = await Promise.all([
+      const [analysisRes, visRes, profileRes] = await Promise.all([
         supabase
           .from('personality_analysis')
           .select('*')
@@ -66,7 +65,20 @@ export default function PersonalityAnalysisPage() {
           .select('*')
           .eq('employee_id', emp.id)
           .limit(1),
+        supabase
+          .from('employee_profiles')
+          .select('*')
+          .eq('employee_id', emp.id)
+          .limit(1),
       ])
+
+      // employee_profiles를 직접 조회하여 병합 (JOIN RLS 이슈 우회)
+      const updatedEmp = { ...emp }
+      if (profileRes.data && profileRes.data.length > 0) {
+        updatedEmp.employee_profiles = profileRes.data as any
+      }
+      setSelectedEmployee(updatedEmp)
+
       setAnalyses((analysisRes.data ?? []) as any)
       if (visRes.data && visRes.data.length > 0) {
         const v = visRes.data[0] as any
