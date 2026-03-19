@@ -119,8 +119,27 @@ export const PROJECT_STATUS_COLORS: Record<ProjectStatus, string> = {
   cancelled: 'bg-red-100 text-red-700',
 }
 
-export const BRAND_COLORS: Record<string, string> = {
-  AZH: 'bg-purple-100 text-purple-700',
-  '드엘리사': 'bg-pink-100 text-pink-700',
-  '기타': 'bg-gray-100 text-gray-600',
+const BRAND_COLOR_PALETTE = [
+  'bg-purple-100 text-purple-700',
+  'bg-pink-100 text-pink-700',
+  'bg-sky-100 text-sky-700',
+  'bg-teal-100 text-teal-700',
+  'bg-orange-100 text-orange-700',
+  'bg-indigo-100 text-indigo-700',
+  'bg-lime-100 text-lime-700',
+  'bg-rose-100 text-rose-700',
+  'bg-cyan-100 text-cyan-700',
+  'bg-violet-100 text-violet-700',
+]
+
+export function getBrandColor(brand: string): string {
+  // Hash brand name to consistently pick a color
+  let hash = 0
+  for (let i = 0; i < brand.length; i++) hash = brand.charCodeAt(i) + ((hash << 5) - hash)
+  return BRAND_COLOR_PALETTE[Math.abs(hash) % BRAND_COLOR_PALETTE.length]
 }
+
+// Legacy compat
+export const BRAND_COLORS: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get: (_target, prop: string) => getBrandColor(prop),
+})

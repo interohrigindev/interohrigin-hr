@@ -8,6 +8,7 @@ import type {
 } from '@/types/project-board'
 
 interface EmployeeBasic { id: string; name: string; department_id: string | null }
+interface DepartmentBasic { id: string; name: string }
 
 export function useProjectBoard() {
   const { profile } = useAuth()
@@ -15,16 +16,18 @@ export function useProjectBoard() {
   const [templates, setTemplates] = useState<ProjectTemplate[]>([])
   const [permissions, setPermissions] = useState<BoardPermission[]>([])
   const [employees, setEmployees] = useState<EmployeeBasic[]>([])
+  const [departments, setDepartments] = useState<DepartmentBasic[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [projRes, stageRes, tmplRes, permRes, empRes] = await Promise.all([
+    const [projRes, stageRes, tmplRes, permRes, empRes, deptRes] = await Promise.all([
       supabase.from('project_boards').select('*').order('priority').order('created_at', { ascending: false }),
       supabase.from('pipeline_stages').select('*').order('stage_order'),
       supabase.from('project_templates').select('*').order('name'),
       supabase.from('board_permissions').select('*'),
       supabase.from('employees').select('id, name, department_id').eq('is_active', true).order('name'),
+      supabase.from('departments').select('id, name').order('name'),
     ])
 
     const allProjects = (projRes.data || []) as ProjectBoard[]
@@ -41,6 +44,7 @@ export function useProjectBoard() {
     setTemplates((tmplRes.data || []) as ProjectTemplate[])
     setPermissions((permRes.data || []) as BoardPermission[])
     setEmployees(emps)
+    setDepartments((deptRes.data || []) as DepartmentBasic[])
     setLoading(false)
   }, [])
 
@@ -250,7 +254,7 @@ export function useProjectBoard() {
   }
 
   return {
-    projects, templates, permissions, employees, loading,
+    projects, templates, permissions, employees, departments, loading,
     createProject, updateProject, deleteProject,
     updateStageStatus, updateStageDeadline,
     addUpdate, fetchUpdates, updateRequestStatus,

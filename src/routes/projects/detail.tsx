@@ -26,7 +26,7 @@ export default function ProjectDetailPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { profile } = useAuth()
-  const { projects, employees, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates, updateRequestStatus } = useProjectBoard()
+  const { projects, employees, departments, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates, updateRequestStatus } = useProjectBoard()
 
   const project = projects.find((p) => p.id === id)
 
@@ -406,9 +406,7 @@ export default function ProjectDetailPage() {
                     onChange={(e) => setRequestDept(e.target.value)}
                     options={[
                       { value: '', label: '선택' },
-                      { value: '디자인팀', label: '디자인팀' },
-                      { value: '영업팀', label: '영업팀' },
-                      { value: '경영지원팀', label: '경영지원팀' },
+                      ...departments.map((d) => ({ value: d.name, label: d.name })),
                     ]}
                   />
                   <Select

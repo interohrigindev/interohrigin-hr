@@ -13,9 +13,9 @@ import type { TemplateStage } from '@/types/project-board'
 export default function NewProjectPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const { templates, employees, createProject } = useProjectBoard()
+  const { templates, employees, departments, createProject } = useProjectBoard()
 
-  const [brand, setBrand] = useState('AZH')
+  const [brand, setBrand] = useState('')
   const [category, setCategory] = useState('제품')
   const [projectName, setProjectName] = useState('')
   const [launchDate, setLaunchDate] = useState('')
@@ -96,14 +96,14 @@ export default function NewProjectPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Select
-              label="브랜드"
+              label="브랜드/부서"
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
               options={[
-                { value: 'AZH', label: 'AZH' },
-                { value: '드엘리사', label: '드엘리사' },
-                { value: '기타', label: '기타' },
+                { value: '', label: '선택' },
+                ...departments.map((d) => ({ value: d.name, label: d.name })),
               ]}
+              placeholder="부서 선택"
             />
             <Select
               label="구분"
@@ -113,6 +113,10 @@ export default function NewProjectPage() {
                 { value: '제품', label: '제품' },
                 { value: '마케팅', label: '마케팅' },
                 { value: '이벤트', label: '이벤트' },
+                { value: '디자인', label: '디자인' },
+                { value: '영업', label: '영업' },
+                { value: '경영지원', label: '경영지원' },
+                { value: '기타', label: '기타' },
               ]}
             />
           </div>
