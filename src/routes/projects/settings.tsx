@@ -8,56 +8,47 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
 import { supabase } from '@/lib/supabase'
-import { DEFAULT_PIPELINE } from '@/types/project-board'
 
 // 전체 권한 자동 부여 대상
 const FULL_ACCESS_DEPTS = ['임원', '시스템관리자']
-// 부서별 권한 편집 가능한 본부
-const DEPT_PERMISSION_ORDER = ['경영관리본부', '마케팅영업본부', '브랜드사업본부']
+
+// 권한 필드 정의 (4가지만)
+const PERMISSION_FIELDS = [
+  { key: 'can_create_project', label: '생성', desc: '프로젝트를 새로 만들 수 있음' },
+  { key: 'can_delete_project', label: '삭제', desc: '프로젝트를 삭제할 수 있음' },
+  { key: 'can_comment', label: '코멘트', desc: '프로젝트에 코멘트를 작성할 수 있음' },
+  { key: 'can_view', label: '조회', desc: '프로젝트를 열람할 수 있음' },
+] as const
+
+type PermField = typeof PERMISSION_FIELDS[number]['key']
 
 export default function ProjectSettingsPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const { permissions, loading, refresh } = useProjectBoard()
+  const { permissions, departments, loading, refresh } = useProjectBoard()
   const [saving, setSaving] = useState(false)
-  const [edits, setEdits] = useState<Record<string, Record<string, boolean>>>({})
   const [fieldEdits, setFieldEdits] = useState<Record<string, Record<string, boolean>>>({})
 
   if (loading) return <PageSpinner />
 
-  // 부서를 정렬: 본부 먼저, 그 다음 기타 부서, 전체 권한 대상은 맨 아래
-  const sortedPermissions = [...permissions].sort((a, b) => {
-    const aIsFullAccess = FULL_ACCESS_DEPTS.includes(a.department)
-    const bIsFullAccess = FULL_ACCESS_DEPTS.includes(b.department)
-    if (aIsFullAccess !== bIsFullAccess) return aIsFullAccess ? 1 : -1
-    const aIdx = DEPT_PERMISSION_ORDER.indexOf(a.department)
-    const bIdx = DEPT_PERMISSION_ORDER.indexOf(b.department)
-    if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx
-    if (aIdx >= 0) return -1
-    if (bIdx >= 0) return 1
-    return a.department.localeCompare(b.department)
-  })
+  // DB에서 가져온 부서 기반으로 권한 정렬: 본부 먼저, 전체 권한 대상은 맨 아래
+  const deptNames = departments.map((d) => d.name).filter((n) => n !== '대표')
+  const sortedPermissions = [...permissions]
+    .filter((p) => !FULL_ACCESS_DEPTS.includes(p.department) ? deptNames.includes(p.department) : true)
+    .sort((a, b) => {
+      const aFull = FULL_ACCESS_DEPTS.includes(a.department)
+      const bFull = FULL_ACCESS_DEPTS.includes(b.department)
+      if (aFull !== bFull) return aFull ? 1 : -1
+      const aIdx = deptNames.indexOf(a.department)
+      const bIdx = deptNames.indexOf(b.department)
+      return aIdx - bIdx
+    })
 
   function isFullAccessDept(dept: string): boolean {
     return FULL_ACCESS_DEPTS.includes(dept)
   }
 
-  function isStageEditable(dept: string, stage: string): boolean {
-    if (isFullAccessDept(dept)) return true
-    if (edits[dept]?.[stage] !== undefined) return edits[dept][stage]
-    const perm = permissions.find((p) => p.department === dept)
-    return perm?.editable_stages?.includes(stage) || false
-  }
-
-  function toggleStage(dept: string, stage: string) {
-    if (isFullAccessDept(dept)) return
-    setEdits((prev) => ({
-      ...prev,
-      [dept]: { ...(prev[dept] || {}), [stage]: !isStageEditable(dept, stage) },
-    }))
-  }
-
-  function getFieldValue(dept: string, field: 'can_create_project' | 'can_delete_project' | 'can_edit_all_stages' | 'can_comment' | 'can_view'): boolean {
+  function getFieldValue(dept: string, field: PermField): boolean {
     if (isFullAccessDept(dept)) return true
     if (fieldEdits[dept]?.[field] !== undefined) return fieldEdits[dept][field]
     const perm = permissions.find((p) => p.department === dept)
@@ -68,7 +59,7 @@ export default function ProjectSettingsPage() {
     if (isFullAccessDept(dept)) return
     setFieldEdits((prev) => ({
       ...prev,
-      [dept]: { ...(prev[dept] || {}), [field]: !getFieldValue(dept, field as 'can_create_project') },
+      [dept]: { ...(prev[dept] || {}), [field]: !getFieldValue(dept, field as PermField) },
     }))
   }
 
@@ -77,23 +68,12 @@ export default function ProjectSettingsPage() {
     for (const perm of permissions) {
       if (isFullAccessDept(perm.department)) continue
 
-      const deptStageEdits = edits[perm.department]
       const deptFieldEdits = fieldEdits[perm.department]
-      if (!deptStageEdits && !deptFieldEdits) continue
+      if (!deptFieldEdits) continue
 
       const updateData: Record<string, unknown> = {}
-
-      if (deptStageEdits) {
-        updateData.editable_stages = DEFAULT_PIPELINE.filter((stage) => {
-          if (deptStageEdits[stage] !== undefined) return deptStageEdits[stage]
-          return perm.editable_stages?.includes(stage) || false
-        })
-      }
-
-      if (deptFieldEdits) {
-        for (const [field, value] of Object.entries(deptFieldEdits)) {
-          updateData[field] = value
-        }
+      for (const [field, value] of Object.entries(deptFieldEdits)) {
+        updateData[field] = value
       }
 
       if (Object.keys(updateData).length > 0) {
@@ -105,12 +85,11 @@ export default function ProjectSettingsPage() {
     }
     setSaving(false)
     toast('권한이 저장되었습니다', 'success')
-    setEdits({})
     setFieldEdits({})
     refresh()
   }
 
-  const hasChanges = Object.keys(edits).length > 0 || Object.keys(fieldEdits).length > 0
+  const hasChanges = Object.keys(fieldEdits).length > 0
 
   return (
     <div className="space-y-6">
@@ -131,7 +110,7 @@ export default function ProjectSettingsPage() {
                 임원 및 시스템 관리자는 모든 권한이 자동 부여됩니다.
               </p>
               <p className="text-xs text-amber-600 mt-0.5">
-                전체 프로젝트 생성/삭제/편집/코멘트 권한을 포함하며, 변경할 수 없습니다.
+                전체 프로젝트 생성/삭제/코멘트/조회 권한을 포함하며, 변경할 수 없습니다.
               </p>
             </div>
           </div>
@@ -143,7 +122,7 @@ export default function ProjectSettingsPage() {
         <CardHeader>
           <CardTitle className="text-base">부서별 권한 매트릭스</CardTitle>
           <p className="text-xs text-gray-500 mt-1">
-            부서별로 프로젝트 생성, 삭제, 단계 편집, 코멘트 권한을 설정합니다.
+            부서별로 프로젝트 생성, 삭제, 코멘트, 조회 권한을 설정합니다.
             공유된 프로젝트에서 해당 부서원이 수행할 수 있는 작업을 결정합니다.
           </p>
         </CardHeader>
@@ -153,15 +132,11 @@ export default function ProjectSettingsPage() {
               <thead>
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-3 px-3 font-medium text-gray-600">부서</th>
-                  <th className="text-center py-3 px-2 font-medium text-gray-600 text-xs">생성</th>
-                  <th className="text-center py-3 px-2 font-medium text-gray-600 text-xs">삭제</th>
-                  {DEFAULT_PIPELINE.map((stage) => (
-                    <th key={stage} className="text-center py-3 px-1 font-medium text-gray-600 text-xs whitespace-nowrap">
-                      {stage}
+                  {PERMISSION_FIELDS.map((f) => (
+                    <th key={f.key} className="text-center py-3 px-4 font-medium text-gray-600 text-xs">
+                      {f.label}
                     </th>
                   ))}
-                  <th className="text-center py-3 px-2 font-medium text-gray-600 text-xs">코멘트</th>
-                  <th className="text-center py-3 px-2 font-medium text-gray-600 text-xs">조회</th>
                 </tr>
               </thead>
               <tbody>
@@ -183,68 +158,20 @@ export default function ProjectSettingsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-2 text-center">
-                        {fullAccess ? (
-                          <span className="text-amber-600 font-bold text-xs">ALL</span>
-                        ) : (
-                          <input
-                            type="checkbox"
-                            checked={getFieldValue(perm.department, 'can_create_project')}
-                            onChange={() => toggleField(perm.department, 'can_create_project')}
-                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                          />
-                        )}
-                      </td>
-                      <td className="py-3 px-2 text-center">
-                        {fullAccess ? (
-                          <span className="text-amber-600 font-bold text-xs">ALL</span>
-                        ) : (
-                          <input
-                            type="checkbox"
-                            checked={getFieldValue(perm.department, 'can_delete_project')}
-                            onChange={() => toggleField(perm.department, 'can_delete_project')}
-                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                          />
-                        )}
-                      </td>
-                      {DEFAULT_PIPELINE.map((stage) => (
-                        <td key={stage} className="py-3 px-1 text-center">
+                      {PERMISSION_FIELDS.map((f) => (
+                        <td key={f.key} className="py-3 px-4 text-center">
                           {fullAccess ? (
                             <span className="text-amber-600 font-bold text-xs">ALL</span>
                           ) : (
                             <input
                               type="checkbox"
-                              checked={isStageEditable(perm.department, stage)}
-                              onChange={() => toggleStage(perm.department, stage)}
+                              checked={getFieldValue(perm.department, f.key)}
+                              onChange={() => toggleField(perm.department, f.key)}
                               className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                             />
                           )}
                         </td>
                       ))}
-                      <td className="py-3 px-2 text-center">
-                        {fullAccess ? (
-                          <span className="text-amber-600 font-bold text-xs">ALL</span>
-                        ) : (
-                          <input
-                            type="checkbox"
-                            checked={getFieldValue(perm.department, 'can_comment')}
-                            onChange={() => toggleField(perm.department, 'can_comment')}
-                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                          />
-                        )}
-                      </td>
-                      <td className="py-3 px-2 text-center">
-                        {fullAccess ? (
-                          <span className="text-amber-600 font-bold text-xs">ALL</span>
-                        ) : (
-                          <input
-                            type="checkbox"
-                            checked={getFieldValue(perm.department, 'can_view')}
-                            onChange={() => toggleField(perm.department, 'can_view')}
-                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                          />
-                        )}
-                      </td>
                     </tr>
                   )
                 })}

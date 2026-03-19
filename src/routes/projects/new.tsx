@@ -11,10 +11,10 @@ import { useProjectBoard } from '@/hooks/useProjectBoard'
 import { useAuth } from '@/hooks/useAuth'
 import type { TemplateStage } from '@/types/project-board'
 
-// 대표 부서 제외, 실제 본부만 표시
-const SHAREABLE_DEPARTMENTS = ['경영관리본부', '마케팅영업본부', '브랜드사업본부']
 // 임원/관리자 자동 전체 권한 역할
 const FULL_ACCESS_ROLES = ['ceo', 'director', 'division_head', 'admin']
+// 제외할 부서명
+const EXCLUDED_DEPTS = ['대표']
 
 export default function NewProjectPage() {
   const navigate = useNavigate()
@@ -34,6 +34,9 @@ export default function NewProjectPage() {
   // 임원/관리자인 경우 자동 전체 권한
   const isFullAccess = profile?.role && FULL_ACCESS_ROLES.includes(profile.role)
 
+  // DB에서 가져온 부서 중 대표 제외
+  const shareableDepts = departments.filter((d) => !EXCLUDED_DEPTS.includes(d.name))
+  const shareableDeptNames = shareableDepts.map((d) => d.name)
 
   const selectedTemplate = templates.find((t) => t.template_type === templateType)
   const templateStages = (selectedTemplate?.stages || []) as TemplateStage[]
@@ -55,7 +58,7 @@ export default function NewProjectPage() {
     setSaving(true)
     // 임원/관리자는 모든 부서 공유가 기본
     const finalSharedDepts = isFullAccess
-      ? SHAREABLE_DEPARTMENTS
+      ? shareableDeptNames
       : sharedDepts
     const result = await createProject({
       brand,
@@ -118,7 +121,7 @@ export default function NewProjectPage() {
               onChange={(e) => setBrand(e.target.value)}
               options={[
                 { value: '', label: '선택' },
-                ...departments.map((d) => ({ value: d.name, label: d.name })),
+                ...shareableDepts.map((d) => ({ value: d.name, label: d.name })),
               ]}
               placeholder="부서 선택"
             />
@@ -200,16 +203,16 @@ export default function NewProjectPage() {
             </div>
           )}
 
-          {/* 부서 체크박스 목록 */}
+          {/* 부서 체크박스 목록 — DB에서 동적 로드 */}
           <div className="space-y-2">
-            {SHAREABLE_DEPARTMENTS.map((deptName) => {
-              const deptPerm = permissions.find((p) => p.department === deptName)
-              const checked = isFullAccess || sharedDepts.includes(deptName)
-              const isBrandDept = deptName === brand
+            {shareableDepts.map((dept) => {
+              const deptPerm = permissions.find((p) => p.department === dept.name)
+              const checked = isFullAccess || sharedDepts.includes(dept.name)
+              const isBrandDept = dept.name === brand
 
               return (
                 <label
-                  key={deptName}
+                  key={dept.id}
                   className={`flex items-center justify-between p-3 rounded-lg border transition-colors cursor-pointer ${
                     checked
                       ? 'border-brand-300 bg-brand-50'
@@ -220,13 +223,13 @@ export default function NewProjectPage() {
                     <input
                       type="checkbox"
                       checked={checked}
-                      disabled={isFullAccess}
+                      disabled={!!isFullAccess}
                       onChange={() => {
                         if (isFullAccess) return
                         setSharedDepts((prev) =>
-                          prev.includes(deptName)
-                            ? prev.filter((d) => d !== deptName)
-                            : [...prev, deptName]
+                          prev.includes(dept.name)
+                            ? prev.filter((d) => d !== dept.name)
+                            : [...prev, dept.name]
                         )
                       }}
                       className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
@@ -234,17 +237,20 @@ export default function NewProjectPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <Building2 className="h-4 w-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-800">{deptName}</span>
+                        <span className="text-sm font-medium text-gray-800">{dept.name}</span>
                         {isBrandDept && (
                           <Badge variant="default" className="text-[10px]">소속</Badge>
                         )}
                       </div>
                       <p className="text-xs text-gray-500 mt-0.5 ml-6">
-                        {deptPerm?.can_edit_all_stages
-                          ? '전체 단계 편집 가능'
-                          : deptPerm?.editable_stages?.length
-                            ? `편집 가능: ${deptPerm.editable_stages.join(', ')}`
-                            : '조회 및 코멘트'}
+                        {deptPerm
+                          ? [
+                              deptPerm.can_create_project && '생성',
+                              deptPerm.can_delete_project && '삭제',
+                              deptPerm.can_comment && '코멘트',
+                              deptPerm.can_view && '조회',
+                            ].filter(Boolean).join(' · ')
+                          : '조회 · 코멘트'}
                       </p>
                     </div>
                   </div>
