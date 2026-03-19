@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Loader2, Shield, Building2,
-  Plus, Trash2, ChevronUp, ChevronDown, Pencil, Save,
+  Plus, Trash2, ChevronUp, ChevronDown, Pencil, Save, Sparkles,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -12,6 +12,9 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
+import { generateAIContent } from '@/lib/ai-client'
+import type { AIConfig } from '@/lib/ai-client'
 import type { TemplateStage } from '@/types/project-board'
 
 const FULL_ACCESS_ROLES = ['ceo', 'director', 'division_head', 'admin']
@@ -39,10 +42,15 @@ export default function NewProjectPage() {
   const [sharedDepts, setSharedDepts] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
-  // 커스텀 템플릿 저장 모달
+  // 커스텀 템플릿 저장
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [newTemplateName, setNewTemplateName] = useState('')
   const [savingTemplate, setSavingTemplate] = useState(false)
+
+  // AI 파이프라인 제안
+  const [projectDesc, setProjectDesc] = useState('')
+  const [showDescInput, setShowDescInput] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
 
   const isFullAccess = profile?.role && FULL_ACCESS_ROLES.includes(profile.role)
   const shareableDepts = departments.filter((d) => !EXCLUDED_DEPTS.includes(d.name))
@@ -123,11 +131,83 @@ export default function NewProjectPage() {
   // ─── 커스텀 템플릿 생성 (빈 템플릿) ─────────────────────
   function handleStartCustom() {
     setSelectedTemplateId('')
+    setShowDescInput(true)
     setEditableStages([
       { name: '단계 1', order: 1, default_duration_days: 7, deadline: addDays(new Date(), 7) },
       { name: '단계 2', order: 2, default_duration_days: 7, deadline: addDays(new Date(), 14) },
       { name: '단계 3', order: 3, default_duration_days: 7, deadline: addDays(new Date(), 21) },
     ])
+  }
+
+  // ─── AI 파이프라인 제안 ────────────────────────────────────
+  async function handleAISuggest() {
+    if (!projectDesc.trim()) { toast('프로젝트 성격을 입력하세요', 'error'); return }
+
+    setAiLoading(true)
+    try {
+      // ai_settings에서 활성 설정 가져오기
+      const { data: settings } = await supabase
+        .from('ai_settings')
+        .select('*')
+        .eq('is_active', true)
+        .limit(1)
+        .single()
+
+      if (!settings) {
+        toast('AI 설정이 없습니다. 관리자 설정에서 API 키를 등록하세요.', 'error')
+        setAiLoading(false)
+        return
+      }
+
+      const aiConfig: AIConfig = {
+        provider: settings.provider,
+        apiKey: settings.api_key,
+        model: settings.model,
+      }
+
+      const prompt = `당신은 프로젝트 관리 전문가입니다. 아래 프로젝트 정보를 바탕으로 최적의 파이프라인 단계를 제안해주세요.
+
+부서: ${selectedDept}
+프로젝트 성격: ${projectDesc}
+
+요구사항:
+- 4~8개의 단계를 제안
+- 각 단계별 이름과 소요 기간(일)을 지정
+- 반드시 아래 JSON 형식만 출력 (다른 텍스트 없이)
+
+[
+  {"name": "단계명", "days": 소요일수},
+  {"name": "단계명", "days": 소요일수}
+]`
+
+      const response = await generateAIContent(aiConfig, prompt)
+
+      // JSON 파싱
+      const jsonMatch = response.content.match(/\[[\s\S]*\]/)
+      if (!jsonMatch) throw new Error('AI 응답 파싱 실패')
+
+      const suggested = JSON.parse(jsonMatch[0]) as { name: string; days: number }[]
+
+      if (!Array.isArray(suggested) || suggested.length === 0) throw new Error('유효하지 않은 응답')
+
+      const stages: TemplateStage[] = suggested.map((s, i) => {
+        let daysSoFar = 0
+        for (let j = 0; j <= i; j++) daysSoFar += suggested[j].days
+        return {
+          name: s.name,
+          order: i + 1,
+          default_duration_days: s.days,
+          deadline: addDays(new Date(), daysSoFar),
+        }
+      })
+
+      setEditableStages(stages)
+      toast(`AI가 ${stages.length}개 단계를 제안했습니다`, 'success')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'AI 호출 실패'
+      toast(msg, 'error')
+    }
+    setAiLoading(false)
   }
 
   // ─── 현재 파이프라인을 템플릿으로 저장 ────────────────────
@@ -287,7 +367,7 @@ export default function NewProjectPage() {
                   2. 파이프라인 편집
                 </CardTitle>
                 <p className="text-xs text-gray-500 mt-1">
-                  단계를 추가/삭제/순서변경할 수 있습니다. 마감일을 직접 설정하세요.
+                  단계를 추가/삭제/순서변경할 수 있습니다. AI 제안을 활용해보세요.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -302,6 +382,39 @@ export default function NewProjectPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {/* AI 프로젝트 성격 입력 + 제안 */}
+            {(showDescInput || editableStages.length > 0) && (
+              <div className="mb-4 p-3 bg-violet-50 border border-violet-200 rounded-lg space-y-2">
+                <p className="text-xs font-medium text-violet-700 flex items-center gap-1">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  프로젝트 성격을 입력하면 AI가 파이프라인 단계를 제안합니다.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={projectDesc}
+                    onChange={(e) => setProjectDesc(e.target.value)}
+                    placeholder="예: 신규 헤어케어 라인 론칭을 위한 마케팅 캠페인"
+                    className="flex-1 text-sm bg-white border border-violet-200 rounded-lg px-3 py-2 focus:outline-none focus:border-violet-400 placeholder:text-gray-400"
+                    onKeyDown={(e) => { if (e.key === 'Enter' && projectDesc.trim()) handleAISuggest() }}
+                  />
+                  <Button
+                    onClick={handleAISuggest}
+                    disabled={aiLoading || !projectDesc.trim()}
+                    className="bg-violet-600 hover:bg-violet-700 text-white shrink-0"
+                  >
+                    {aiLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <><Sparkles className="h-4 w-4 mr-1" /> AI 제안</>
+                    )}
+                  </Button>
+                </div>
+                {aiLoading && (
+                  <p className="text-[11px] text-violet-500 animate-pulse">AI가 최적의 파이프라인을 분석 중입니다...</p>
+                )}
+              </div>
+            )}
             {/* 템플릿 저장 폼 */}
             {showSaveTemplate && (
               <div className="flex items-center gap-2 mb-3 p-2 bg-brand-50 border border-brand-200 rounded-lg">
