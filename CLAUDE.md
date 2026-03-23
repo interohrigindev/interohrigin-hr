@@ -66,9 +66,16 @@ interohrigin-hr/
 
 ### 기존 테이블 (수정 금지)
 - `employees` — 직원 목록
-- `evaluations` — 평가 기간
-- `evaluation_items` — 개별 평가 항목/코멘트
-- `users` — 인증 사용자
+- `departments` — 부서 목록
+- `evaluation_periods` — 평가 기간 (year, quarter, status)
+- `evaluation_categories` — 평가 항목 카테고리
+- `evaluation_items` — 개별 평가 항목
+- `evaluation_targets` — 평가 대상 시트 (기간 + 직원)
+- `self_evaluations` — 자기평가 응답
+- `evaluator_scores` — 평가자 점수
+- `evaluator_comments` — 평가자 코멘트
+- `evaluation_weights` — 평가자 역할별 가중치
+- `grade_criteria` — 등급 기준
 
 ### 신규 추가 테이블
 
