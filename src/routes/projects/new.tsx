@@ -29,7 +29,7 @@ function addDays(from: Date, days: number): string {
 export default function NewProjectPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const { templates, employees, departments, getTemplatesForDepartment, createProject, saveTemplate } = useProjectBoard()
+  const { templates, employees, departments, getTemplatesForDepartment, createProject, updateProject, saveTemplate } = useProjectBoard()
   const { profile } = useAuth()
 
   const [selectedDept, setSelectedDept] = useState('')
@@ -40,6 +40,9 @@ export default function NewProjectPage() {
   const [launchDate, setLaunchDate] = useState('')
   const [assigneeIds, setAssigneeIds] = useState<string[]>([])
   const [sharedDepts, setSharedDepts] = useState<string[]>([])
+  const [managerId, setManagerId] = useState('')
+  const [leaderId, setLeaderId] = useState('')
+  const [executiveId, setExecutiveId] = useState('')
   const [saving, setSaving] = useState(false)
 
   // 커스텀 템플릿 저장
@@ -251,6 +254,16 @@ export default function NewProjectPage() {
     setSaving(false)
 
     if (result.error) { toast('생성 실패: ' + result.error, 'error'); return }
+
+    // 역할 배정
+    if (result.id && (managerId || leaderId || executiveId)) {
+      await updateProject(result.id, {
+        manager_id: managerId || null,
+        leader_id: leaderId || null,
+        executive_id: executiveId || null,
+      } as any)
+    }
+
     toast('프로젝트가 생성되었습니다', 'success')
     navigate(`/admin/projects/${result.id}`)
   }
@@ -530,6 +543,28 @@ export default function NewProjectPage() {
               value={launchDate}
               onChange={(e) => setLaunchDate(e.target.value)}
             />
+
+            {/* 역할 배정 */}
+            <div className="grid grid-cols-3 gap-3">
+              <Select
+                label="프로젝트 담당자"
+                value={managerId}
+                onChange={(e) => setManagerId(e.target.value)}
+                options={[{ value: '', label: '미지정' }, ...employees.map(e => ({ value: e.id, label: e.name }))]}
+              />
+              <Select
+                label="프로젝트 리더"
+                value={leaderId}
+                onChange={(e) => setLeaderId(e.target.value)}
+                options={[{ value: '', label: '미지정' }, ...employees.map(e => ({ value: e.id, label: e.name }))]}
+              />
+              <Select
+                label="프로젝트 이사"
+                value={executiveId}
+                onChange={(e) => setExecutiveId(e.target.value)}
+                options={[{ value: '', label: '미지정' }, ...employees.map(e => ({ value: e.id, label: e.name }))]}
+              />
+            </div>
 
             {/* 담당자 — 부서별 그룹 */}
             <div>

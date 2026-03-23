@@ -38,6 +38,9 @@ export function useProjectBoard() {
       ...p,
       stages: allStages.filter((s) => s.project_id === p.id),
       assignee_names: p.assignee_ids?.map((id) => emps.find((e) => e.id === id)?.name || '?') || [],
+      manager_name: p.manager_id ? emps.find((e) => e.id === p.manager_id)?.name : undefined,
+      leader_name: p.leader_id ? emps.find((e) => e.id === p.leader_id)?.name : undefined,
+      executive_name: p.executive_id ? emps.find((e) => e.id === p.executive_id)?.name : undefined,
     }))
 
     setProjects(enriched)
@@ -181,6 +184,7 @@ export function useProjectBoard() {
       })
     }
 
+    await fetchData()
     return { error: null }
   }
 
@@ -195,6 +199,7 @@ export function useProjectBoard() {
       .eq('id', projectId)
 
     if (error) return { error: error.message }
+    await fetchData()
     return { error: null }
   }
 
@@ -267,6 +272,7 @@ export function useProjectBoard() {
       .update({ deadline })
       .eq('id', stageId)
     if (error) return { error: error.message }
+    await fetchData()
     return { error: null }
   }
 
@@ -327,6 +333,16 @@ export function useProjectBoard() {
     return permissions.find((p) => p.can_view) || null
   }
 
+  function canEditProject(): boolean {
+    if (!profile?.role) return false
+    return ['director', 'division_head', 'ceo', 'admin'].includes(profile.role)
+  }
+
+  function canDeleteProject(): boolean {
+    if (!profile?.role) return false
+    return ['director', 'division_head', 'ceo', 'admin'].includes(profile.role)
+  }
+
   return {
     projects, templates, permissions, employees, departments, loading,
     createProject, updateProject, deleteProject,
@@ -334,6 +350,7 @@ export function useProjectBoard() {
     addStage, removeStage, updateStageName, reorderStages,
     addUpdate, fetchUpdates, updateRequestStatus,
     getMyPermission, getTemplatesForDepartment, saveTemplate,
+    canEditProject, canDeleteProject,
     refresh: fetchData,
   }
 }

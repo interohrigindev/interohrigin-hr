@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Plus, Table2, Columns3, Calendar, Clock,
+  Plus, Table2, Columns3, Calendar, Clock, Trash2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -36,7 +36,7 @@ function getDeadlineColor(days: number | null): string {
 export default function ProjectBoardPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const { projects, loading, updateStageStatus } = useProjectBoard()
+  const { projects, loading, updateStageStatus, deleteProject, canDeleteProject } = useProjectBoard()
 
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [filterBrand, setFilterBrand] = useState('')
@@ -85,17 +85,21 @@ export default function ProjectBoardPage() {
             <th className="text-left py-3 px-2 font-medium text-gray-600 whitespace-nowrap">구분</th>
             <th className="text-left py-3 px-2 font-medium text-gray-600 min-w-[160px]">프로젝트명</th>
             <th className="text-left py-3 px-2 font-medium text-gray-600 whitespace-nowrap">출시일</th>
+            <th className="text-left py-3 px-2 font-medium text-gray-600 whitespace-nowrap">참여자</th>
             <th className="text-left py-3 px-2 font-medium text-gray-600 whitespace-nowrap">담당자</th>
+            <th className="text-left py-3 px-2 font-medium text-gray-600 whitespace-nowrap">리더</th>
+            <th className="text-left py-3 px-2 font-medium text-gray-600 whitespace-nowrap">이사</th>
             {DEFAULT_PIPELINE.map((stage) => (
               <th key={stage} className="text-center py-3 px-1 font-medium text-gray-600 whitespace-nowrap min-w-[80px]">
                 {stage}
               </th>
             ))}
+            {canDeleteProject() && <th className="py-3 px-1" />}
           </tr>
         </thead>
         <tbody>
           {filtered.length === 0 ? (
-            <tr><td colSpan={12} className="text-center py-12 text-gray-400">프로젝트가 없습니다</td></tr>
+            <tr><td colSpan={20} className="text-center py-12 text-gray-400">프로젝트가 없습니다</td></tr>
           ) : (
             filtered.map((project) => (
               <tr key={project.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -122,6 +126,9 @@ export default function ProjectBoardPage() {
                 <td className="py-2.5 px-2 text-xs text-gray-600 max-w-[100px] truncate">
                   {project.assignee_names?.join(', ') || '-'}
                 </td>
+                <td className="py-2.5 px-2 text-xs text-gray-600">{project.manager_name || '-'}</td>
+                <td className="py-2.5 px-2 text-xs text-gray-600">{project.leader_name || '-'}</td>
+                <td className="py-2.5 px-2 text-xs text-gray-600">{project.executive_name || '-'}</td>
                 {DEFAULT_PIPELINE.map((stageName) => {
                   const stage = project.stages.find((s) => s.stage_name === stageName)
                   if (!stage) return <td key={stageName} className="py-2.5 px-1 text-center text-gray-300">-</td>
@@ -148,6 +155,23 @@ export default function ProjectBoardPage() {
                     </td>
                   )
                 })}
+                {canDeleteProject() && (
+                  <td className="py-2.5 px-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (confirm(`"${project.project_name}" 프로젝트를 삭제하시겠습니까?`)) {
+                          deleteProject(project.id)
+                          toast('프로젝트가 삭제되었습니다', 'success')
+                        }
+                      }}
+                      className="p-1 text-gray-300 hover:text-red-500"
+                      title="삭제"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))
           )}
@@ -212,6 +236,12 @@ export default function ProjectBoardPage() {
                       <p className="text-[10px] text-gray-500 mt-1 truncate">
                         {project.assignee_names?.join(', ')}
                       </p>
+                      {(project.manager_name || project.leader_name) && (
+                        <p className="text-[9px] text-gray-400 mt-0.5 truncate">
+                          {project.manager_name && `담당: ${project.manager_name}`}
+                          {project.leader_name && ` · 리더: ${project.leader_name}`}
+                        </p>
+                      )}
                     </button>
                   )
                 })}

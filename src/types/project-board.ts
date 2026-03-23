@@ -17,6 +17,9 @@ export interface ProjectBoard {
   status: ProjectStatus
   priority: number
   assignee_ids: string[]
+  manager_id: string | null
+  leader_id: string | null
+  executive_id: string | null
   department: string
   shared_departments: string[]
   template_type: string | null
@@ -90,6 +93,9 @@ export interface TemplateStage {
 export interface ProjectWithStages extends ProjectBoard {
   stages: PipelineStage[]
   assignee_names?: string[]
+  manager_name?: string
+  leader_name?: string
+  executive_name?: string
 }
 
 export const DEFAULT_PIPELINE = ['시장조사', '제형', '패키지', '판매가', '상세페이지', '촬영', '마케팅']

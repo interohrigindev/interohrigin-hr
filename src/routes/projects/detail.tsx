@@ -11,12 +11,13 @@ import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
+import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import type { ProjectUpdate, StageStatus } from '@/types/project-board'
+import type { ProjectUpdate, ProjectStatus, StageStatus } from '@/types/project-board'
 import type { Task, TaskPriority, TaskStatus } from '@/types/work'
 import { STAGE_STATUS_COLORS, STAGE_STATUS_DOT, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from '@/types/project-board'
 
@@ -32,6 +33,7 @@ export default function ProjectDetailPage() {
     updateStageStatus, updateStageDeadline,
     addStage, removeStage, updateStageName, reorderStages,
     addUpdate, fetchUpdates, updateRequestStatus,
+    updateProject, deleteProject, canEditProject, canDeleteProject,
   } = useProjectBoard()
 
   const project = projects.find((p) => p.id === id)
@@ -59,6 +61,20 @@ export default function ProjectDetailPage() {
   const [requestContent, setRequestContent] = useState('')
   const [requestDept, setRequestDept] = useState('')
   const [requestStageId, setRequestStageId] = useState('')
+
+  // Project edit dialog
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editForm, setEditForm] = useState({
+    project_name: '',
+    brand: '',
+    category: '',
+    launch_date: '',
+    status: 'active' as ProjectStatus,
+    assignee_ids: [] as string[],
+    manager_id: '',
+    leader_id: '',
+    executive_id: '',
+  })
 
   // Pipeline editing
   const [pipelineEditMode, setPipelineEditMode] = useState(false)
@@ -110,6 +126,51 @@ export default function ProjectDetailPage() {
     const next: Record<TaskStatus, TaskStatus> = { todo: 'in_progress', in_progress: 'done', done: 'todo', cancelled: 'todo' }
     await supabase.from('tasks').update({ status: next[task.status] }).eq('id', task.id)
     loadTasks()
+  }
+
+  function openEditDialog() {
+    if (!project) return
+    setEditForm({
+      project_name: project.project_name,
+      brand: project.brand,
+      category: project.category,
+      launch_date: project.launch_date || '',
+      status: project.status,
+      assignee_ids: project.assignee_ids || [],
+      manager_id: project.manager_id || '',
+      leader_id: project.leader_id || '',
+      executive_id: project.executive_id || '',
+    })
+    setShowEditDialog(true)
+  }
+
+  async function handleSaveEdit() {
+    if (!project) return
+    setSaving(true)
+    const result = await updateProject(project.id, {
+      project_name: editForm.project_name,
+      brand: editForm.brand,
+      category: editForm.category,
+      launch_date: editForm.launch_date || null,
+      status: editForm.status,
+      assignee_ids: editForm.assignee_ids,
+      manager_id: editForm.manager_id || null,
+      leader_id: editForm.leader_id || null,
+      executive_id: editForm.executive_id || null,
+    } as any)
+    setSaving(false)
+    if (result.error) { toast('수정 실패: ' + result.error, 'error'); return }
+    toast('프로젝트가 수정되었습니다', 'success')
+    setShowEditDialog(false)
+  }
+
+  async function handleDeleteProject() {
+    if (!project) return
+    if (!confirm(`"${project.project_name}" 프로젝트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return
+    const result = await deleteProject(project.id)
+    if (result.error) { toast('삭제 실패: ' + result.error, 'error'); return }
+    toast('프로젝트가 삭제되었습니다', 'success')
+    navigate('/admin/projects')
   }
 
   if (!project) return <PageSpinner />
@@ -199,8 +260,23 @@ export default function ProjectDetailPage() {
             <Badge className={PROJECT_STATUS_COLORS[project.status]}>{PROJECT_STATUS_LABELS[project.status]}</Badge>
           </div>
           <p className="text-sm text-gray-500">
-            {project.brand} · {project.category} · 출시: {project.launch_date || '미정'} · 담당: {project.assignee_names?.join(', ')}
+            {project.brand} · {project.category} · 출시: {project.launch_date || '미정'} · 참여: {project.assignee_names?.join(', ')}
+            {project.manager_name && ` · 담당: ${project.manager_name}`}
+            {project.leader_name && ` · 리더: ${project.leader_name}`}
+            {project.executive_name && ` · 이사: ${project.executive_name}`}
           </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {canEditProject() && (
+            <Button size="sm" variant="outline" onClick={openEditDialog}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> 수정
+            </Button>
+          )}
+          {canDeleteProject() && (
+            <Button size="sm" variant="outline" onClick={handleDeleteProject} className="text-red-600 hover:bg-red-50">
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> 삭제
+            </Button>
+          )}
         </div>
       </div>
 
@@ -660,6 +736,101 @@ export default function ProjectDetailPage() {
           )}
         </div>
       )}
+
+      {/* ─── 프로젝트 수정 다이얼로그 ──────────────────────── */}
+      <Dialog open={showEditDialog} onClose={() => setShowEditDialog(false)} title="프로젝트 수정" className="max-w-xl">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          <Input
+            id="edit-project-name"
+            label="프로젝트명 *"
+            value={editForm.project_name}
+            onChange={(e) => setEditForm(f => ({ ...f, project_name: e.target.value }))}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="edit-brand"
+              label="브랜드"
+              value={editForm.brand}
+              onChange={(e) => setEditForm(f => ({ ...f, brand: e.target.value }))}
+            />
+            <Input
+              id="edit-category"
+              label="구분"
+              value={editForm.category}
+              onChange={(e) => setEditForm(f => ({ ...f, category: e.target.value }))}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="edit-launch-date"
+              label="출시일"
+              type="date"
+              value={editForm.launch_date}
+              onChange={(e) => setEditForm(f => ({ ...f, launch_date: e.target.value }))}
+            />
+            <Select
+              id="edit-status"
+              label="상태"
+              value={editForm.status}
+              onChange={(e) => setEditForm(f => ({ ...f, status: e.target.value as ProjectStatus }))}
+              options={[
+                { value: 'active', label: '진행중' },
+                { value: 'holding', label: '홀딩' },
+                { value: 'completed', label: '완료' },
+                { value: 'cancelled', label: '취소' },
+              ]}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Select
+              id="edit-manager"
+              label="담당자"
+              value={editForm.manager_id}
+              onChange={(e) => setEditForm(f => ({ ...f, manager_id: e.target.value }))}
+              options={[{ value: '', label: '미지정' }, ...employees.map(e => ({ value: e.id, label: e.name }))]}
+            />
+            <Select
+              id="edit-leader"
+              label="리더"
+              value={editForm.leader_id}
+              onChange={(e) => setEditForm(f => ({ ...f, leader_id: e.target.value }))}
+              options={[{ value: '', label: '미지정' }, ...employees.map(e => ({ value: e.id, label: e.name }))]}
+            />
+            <Select
+              id="edit-executive"
+              label="이사"
+              value={editForm.executive_id}
+              onChange={(e) => setEditForm(f => ({ ...f, executive_id: e.target.value }))}
+              options={[{ value: '', label: '미지정' }, ...employees.map(e => ({ value: e.id, label: e.name }))]}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">참여자</label>
+            <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-0.5">
+              {employees.map(emp => (
+                <label key={emp.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.assignee_ids.includes(emp.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) setEditForm(f => ({ ...f, assignee_ids: [...f.assignee_ids, emp.id] }))
+                      else setEditForm(f => ({ ...f, assignee_ids: f.assignee_ids.filter(id => id !== emp.id) }))
+                    }}
+                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <span className="text-sm text-gray-700">{emp.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>취소</Button>
+            <Button onClick={handleSaveEdit} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : '저장'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
 }

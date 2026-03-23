@@ -21,7 +21,7 @@ import {
 
 export default function UnifiedDashboard() {
   const navigate = useNavigate()
-  const { projects, loading: boardLoading } = useProjectBoard()
+  const { projects, loading: boardLoading, updateProject } = useProjectBoard()
 
   const [tasks, setTasks] = useState<Task[]>([])
   const [employees, setEmployees] = useState<{ id: string; name: string }[]>([])
@@ -163,10 +163,10 @@ export default function UnifiedDashboard() {
           ) : (
             <div className="space-y-3">
               {projectsWithProgress.filter((p) => p.status === 'active' || p.status === 'holding').slice(0, 10).map((p) => (
-                <button
+                <div
                   key={p.id}
                   onClick={() => navigate(`/admin/projects/${p.id}`)}
-                  className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -175,6 +175,20 @@ export default function UnifiedDashboard() {
                       <Badge className={PROJECT_STATUS_COLORS[p.status]}>{PROJECT_STATUS_LABELS[p.status]}</Badge>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <select
+                        value={p.priority}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation()
+                          updateProject(p.id, { priority: parseInt(e.target.value) } as any)
+                        }}
+                        className="text-[11px] w-14 rounded border border-gray-200 px-1 py-0.5 bg-white"
+                        title="우선순위"
+                      >
+                        {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                          <option key={n} value={n}>P{n}</option>
+                        ))}
+                      </select>
                       {p.currentStage && (
                         <span className="flex items-center gap-1">
                           <TrendingUp className="h-3 w-3" />
@@ -194,6 +208,15 @@ export default function UnifiedDashboard() {
                       )}
                     </div>
                   </div>
+
+                  {/* 역할 표시 */}
+                  {(p.manager_name || p.leader_name || p.executive_name) && (
+                    <div className="flex items-center gap-3 mb-2 text-[11px] text-gray-500">
+                      {p.manager_name && <span>담당: <span className="text-gray-700 font-medium">{p.manager_name}</span></span>}
+                      {p.leader_name && <span>리더: <span className="text-gray-700 font-medium">{p.leader_name}</span></span>}
+                      {p.executive_name && <span>이사: <span className="text-gray-700 font-medium">{p.executive_name}</span></span>}
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
@@ -224,7 +247,7 @@ export default function UnifiedDashboard() {
                       />
                     ))}
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
