@@ -22,6 +22,7 @@ import {
   UserX,
   UserCheck,
   Trash2,
+  KeyRound,
 } from 'lucide-react'
 
 /** 자기평가 대상이 될 수 있는 역할 */
@@ -111,6 +112,12 @@ export default function TabEmployees() {
     blood_type: '',
     hanja_name: '',
   })
+
+  // 비밀번호 변경
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
+  const [passwordTarget, setPasswordTarget] = useState<Employee | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [resettingPassword, setResettingPassword] = useState(false)
 
   // 필터
   const [filterDept, setFilterDept] = useState<string>('all')
@@ -450,6 +457,34 @@ export default function TabEmployees() {
     }
   }
 
+  function openPasswordReset(emp: Employee) {
+    setPasswordTarget(emp)
+    setNewPassword(generateTempPassword())
+    setShowPasswordDialog(true)
+  }
+
+  async function handleResetPassword() {
+    if (!passwordTarget) return
+    if (newPassword.length < 6) {
+      toast('비밀번호는 6자 이상이어야 합니다', 'error')
+      return
+    }
+
+    setResettingPassword(true)
+    const { error } = await supabase.rpc('reset_employee_password', {
+      p_employee_id: passwordTarget.id,
+      p_new_password: newPassword,
+    })
+
+    if (error) {
+      toast('비밀번호 변경 실패: ' + error.message, 'error')
+    } else {
+      toast(`${passwordTarget.name}님의 비밀번호가 변경되었습니다. 새 비밀번호: ${newPassword}`, 'info')
+      setShowPasswordDialog(false)
+    }
+    setResettingPassword(false)
+  }
+
   async function handleToggleSelfEval(emp: Employee) {
     if (!activePeriodId) {
       toast('진행 중인 평가 기간이 없습니다', 'error')
@@ -692,6 +727,13 @@ export default function TabEmployees() {
                               title="수정"
                             >
                               <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => openPasswordReset(emp)}
+                              className="rounded p-1 text-gray-400 hover:bg-amber-50 hover:text-amber-600"
+                              title="비밀번호 변경"
+                            >
+                              <KeyRound className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleToggleActive(emp)}
@@ -1072,6 +1114,42 @@ export default function TabEmployees() {
               취소
             </Button>
             <Button onClick={handleEditEmployee}>수정</Button>
+          </div>
+        </div>
+      </Dialog>
+      {/* ─── 비밀번호 변경 다이얼로그 ────────────────────── */}
+      <Dialog
+        open={showPasswordDialog}
+        onClose={() => setShowPasswordDialog(false)}
+        title={`비밀번호 변경 — ${passwordTarget?.name}`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            {passwordTarget?.name}님의 비밀번호를 변경합니다. 변경 후 해당 직원에게 새 비밀번호를 전달해주세요.
+          </p>
+          <Input
+            id="reset-password"
+            label="새 비밀번호"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="6자 이상"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setNewPassword(generateTempPassword())}
+              className="text-xs text-brand-600 hover:text-brand-700 underline"
+            >
+              임시 비밀번호 재생성
+            </button>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
+              취소
+            </Button>
+            <Button onClick={handleResetPassword} disabled={resettingPassword}>
+              {resettingPassword ? '변경 중...' : '비밀번호 변경'}
+            </Button>
           </div>
         </div>
       </Dialog>
