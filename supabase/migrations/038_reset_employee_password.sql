@@ -1,9 +1,10 @@
 -- =====================================================================
 -- 038: 관리자/임원 비밀번호 초기화 RPC
 -- is_admin() 권한(director/division_head/ceo/admin)으로 직원 비밀번호 변경
+-- p_new_password는 클라이언트에서 bcryptjs로 해싱된 값
 -- =====================================================================
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+DROP FUNCTION IF EXISTS public.reset_employee_password(uuid, text);
 
 CREATE OR REPLACE FUNCTION public.reset_employee_password(
   p_employee_id uuid,
@@ -19,19 +20,16 @@ BEGIN
     RAISE EXCEPTION '비밀번호를 변경할 권한이 없습니다.';
   END IF;
 
-  IF length(p_new_password) < 6 THEN
-    RAISE EXCEPTION '비밀번호는 6자 이상이어야 합니다.';
-  END IF;
-
   IF NOT EXISTS (
     SELECT 1 FROM public.employees WHERE id = p_employee_id
   ) THEN
     RAISE EXCEPTION '해당 직원을 찾을 수 없습니다.';
   END IF;
 
+  -- p_new_password는 클라이언트에서 bcrypt 해싱된 값
   UPDATE auth.users
   SET
-    encrypted_password = crypt(p_new_password, gen_salt('bf')),
+    encrypted_password = p_new_password,
     updated_at = now()
   WHERE id = p_employee_id;
 

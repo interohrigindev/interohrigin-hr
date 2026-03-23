@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-// bcrypt 해싱은 DB에서 처리 (create_employee_with_auth 함수)
+import bcrypt from 'bcryptjs'
 import { supabase } from '@/lib/supabase'
 import type { Department, Employee, EmployeeRole } from '@/types/database'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -471,9 +471,10 @@ export default function TabEmployees() {
     }
 
     setResettingPassword(true)
+    const hashedPassword = await bcrypt.hash(newPassword, 10)
     const { error } = await supabase.rpc('reset_employee_password', {
       p_employee_id: passwordTarget.id,
-      p_new_password: newPassword,
+      p_new_password: hashedPassword,
     })
 
     if (error) {
