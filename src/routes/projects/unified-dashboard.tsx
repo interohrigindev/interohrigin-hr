@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart3, TrendingUp, AlertTriangle, CheckCircle,
-  Users, ArrowRight, Calendar,
+  Users, ArrowRight, Calendar, GripVertical,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -27,6 +27,48 @@ export default function UnifiedDashboard() {
   const [employees, setEmployees] = useState<{ id: string; name: string }[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
   const [filterBrand, setFilterBrand] = useState('')
+
+  // ─── Drag & Drop ────────────────────────────────────────
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const dragCounter = useRef(0)
+
+  const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
+    setDraggedId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    // 드래그 중 반투명 효과
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '0.5'
+    }
+  }, [])
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    setDraggedId(null)
+    setDragOverId(null)
+    dragCounter.current = 0
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '1'
+    }
+  }, [])
+
+  const handleDragEnter = useCallback((e: React.DragEvent, id: string) => {
+    e.preventDefault()
+    dragCounter.current++
+    setDragOverId(id)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounter.current--
+    if (dragCounter.current === 0) {
+      setDragOverId(null)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [])
 
   useEffect(() => {
     Promise.all([
@@ -79,6 +121,42 @@ export default function UnifiedDashboard() {
     const linkedTasks = tasks.filter((t) => t.linked_board_id === p.id)
     return { ...p, progress, completed, inProgress, delayed, currentStage, linkedTasks, total }
   })
+
+  // ─── Drag & Drop handler (needs projectsWithProgress) ───
+  const handleDrop = useCallback(async (e: React.DragEvent, targetId: string) => {
+    e.preventDefault()
+    setDragOverId(null)
+    dragCounter.current = 0
+
+    if (!draggedId || draggedId === targetId) {
+      setDraggedId(null)
+      return
+    }
+
+    const visibleProjects = projectsWithProgress
+      .filter((p) => p.status === 'active' || p.status === 'holding')
+      .slice(0, 10)
+
+    const ids = visibleProjects.map((p) => p.id)
+    const fromIdx = ids.indexOf(draggedId)
+    const toIdx = ids.indexOf(targetId)
+
+    if (fromIdx === -1 || toIdx === -1) {
+      setDraggedId(null)
+      return
+    }
+
+    ids.splice(fromIdx, 1)
+    ids.splice(toIdx, 0, draggedId)
+
+    setDraggedId(null)
+    for (let i = 0; i < ids.length; i++) {
+      const proj = visibleProjects.find((p) => p.id === ids[i])
+      if (proj && proj.priority !== i + 1) {
+        await updateProject(ids[i], { priority: i + 1 } as any)
+      }
+    }
+  }, [draggedId, projectsWithProgress, updateProject])
 
   // ─── Assignee workload ────────────────────────────────────
   const assigneeWorkload = useMemo(() => {
@@ -161,34 +239,43 @@ export default function UnifiedDashboard() {
           {projectsWithProgress.length === 0 ? (
             <p className="text-center py-6 text-gray-400">프로젝트가 없습니다</p>
           ) : (
-            <div className="space-y-3">
-              {projectsWithProgress.filter((p) => p.status === 'active' || p.status === 'holding').slice(0, 10).map((p) => (
+            <div className="space-y-1">
+              <p className="text-[11px] text-gray-400 mb-2 flex items-center gap-1">
+                <GripVertical className="h-3 w-3" /> 드래그하여 우선순위를 변경하세요
+              </p>
+              {projectsWithProgress.filter((p) => p.status === 'active' || p.status === 'holding').slice(0, 10).map((p, idx) => (
                 <div
                   key={p.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, p.id)}
+                  onDragEnd={handleDragEnd}
+                  onDragEnter={(e) => handleDragEnter(e, p.id)}
+                  onDragLeave={handleDragLeave}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, p.id)}
                   onClick={() => navigate(`/admin/projects/${p.id}`)}
-                  className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                  className={`w-full text-left p-3 border rounded-lg transition-all cursor-pointer ${
+                    dragOverId === p.id && draggedId !== p.id
+                      ? 'border-brand-400 bg-brand-50 shadow-md'
+                      : draggedId === p.id
+                      ? 'border-gray-300 bg-gray-100 opacity-50'
+                      : 'border-gray-200 hover:bg-gray-50'
+                  }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
+                      <div
+                        className="flex items-center gap-1 cursor-grab active:cursor-grabbing select-none"
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <GripVertical className="h-4 w-4 text-gray-300" />
+                        <span className="text-[11px] font-bold text-gray-400 w-5 text-center">{idx + 1}</span>
+                      </div>
                       <Badge className={BRAND_COLORS[p.brand] || 'bg-gray-100 text-gray-600'}>{p.brand}</Badge>
                       <span className="text-sm font-medium text-gray-900">{p.project_name}</span>
                       <Badge className={PROJECT_STATUS_COLORS[p.status]}>{PROJECT_STATUS_LABELS[p.status]}</Badge>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-gray-500">
-                      <select
-                        value={p.priority}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          e.stopPropagation()
-                          updateProject(p.id, { priority: parseInt(e.target.value) } as any)
-                        }}
-                        className="text-[11px] w-14 rounded border border-gray-200 px-1 py-0.5 bg-white"
-                        title="우선순위"
-                      >
-                        {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                          <option key={n} value={n}>P{n}</option>
-                        ))}
-                      </select>
                       {p.currentStage && (
                         <span className="flex items-center gap-1">
                           <TrendingUp className="h-3 w-3" />
@@ -211,14 +298,14 @@ export default function UnifiedDashboard() {
 
                   {/* 역할 표시 */}
                   {(p.manager_name || p.leader_name || p.executive_name) && (
-                    <div className="flex items-center gap-3 mb-2 text-[11px] text-gray-500">
+                    <div className="flex items-center gap-3 mb-2 ml-9 text-[11px] text-gray-500">
                       {p.manager_name && <span>담당: <span className="text-gray-700 font-medium">{p.manager_name}</span></span>}
                       {p.leader_name && <span>리더: <span className="text-gray-700 font-medium">{p.leader_name}</span></span>}
                       {p.executive_name && <span>이사: <span className="text-gray-700 font-medium">{p.executive_name}</span></span>}
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 ml-9">
                     <div className="flex-1">
                       <ProgressBar
                         value={p.progress}
@@ -234,7 +321,7 @@ export default function UnifiedDashboard() {
                   </div>
 
                   {/* Pipeline mini-view */}
-                  <div className="flex gap-0.5 mt-2">
+                  <div className="flex gap-0.5 mt-2 ml-9">
                     {p.stages.sort((a, b) => a.stage_order - b.stage_order).map((s) => (
                       <div
                         key={s.id}
