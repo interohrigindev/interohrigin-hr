@@ -33,7 +33,7 @@ export default function ProjectDetailPage() {
     updateStageStatus, updateStageDeadline,
     addStage, removeStage, updateStageName, reorderStages,
     addUpdate, fetchUpdates, updateRequestStatus,
-    updateProject, deleteProject, canEditProject, canDeleteProject,
+    updateProject, deleteProject, canDeleteProject,
   } = useProjectBoard()
 
   const project = projects.find((p) => p.id === id)
@@ -70,10 +70,12 @@ export default function ProjectDetailPage() {
     category: '',
     launch_date: '',
     status: 'active' as ProjectStatus,
+    priority: 5,
     assignee_ids: [] as string[],
     manager_id: '',
     leader_id: '',
     executive_id: '',
+    shared_departments: [] as string[],
   })
 
   // Pipeline editing
@@ -136,10 +138,12 @@ export default function ProjectDetailPage() {
       category: project.category,
       launch_date: project.launch_date || '',
       status: project.status,
+      priority: project.priority || 5,
       assignee_ids: project.assignee_ids || [],
       manager_id: project.manager_id || '',
       leader_id: project.leader_id || '',
       executive_id: project.executive_id || '',
+      shared_departments: project.shared_departments || [],
     })
     setShowEditDialog(true)
   }
@@ -153,10 +157,12 @@ export default function ProjectDetailPage() {
       category: editForm.category,
       launch_date: editForm.launch_date || null,
       status: editForm.status,
+      priority: editForm.priority,
       assignee_ids: editForm.assignee_ids,
       manager_id: editForm.manager_id || null,
       leader_id: editForm.leader_id || null,
       executive_id: editForm.executive_id || null,
+      shared_departments: editForm.shared_departments,
     } as any)
     setSaving(false)
     if (result.error) { toast('수정 실패: ' + result.error, 'error'); return }
@@ -267,11 +273,9 @@ export default function ProjectDetailPage() {
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
-          {canEditProject() && (
-            <Button size="sm" variant="outline" onClick={openEditDialog}>
-              <Pencil className="h-3.5 w-3.5 mr-1" /> 수정
-            </Button>
-          )}
+          <Button size="sm" variant="outline" onClick={openEditDialog}>
+            <Pencil className="h-3.5 w-3.5 mr-1" /> 수정
+          </Button>
           {canDeleteProject() && (
             <Button size="sm" variant="outline" onClick={handleDeleteProject} className="text-red-600 hover:bg-red-50">
               <Trash2 className="h-3.5 w-3.5 mr-1" /> 삭제
@@ -760,7 +764,7 @@ export default function ProjectDetailPage() {
               onChange={(e) => setEditForm(f => ({ ...f, category: e.target.value }))}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Input
               id="edit-launch-date"
               label="출시일"
@@ -779,6 +783,13 @@ export default function ProjectDetailPage() {
                 { value: 'completed', label: '완료' },
                 { value: 'cancelled', label: '취소' },
               ]}
+            />
+            <Select
+              id="edit-priority"
+              label="우선순위"
+              value={String(editForm.priority)}
+              onChange={(e) => setEditForm(f => ({ ...f, priority: parseInt(e.target.value) }))}
+              options={[1,2,3,4,5,6,7,8,9,10].map(n => ({ value: String(n), label: `P${n}` }))}
             />
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -819,6 +830,25 @@ export default function ProjectDetailPage() {
                     className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                   />
                   <span className="text-sm text-gray-700">{emp.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">공유 부서</label>
+            <div className="flex flex-wrap gap-2 border border-gray-200 rounded-lg p-2">
+              {departments.map(dept => (
+                <label key={dept.id} className="flex items-center gap-1.5 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.shared_departments.includes(dept.name)}
+                    onChange={(e) => {
+                      if (e.target.checked) setEditForm(f => ({ ...f, shared_departments: [...f.shared_departments, dept.name] }))
+                      else setEditForm(f => ({ ...f, shared_departments: f.shared_departments.filter(d => d !== dept.name) }))
+                    }}
+                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <span className="text-sm text-gray-700">{dept.name}</span>
                 </label>
               ))}
             </div>
