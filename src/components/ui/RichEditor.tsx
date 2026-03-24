@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 import {
   Bold, Italic, Underline, List, ListOrdered,
   Link2, Image, Paperclip, AtSign, Heading2,
@@ -18,12 +18,33 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
   const editorRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const isInternalChange = useRef(false)
+
+  // 초기값만 한 번 설정 (이후 React state 변경으로 DOM 교체하지 않음)
+  useEffect(() => {
+    if (editorRef.current && !isInternalChange.current) {
+      // 외부에서 value가 리셋(빈값)된 경우에만 DOM 초기화
+      if (value === '' && editorRef.current.innerHTML !== '') {
+        editorRef.current.innerHTML = ''
+      } else if (editorRef.current.innerHTML === '' && value) {
+        editorRef.current.innerHTML = value
+      }
+    }
+    isInternalChange.current = false
+  }, [value])
+
+  const notifyChange = useCallback(() => {
+    if (editorRef.current) {
+      isInternalChange.current = true
+      onChange(editorRef.current.innerHTML)
+    }
+  }, [onChange])
 
   const execCommand = useCallback((command: string, val?: string) => {
     document.execCommand(command, false, val)
     editorRef.current?.focus()
-    if (editorRef.current) onChange(editorRef.current.innerHTML)
-  }, [onChange])
+    notifyChange()
+  }, [notifyChange])
 
   // 이미지 붙여넣기 (Ctrl+V)
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
@@ -35,13 +56,14 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
         if (!file) continue
         const url = await uploadFile(file)
         if (url) {
-          execCommand('insertHTML', `<img src="${url}" alt="pasted" class="max-w-full rounded-lg my-2" style="max-width:100%;border-radius:8px;margin:8px 0" />`)
+          execCommand('insertHTML', `<img src="${url}" alt="pasted" style="max-width:100%;border-radius:8px;margin:8px 0" />`)
         }
         return
       }
     }
-    // 일반 텍스트는 기본 동작
-  }, [execCommand])
+    // 일반 텍스트/HTML 붙여넣기는 기본 동작 후 onChange 알림
+    setTimeout(notifyChange, 0)
+  }, [execCommand, notifyChange])
 
   // 파일 업로드 공통
   async function uploadFile(file: File): Promise<string | null> {
@@ -60,7 +82,7 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
     for (const file of Array.from(files)) {
       const url = await uploadFile(file)
       if (url) {
-        execCommand('insertHTML', `<img src="${url}" alt="${file.name}" class="max-w-full rounded-lg my-2" style="max-width:100%;border-radius:8px;margin:8px 0" />`)
+        execCommand('insertHTML', `<img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:8px;margin:8px 0" />`)
       }
     }
     e.target.value = ''
@@ -75,8 +97,7 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
       const url = await uploadFile(file)
       if (url) {
         uploaded.push({ url, name: file.name, size: file.size, type: file.type })
-        // 에디터에 파일 링크 삽입
-        execCommand('insertHTML', `<a href="${url}" target="_blank" class="text-blue-600 underline" style="color:#2563eb;text-decoration:underline">📎 ${file.name}</a>&nbsp;`)
+        execCommand('insertHTML', `<a href="${url}" target="_blank" style="color:#2563eb;text-decoration:underline">📎 ${file.name}</a>&nbsp;`)
       }
     }
     if (uploaded.length > 0 && onFileUpload) {
@@ -154,21 +175,20 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
         <button type="button" onClick={() => fileInputRef.current?.click()} className={toolbarBtnClass} title="파일 첨부">
           <Paperclip className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => execCommand('insertHTML', '<span class="text-blue-600">@</span>')} className={toolbarBtnClass} title="멘션">
+        <button type="button" onClick={() => execCommand('insertHTML', '<span style="color:#2563eb">@</span>')} className={toolbarBtnClass} title="멘션">
           <AtSign className="h-4 w-4" />
         </button>
       </div>
 
-      {/* 에디터 본문 */}
+      {/* 에디터 본문 — contentEditable은 React state로 제어하지 않음 (커서 리셋 방지) */}
       <div
         ref={editorRef}
         contentEditable
         suppressContentEditableWarning
-        onInput={() => { if (editorRef.current) onChange(editorRef.current.innerHTML) }}
+        onInput={notifyChange}
         onPaste={handlePaste}
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
-        dangerouslySetInnerHTML={{ __html: value }}
         className="px-3 py-2.5 text-sm text-gray-900 outline-none overflow-y-auto prose prose-sm max-w-none [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:text-gray-500 [&_pre]:bg-gray-100 [&_pre]:p-2 [&_pre]:rounded [&_pre]:text-xs [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-blue-600 [&_a]:underline"
         style={{ minHeight }}
         data-placeholder={placeholder}
