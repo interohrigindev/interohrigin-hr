@@ -354,7 +354,7 @@ export default function CertificatesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">증명서 발급</h1>
           <p className="text-sm text-gray-500 mt-0.5">재직증명서, 경력증명서 등을 발급·관리합니다</p>
@@ -414,7 +414,7 @@ export default function CertificatesPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="직원 검색..."
-              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-48 focus:outline-none focus:border-blue-400"
+              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-full sm:w-48 focus:outline-none focus:border-blue-400"
             />
           </div>
           <Select

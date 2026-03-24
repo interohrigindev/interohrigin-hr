@@ -728,7 +728,7 @@ export default function ApprovalManagementPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">전자 결재</h1>
           <p className="text-sm text-gray-500 mt-0.5">결재 요청을 관리하고 승인/반려 처리합니다</p>
@@ -802,7 +802,7 @@ export default function ApprovalManagementPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="제목, 문서번호, 신청자 검색..."
-            className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-60 focus:outline-none focus:border-blue-400"
+            className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-full sm:w-60 focus:outline-none focus:border-blue-400"
           />
         </div>
       </div>
@@ -878,7 +878,7 @@ export default function ApprovalManagementPage() {
         open={!!selectedDoc}
         onClose={() => { setSelectedDoc(null); setActionComment('') }}
         title="결재 상세"
-        className="max-w-lg"
+        className="max-w-[calc(100vw-2rem)] sm:max-w-lg"
       >
         {selectedDoc && (() => {
           const doc = selectedDoc
@@ -1093,7 +1093,7 @@ export default function ApprovalManagementPage() {
         open={showNewDialog}
         onClose={() => { setShowNewDialog(false); resetNewForm() }}
         title="새 결재 신청"
-        className="max-w-lg"
+        className="max-w-[calc(100vw-2rem)] sm:max-w-lg"
       >
         <div className="space-y-4 max-h-[70vh] overflow-y-auto">
           {/* Step 1: Doc type selection */}

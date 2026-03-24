@@ -124,8 +124,9 @@ export default function AttendanceManagementPage() {
   // 선택된 날짜 (캘린더 셀 클릭)
   const [selectedDay, setSelectedDay] = useState<string | null>(toDateStr(new Date()))
 
-  // 관리자: 직원 모달
+  // 관리자: 직원 모달 + 부서 접기
   const [modalEmployee, setModalEmployee] = useState<Employee | null>(null)
+  const [collapsedDepts, setCollapsedDepts] = useState<Set<string>>(new Set())
 
   // 출퇴근
   const [checkingIn, setCheckingIn] = useState(false)
@@ -423,8 +424,8 @@ export default function AttendanceManagementPage() {
         </div>
       </div>
 
-      {/* ─── 월 통계 카드 ─────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* ─── 월 통계 카드 (직원 본인만) ─────────────────────── */}
+      {!isAdmin && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="border-l-4 border-l-blue-500">
           <CardContent className="py-3 px-4">
             <div className="flex items-center gap-2 mb-1">
@@ -467,7 +468,7 @@ export default function AttendanceManagementPage() {
             </p>
           </CardContent>
         </Card>
-      </div>
+      </div>}
 
       {/* ─── 월 네비게이션 ────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -515,57 +516,37 @@ export default function AttendanceManagementPage() {
               todayRecordsMap.set(r.employee_id, r)
             }
 
-            // 전체 통계
-            const totalPresent = [...todayRecordsMap.values()].filter((r) => r.clock_in).length
-            const totalLate = [...todayRecordsMap.values()].filter((r) => r.status === 'late').length
-            const totalAbsent = employees.length - totalPresent
-
             return (
               <>
-                {/* 오늘 전체 현황 요약 */}
-                <div className="grid grid-cols-4 gap-3">
-                  <Card className="border-l-4 border-l-blue-500">
-                    <CardContent className="py-3 px-4">
-                      <p className="text-[11px] text-gray-500">전체 직원</p>
-                      <p className="text-2xl font-bold text-blue-600">{employees.length}명</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-l-4 border-l-emerald-500">
-                    <CardContent className="py-3 px-4">
-                      <p className="text-[11px] text-gray-500">출근</p>
-                      <p className="text-2xl font-bold text-emerald-600">{totalPresent}명</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-l-4 border-l-amber-500">
-                    <CardContent className="py-3 px-4">
-                      <p className="text-[11px] text-gray-500">지각</p>
-                      <p className="text-2xl font-bold text-amber-600">{totalLate}명</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-l-4 border-l-red-500">
-                    <CardContent className="py-3 px-4">
-                      <p className="text-[11px] text-gray-500">미출근</p>
-                      <p className="text-2xl font-bold text-red-600">{totalAbsent}명</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
                 {/* 부서별 블록 */}
                 {[...grouped.entries()].map(([deptName, deptEmployees], di) => {
                   const color = DEPT_COLORS[di % DEPT_COLORS.length]
                   const deptPresent = deptEmployees.filter((e) => todayRecordsMap.get(e.id)?.clock_in).length
+                  const deptLate = deptEmployees.filter((e) => todayRecordsMap.get(e.id)?.status === 'late').length
+                  const isCollapsed = collapsedDepts.has(deptName)
 
                   return (
                     <Card key={deptName} className="overflow-hidden">
-                      {/* 부서 헤더 */}
-                      <div className={`flex items-center gap-3 px-4 py-3 ${color.bg}`}>
+                      {/* 부서 헤더 — 클릭으로 접기/펼치기 */}
+                      <button
+                        onClick={() => setCollapsedDepts((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(deptName)) next.delete(deptName)
+                          else next.add(deptName)
+                          return next
+                        })}
+                        className={`w-full flex items-center gap-3 px-4 py-3 ${color.bg} hover:opacity-90 transition-opacity`}
+                      >
                         <div className={`w-1.5 h-6 rounded-full ${color.bar}`} />
+                        {isCollapsed ? <ChevronRight className={`h-4 w-4 ${color.text}`} /> : <ChevronLeft className={`h-4 w-4 rotate-[-90deg] ${color.text}`} />}
                         <span className={`text-sm font-bold ${color.text}`}>{deptName}</span>
-                        <Badge variant="default" className="text-[10px]">{deptPresent}/{deptEmployees.length}명 출근</Badge>
-                      </div>
+                        <Badge variant="default" className="text-[10px]">{deptPresent}/{deptEmployees.length}</Badge>
+                        {deptLate > 0 && <Badge variant="warning" className="text-[10px]">{deptLate}지각</Badge>}
+                        <span className="ml-auto text-[10px] text-gray-400">{isCollapsed ? '펼치기' : '접기'}</span>
+                      </button>
 
-                      {/* 직원 카드 그리드 */}
-                      <CardContent className="py-3">
+                      {/* 직원 카드 그리드 — 접혀있으면 숨김 */}
+                      {!isCollapsed && <CardContent className="py-3">
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                           {deptEmployees.map((emp) => {
                             const rec = todayRecordsMap.get(emp.id)
@@ -642,7 +623,7 @@ export default function AttendanceManagementPage() {
                             )
                           })}
                         </div>
-                      </CardContent>
+                      </CardContent>}
                     </Card>
                   )
                 })}

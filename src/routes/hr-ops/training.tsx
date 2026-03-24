@@ -221,7 +221,7 @@ export default function TrainingPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">교육 관리</h1>
           <p className="text-sm text-gray-500 mt-0.5">법정 의무 교육 및 외부 교육을 관리합니다 ({currentYear}년)</p>
@@ -301,7 +301,7 @@ export default function TrainingPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="직원/교육 검색..."
-              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-48 focus:outline-none focus:border-blue-400"
+              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-full sm:w-48 focus:outline-none focus:border-blue-400"
             />
           </div>
           <Select

@@ -533,7 +533,7 @@ export default function PayrollPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="직원 검색..."
-            className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-48 focus:outline-none focus:border-blue-400"
+            className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-full sm:w-48 focus:outline-none focus:border-blue-400"
           />
         </div>
         <Select
@@ -658,7 +658,7 @@ export default function PayrollPage() {
         open={!!detailRow}
         onClose={() => setDetailRow(null)}
         title={detailRow ? `${detailRow.employee_name} — ${selectedYear}년 ${selectedMonth}월 급여 상세` : ''}
-        className="max-w-xl"
+        className="max-w-[calc(100vw-2rem)] sm:max-w-xl"
       >
         {detailRow?.record ? (
           <PayslipDetail record={detailRow.record} />

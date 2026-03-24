@@ -275,9 +275,9 @@ function SlidePanel({
       />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 bottom-0 w-[480px] max-w-full bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 translate-x-0">
+      <div className="fixed right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 translate-x-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-semibold text-gray-900 truncate">{panel.projectName}</span>
             <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />
@@ -442,7 +442,7 @@ function SlidePanel({
           {/* ── Files Tab ── */}
           {activeTab === 'files' && (
             <div className="p-4 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm font-medium text-gray-700">
                   첨부 파일 ({allFiles.length})
                 </p>
@@ -864,7 +864,7 @@ export default function UnifiedDashboard() {
       </div>
 
       {/* ─── Summary Stats Row ───────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card className="border-l-4 border-l-blue-500">
           <CardContent className="py-3 px-4">
             <div className="flex items-center gap-2 mb-1">
@@ -968,7 +968,8 @@ export default function UnifiedDashboard() {
                 </div>
 
                 {/* ── Table Headers ────────────────────────────── */}
-                <div className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                <div className="overflow-x-auto">
+                <div className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wide min-w-[700px]">
                   <div />
                   <div>프로젝트명</div>
                   <div>담당자</div>
@@ -1001,7 +1002,7 @@ export default function UnifiedDashboard() {
                           onDragLeave={handleDragLeave}
                           onDragOver={handleDragOver}
                           onDrop={(e) => handleDrop(e, p.id)}
-                          className={`grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2.5 transition-all cursor-pointer group ${
+                          className={`grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2.5 transition-all cursor-pointer group min-w-[700px] ${
                             dragOverId === p.id && draggedId !== p.id
                               ? 'bg-blue-50 shadow-inner'
                               : draggedId === p.id
@@ -1177,7 +1178,7 @@ export default function UnifiedDashboard() {
                         {/* ── Expanded sub-rows (pipeline stages) ── */}
                         {isExpanded && (
                           <div className={`border-l-4 ${group.color.bar} bg-gray-50/70`}>
-                            <div className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+                            <div className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200 min-w-[700px]">
                               <div />
                               <div className="pl-6">파이프라인 단계</div>
                               <div>담당자</div>
@@ -1196,7 +1197,7 @@ export default function UnifiedDashboard() {
                               return (
                                 <div
                                   key={stage.id}
-                                  className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2 border-b border-gray-100 last:border-b-0 hover:bg-white/80 transition-colors"
+                                  className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2 border-b border-gray-100 last:border-b-0 hover:bg-white/80 transition-colors min-w-[700px]"
                                 >
                                   <div />
                                   {/* Stage name — clickable to open slide panel */}
@@ -1336,6 +1337,7 @@ export default function UnifiedDashboard() {
                       </div>
                     )
                   })}
+                </div>
                 </div>
 
                 {/* ── Add item button ──────────────────────────── */}

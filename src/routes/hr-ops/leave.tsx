@@ -290,7 +290,7 @@ export default function LeaveManagementPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">연차 관리</h1>
           <p className="text-sm text-gray-500 mt-0.5">직원별 연차 현황을 관리합니다 ({currentYear}년)</p>
@@ -362,7 +362,7 @@ export default function LeaveManagementPage() {
           <div className="flex gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="직원 검색..." className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-48 focus:outline-none focus:border-blue-400" />
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="직원 검색..." className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-full sm:w-48 focus:outline-none focus:border-blue-400" />
             </div>
             <Select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} options={[{ value: '', label: '전체 부서' }, ...deptNames.map((n) => ({ value: n, label: n }))]} />
           </div>
@@ -506,7 +506,7 @@ export default function LeaveManagementPage() {
       )}
 
       {/* ─── 연차 신청 다이얼로그 (결재라인 포함) ─────── */}
-      <Dialog open={showRequestDialog} onClose={() => setShowRequestDialog(false)} title="연차 신청" className="max-w-lg">
+      <Dialog open={showRequestDialog} onClose={() => setShowRequestDialog(false)} title="연차 신청" className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
         <div className="space-y-4">
           <Select label="유형 *" value={reqLeaveType} onChange={(e) => setReqLeaveType(e.target.value)}
             options={Object.entries(LEAVE_TYPE_LABELS).map(([k, v]) => ({ value: k, label: v }))} />

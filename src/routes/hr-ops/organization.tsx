@@ -172,7 +172,7 @@ export default function OrganizationPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">조직도</h1>
           <p className="text-sm text-gray-500 mt-0.5">부서별 조직 구성과 직원 현황을 확인합니다</p>
