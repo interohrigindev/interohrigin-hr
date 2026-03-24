@@ -37,21 +37,23 @@ interface ApprovalStep {
   acted_at: string | null
 }
 
-interface LeaveRecord {
-  id: string; employee_id: string; year: number
-  total_annual_leave: number; child_leave: number; special_leave: number
-  used_annual: number; used_child: number; used_special: number
-  hire_date: string | null; expiry_date: string | null
-  promotion_sent: boolean; promotion_sent_at: string | null
+interface HrDetail {
+  id: string; employee_id: string
+  annual_leave_total: number; annual_leave_used: number; annual_leave_remaining: number
+  annual_leave_basis: string | null
+  base_salary: number | null; annual_salary: number | null
+  employment_type: string | null; work_schedule: string | null
 }
 
 interface LeaveRequest {
   id: string; employee_id: string; leave_type: string
-  start_date: string; end_date: string; days: number
-  reason: string | null; status: string
+  start_date: string; end_date: string; days_count: number
+  reason: string | null; approval_status: string
   approved_by: string | null; approved_at: string | null
+  rejection_reason: string | null
   approval_line: ApprovalStep[] | null
   current_step: number | null
+  is_promoted: boolean
   created_at: string
 }
 
@@ -88,7 +90,7 @@ export default function LeaveManagementPage() {
   const [allEmployees, setAllEmployees] = useState<Employee[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
-  const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
+  const [hrDetails, setHrDetails] = useState<HrDetail[]>([])
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -124,7 +126,7 @@ export default function LeaveManagementPage() {
     setAllEmployees((allEmpRes.data || []) as Employee[])
 
     let empQuery = supabase.from('employees').select('id, name, department_id, hire_date, position, role').eq('is_active', true).order('name')
-    let leaveQuery = supabase.from('leave_management').select('*').eq('year', currentYear)
+    let leaveQuery = supabase.from('employee_hr_details').select('*')
     let reqQuery = supabase.from('leave_requests').select('*').order('created_at', { ascending: false }).limit(200)
 
     if (!isAdmin) {
@@ -140,7 +142,7 @@ export default function LeaveManagementPage() {
 
     setEmployees(empData)
     setDepartments((deptRes.data || []) as Department[])
-    setLeaveRecords((leaveRes.data || []) as LeaveRecord[])
+    setHrDetails((leaveRes.data || []) as HrDetail[])
 
     // 일반 직원이면 본인 신청 + 본인이 결재자인 건만 필터
     if (!isAdmin) {
@@ -163,18 +165,14 @@ export default function LeaveManagementPage() {
   // ─── 직원별 연차 데이터 ────────────────────────────
   const employeeLeaveData = useMemo(() => {
     return employees.map((emp) => {
-      const leave = leaveRecords.find((l) => l.employee_id === emp.id)
-      const totalAnnual = leave?.total_annual_leave || 0
-      const usedAnnual = leave?.used_annual || 0
-      const remainingAnnual = totalAnnual - usedAnnual
+      const hr = hrDetails.find((h) => h.employee_id === emp.id)
+      const totalAnnual = hr?.annual_leave_total || 0
+      const usedAnnual = hr?.annual_leave_used || 0
+      const remainingAnnual = hr?.annual_leave_remaining ?? (totalAnnual - usedAnnual)
       const usageRate = totalAnnual > 0 ? Math.round((usedAnnual / totalAnnual) * 100) : 0
-      const childLeave = leave?.child_leave || 0; const usedChild = leave?.used_child || 0
-      const specialLeave = leave?.special_leave || 0; const usedSpecial = leave?.used_special || 0
-      let daysUntilExpiry: number | null = null
-      if (leave?.expiry_date) daysUntilExpiry = Math.ceil((new Date(leave.expiry_date).getTime() - Date.now()) / 86400000)
-      return { ...emp, leave, totalAnnual, usedAnnual, remainingAnnual, usageRate, childLeave, usedChild, remainingChild: childLeave - usedChild, specialLeave, usedSpecial, remainingSpecial: specialLeave - usedSpecial, hireDate: leave?.hire_date || emp.hire_date, expiryDate: leave?.expiry_date, daysUntilExpiry, promotionSent: leave?.promotion_sent || false }
+      return { ...emp, hr, totalAnnual, usedAnnual, remainingAnnual, usageRate }
     })
-  }, [employees, leaveRecords])
+  }, [employees, hrDetails])
 
   const filteredData = useMemo(() => {
     let result = employeeLeaveData
@@ -185,8 +183,8 @@ export default function LeaveManagementPage() {
 
   const totalEmployees = filteredData.length
   const avgUsageRate = totalEmployees > 0 ? Math.round(filteredData.reduce((s, e) => s + e.usageRate, 0) / totalEmployees) : 0
-  const warningCount = filteredData.filter((e) => e.remainingAnnual > 5 && e.daysUntilExpiry !== null && e.daysUntilExpiry <= 90).length
-  const pendingRequests = leaveRequests.filter((r) => r.status === 'pending' || r.status === 'in_review').length
+  const warningCount = filteredData.filter((e) => e.remainingAnnual > 5 && e.usageRate < 50).length
+  const pendingRequests = leaveRequests.filter((r) => r.approval_status === 'pending' || r.approval_status === 'in_review').length
   const deptNames = useMemo(() => [...new Set(employees.map((e) => getDeptName(e.department_id)).filter((n) => n !== '-'))], [employees, departments])
 
   // ─── 연차 신청 (결재라인 포함) ─────────────────────
@@ -229,9 +227,9 @@ export default function LeaveManagementPage() {
       leave_type: reqLeaveType,
       start_date: reqStartDate,
       end_date: reqEndDate,
-      days: reqDays,
+      days_count: reqDays,
       reason: reqReason || null,
-      status: 'in_review',
+      approval_status: 'in_review',
       current_step: 0,
       approval_line: approvalLine,
     })
@@ -263,23 +261,18 @@ export default function LeaveManagementPage() {
     if (action === 'rejected') {
       // 반려 → 최종 반려
       await supabase.from('leave_requests').update({
-        approval_line: line, status: 'rejected',
+        approval_line: line, approval_status: 'rejected',
         approved_by: profile.id, approved_at: new Date().toISOString(),
       }).eq('id', requestId)
       toast('반려 처리되었습니다', 'success')
     } else if (currentStep >= line.length - 1) {
       // 마지막 결재자 승인 → 최종 승인
       await supabase.from('leave_requests').update({
-        approval_line: line, status: 'approved', current_step: currentStep + 1,
+        approval_line: line, approval_status: 'approved', current_step: currentStep + 1,
         approved_by: profile.id, approved_at: new Date().toISOString(),
       }).eq('id', requestId)
 
-      // 연차 사용 일수 반영
-      const leave = leaveRecords.find((l) => l.employee_id === request.employee_id)
-      if (leave) {
-        const field = request.leave_type === 'child' ? 'used_child' : request.leave_type === 'special' ? 'used_special' : 'used_annual'
-        await supabase.from('leave_management').update({ [field]: (leave as unknown as Record<string, number>)[field] + request.days }).eq('id', leave.id)
-      }
+      // 연차 사용 일수는 DB 트리거(update_leave_balance)가 자동 처리
       toast('최종 승인 완료. 연차가 차감되었습니다.', 'success')
     } else {
       // 다음 결재자로 이동
@@ -376,18 +369,15 @@ export default function LeaveManagementPage() {
                     <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">사용</th>
                     <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">잔여</th>
                     <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">소진율</th>
-                    <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">자녀연차</th>
-                    <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">특별휴가</th>
-                    <th className="text-left py-3 px-3 font-medium text-gray-500 text-xs">소진 마감</th>
                     <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">상태</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredData.length === 0 ? (
-                    <tr><td colSpan={10} className="text-center py-12 text-gray-400">연차 데이터가 없습니다</td></tr>
+                    <tr><td colSpan={7} className="text-center py-12 text-gray-400">연차 데이터가 없습니다</td></tr>
                   ) : filteredData.map((emp) => {
-                    const isWarning = emp.remainingAnnual > 5 && emp.daysUntilExpiry !== null && emp.daysUntilExpiry <= 90
-                    const isUrgent = emp.remainingAnnual > 3 && emp.daysUntilExpiry !== null && emp.daysUntilExpiry <= 30
+                    const isWarning = emp.remainingAnnual > 5 && emp.usageRate < 50
+                    const isUrgent = emp.remainingAnnual > 5 && emp.usageRate < 30
                     return (
                       <tr key={emp.id} className={`border-b border-gray-100 hover:bg-gray-50/50 ${isUrgent ? 'bg-red-50/50' : isWarning ? 'bg-amber-50/30' : ''}`}>
                         <td className="py-2.5 px-4"><div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-700">{emp.name[0]}</div><span className="font-medium text-gray-900">{emp.name}</span></div></td>
@@ -401,10 +391,7 @@ export default function LeaveManagementPage() {
                             <span className="text-[10px] text-gray-500 w-8 text-right">{emp.usageRate}%</span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 text-center text-xs text-gray-600">{emp.childLeave > 0 ? `${emp.usedChild}/${emp.childLeave}` : '-'}</td>
-                        <td className="py-2.5 px-3 text-center text-xs text-gray-600">{emp.specialLeave > 0 ? `${emp.usedSpecial}/${emp.specialLeave}` : '-'}</td>
-                        <td className="py-2.5 px-3 text-xs">{emp.expiryDate ? <span className={emp.daysUntilExpiry !== null && emp.daysUntilExpiry <= 30 ? 'text-red-600 font-bold' : 'text-gray-600'}>{emp.expiryDate}{emp.daysUntilExpiry !== null && emp.daysUntilExpiry <= 90 && <span className="ml-1">(D{emp.daysUntilExpiry >= 0 ? '-' : '+'}{Math.abs(emp.daysUntilExpiry)})</span>}</span> : <span className="text-gray-300">-</span>}</td>
-                        <td className="py-2.5 px-3 text-center">{isUrgent ? <Badge variant="danger" className="text-[10px]">긴급</Badge> : isWarning ? <Badge variant="warning" className="text-[10px]">촉진 필요</Badge> : emp.usageRate >= 80 ? <Badge variant="success" className="text-[10px]">양호</Badge> : <Badge variant="default" className="text-[10px]">정상</Badge>}</td>
+                        <td className="py-2.5 px-3 text-center">{isUrgent ? <Badge variant="danger" className="text-[10px]">촉진 필요</Badge> : isWarning ? <Badge variant="warning" className="text-[10px]">주의</Badge> : emp.usageRate >= 80 ? <Badge variant="success" className="text-[10px]">양호</Badge> : <Badge variant="default" className="text-[10px]">정상</Badge>}</td>
                       </tr>
                     )
                   })}
@@ -423,7 +410,7 @@ export default function LeaveManagementPage() {
           ) : leaveRequests.map((req) => {
             const line = (req.approval_line || []) as ApprovalStep[]
             const currentStep = req.current_step ?? 0
-            const isMyTurn = line[currentStep]?.approver_id === profile?.id && (req.status === 'in_review' || req.status === 'pending')
+            const isMyTurn = line[currentStep]?.approver_id === profile?.id && (req.approval_status === 'in_review' || req.approval_status === 'pending')
 
             return (
               <Card key={req.id} className={isMyTurn ? 'border-blue-300 bg-blue-50/30' : ''}>
@@ -438,12 +425,12 @@ export default function LeaveManagementPage() {
                         <span className="text-sm font-medium text-gray-900">{getEmpName(req.employee_id)}</span>
                         <div className="flex items-center gap-2 mt-0.5">
                           <Badge variant="default" className="text-[10px]">{LEAVE_TYPE_LABELS[req.leave_type] || req.leave_type}</Badge>
-                          <span className="text-[11px] text-gray-500">{req.start_date} ~ {req.end_date} ({req.days}일)</span>
+                          <span className="text-[11px] text-gray-500">{req.start_date} ~ {req.end_date} ({req.days_count}일)</span>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge className={`text-[10px] ${LEAVE_STATUS_COLORS[req.status]}`}>{LEAVE_STATUS_LABELS[req.status] || req.status}</Badge>
+                      <Badge className={`text-[10px] ${LEAVE_STATUS_COLORS[req.approval_status]}`}>{LEAVE_STATUS_LABELS[req.approval_status] || req.approval_status}</Badge>
                       <span className="text-[10px] text-gray-400">{new Date(req.created_at).toLocaleDateString('ko-KR')}</span>
                     </div>
                   </div>
@@ -460,7 +447,7 @@ export default function LeaveManagementPage() {
                       </div>
 
                       {line.map((step, i) => {
-                        const isCurrent = i === currentStep && (req.status === 'in_review' || req.status === 'pending')
+                        const isCurrent = i === currentStep && (req.approval_status === 'in_review' || req.approval_status === 'pending')
                         const isDone = step.status === 'approved'
                         const isRejected = step.status === 'rejected'
                         return (
