@@ -1072,16 +1072,35 @@ export default function UnifiedDashboard() {
                                 ))}
                               </select>
                             ) : (
-                              <span
-                                onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee' }) }}
-                                className="text-xs text-gray-700 truncate cursor-pointer hover:text-blue-600 transition-colors"
-                                title="클릭하여 담당자 변경"
-                              >
-                                {p.manager_name || (p.assignee_names && p.assignee_names.length > 0
-                                  ? p.assignee_names.join('/')
-                                  : <span className="text-gray-400">+ 담당자</span>
+                              <div className="flex items-center gap-1 group/passignee relative">
+                                <span
+                                  onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee' }) }}
+                                  className="text-xs text-gray-700 truncate cursor-pointer hover:text-blue-600 transition-colors"
+                                >
+                                  {p.manager_name || (p.assignee_names?.[0]) || ''}
+                                </span>
+                                {(p.assignee_names || []).length > 1 && (
+                                  <span className="text-[10px] text-blue-600 bg-blue-50 px-1 rounded font-medium cursor-default">
+                                    +{(p.assignee_names || []).length - 1}
+                                  </span>
                                 )}
-                              </span>
+                                {!p.manager_name && (!p.assignee_names || p.assignee_names.length === 0) && (
+                                  <span
+                                    onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee' }) }}
+                                    className="text-xs text-gray-400 cursor-pointer hover:text-blue-500"
+                                  >+ 담당자</span>
+                                )}
+                                {(p.assignee_names || []).length > 1 && (
+                                  <div className="absolute left-0 top-full mt-1 hidden group-hover/passignee:block z-40">
+                                    <div className="bg-gray-900 text-white text-[11px] rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                      <p className="font-semibold mb-1 text-gray-300">참여자 ({(p.assignee_names || []).length}명)</p>
+                                      {(p.assignee_names || []).map((name, i) => (
+                                        <p key={i} className="py-0.5">{name}</p>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
 
@@ -1240,16 +1259,36 @@ export default function UnifiedDashboard() {
                                         ))}
                                       </div>
                                     ) : (
-                                      <span
-                                        onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee', stageId: stage.id, stageField: 'stage_assignee' }) }}
-                                        className="text-[11px] text-gray-600 truncate cursor-pointer hover:text-blue-600 transition-colors"
-                                        title="클릭하여 담당자 변경"
-                                      >
-                                        {stageAssigneeNames.length > 0
-                                          ? stageAssigneeNames.join('/')
-                                          : <span className="text-gray-400">+ 담당자</span>
-                                        }
-                                      </span>
+                                      <div className="flex items-center gap-1 group/assignee relative">
+                                        <span
+                                          onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee', stageId: stage.id, stageField: 'stage_assignee' }) }}
+                                          className="text-[11px] text-gray-700 truncate cursor-pointer hover:text-blue-600 transition-colors"
+                                        >
+                                          {stageAssigneeNames.length > 0 ? stageAssigneeNames[0] : ''}
+                                        </span>
+                                        {stageAssigneeNames.length > 1 && (
+                                          <span className="text-[10px] text-blue-600 bg-blue-50 px-1 rounded font-medium cursor-default">
+                                            +{stageAssigneeNames.length - 1}
+                                          </span>
+                                        )}
+                                        {stageAssigneeNames.length === 0 && (
+                                          <span
+                                            onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee', stageId: stage.id, stageField: 'stage_assignee' }) }}
+                                            className="text-[11px] text-gray-400 cursor-pointer hover:text-blue-500"
+                                          >+ 담당자</span>
+                                        )}
+                                        {/* 호버 시 전체 담당자 목록 툴팁 */}
+                                        {stageAssigneeNames.length > 1 && (
+                                          <div className="absolute left-0 top-full mt-1 hidden group-hover/assignee:block z-40">
+                                            <div className="bg-gray-900 text-white text-[11px] rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                              <p className="font-semibold mb-1 text-gray-300">담당자 ({stageAssigneeNames.length}명)</p>
+                                              {stageAssigneeNames.map((name, i) => (
+                                                <p key={i} className="py-0.5">{name}</p>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
 
