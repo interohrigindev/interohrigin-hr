@@ -1,34 +1,77 @@
-import { useState, useMemo, useRef, useCallback } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  BarChart3, TrendingUp, AlertTriangle, CheckCircle,
-  Users, ArrowRight, Calendar, GripVertical,
-  Target, Clock, Activity, PieChart,
-  Layers,
+  AlertTriangle, CheckCircle, Users, GripVertical,
+  Target, Clock, Activity, Layers, ChevronDown,
+  ChevronRight, Star, Plus, Calendar,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { PageSpinner } from '@/components/ui/Spinner'
-import { ProgressBar } from '@/components/ui/ProgressBar'
+import { useToast } from '@/components/ui/Toast'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
 import { supabase } from '@/lib/supabase'
-import { useEffect } from 'react'
 import type { Task } from '@/types/work'
+import type { StageStatus } from '@/types/project-board'
 import {
-  PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS,
-  BRAND_COLORS,
+  STAGE_STATUS_COLORS,
 } from '@/types/project-board'
+
+// ─── Constants ─────────────────────────────────────────────────────
+
+const GROUP_COLORS = [
+  { bar: 'bg-blue-500', header: 'bg-blue-50', text: 'text-blue-700', light: 'bg-blue-100' },
+  { bar: 'bg-violet-500', header: 'bg-violet-50', text: 'text-violet-700', light: 'bg-violet-100' },
+  { bar: 'bg-emerald-500', header: 'bg-emerald-50', text: 'text-emerald-700', light: 'bg-emerald-100' },
+  { bar: 'bg-amber-500', header: 'bg-amber-50', text: 'text-amber-700', light: 'bg-amber-100' },
+  { bar: 'bg-rose-500', header: 'bg-rose-50', text: 'text-rose-700', light: 'bg-rose-100' },
+  { bar: 'bg-cyan-500', header: 'bg-cyan-50', text: 'text-cyan-700', light: 'bg-cyan-100' },
+]
+
+function getPriorityInfo(priority: number) {
+  if (priority <= 3) return { label: '긴급', color: 'bg-rose-500 text-white' }
+  if (priority <= 5) return { label: '상', color: 'bg-violet-500 text-white' }
+  if (priority <= 7) return { label: '중', color: 'bg-indigo-500 text-white' }
+  return { label: '하', color: 'bg-emerald-500 text-white' }
+}
+
+function formatDateShort(dateStr: string | null): string {
+  if (!dateStr) return '-'
+  const d = new Date(dateStr)
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`
+}
+
+function getDday(dateStr: string | null): { label: string; className: string } | null {
+  if (!dateStr) return null
+  const diff = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000)
+  if (diff < 0) return { label: `D+${Math.abs(diff)}`, className: 'text-red-600 bg-red-50' }
+  if (diff === 0) return { label: 'D-Day', className: 'text-amber-700 bg-amber-50' }
+  if (diff <= 3) return { label: `D-${diff}`, className: 'text-amber-600 bg-amber-50' }
+  return { label: `D-${diff}`, className: 'text-gray-500 bg-gray-50' }
+}
+
+const STAGE_PILL_COLORS: Record<StageStatus, string> = {
+  '시작전': 'bg-gray-200 text-gray-600',
+  '진행중': 'bg-blue-500 text-white',
+  '완료': 'bg-emerald-500 text-white',
+  '홀딩': 'bg-amber-500 text-white',
+}
+
+// ─── Component ─────────────────────────────────────────────────────
 
 export default function UnifiedDashboard() {
   const navigate = useNavigate()
-  const { projects, loading: boardLoading, updateProject } = useProjectBoard()
+  const { toast } = useToast()
+  const { projects, loading: boardLoading, updateProject, updateStageStatus } = useProjectBoard()
 
   const [tasks, setTasks] = useState<Task[]>([])
   const [employees, setEmployees] = useState<{ id: string; name: string }[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
   const [filterBrand, setFilterBrand] = useState('')
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
+  const [favorites, setFavorites] = useState<Set<string>>(new Set())
 
   // Drag & Drop
   const [draggedId, setDraggedId] = useState<string | null>(null)
@@ -69,6 +112,8 @@ export default function UnifiedDashboard() {
     e.dataTransfer.dropEffect = 'move'
   }, [])
 
+  // ─── Data fetch ──────────────────────────────────────────────────
+
   useEffect(() => {
     Promise.all([
       supabase.from('tasks').select('*').order('due_date'),
@@ -80,9 +125,13 @@ export default function UnifiedDashboard() {
     })
   }, [])
 
-  const getEmpName = (id: string | null) => employees.find((e) => e.id === id)?.name || '-'
+  const getEmpName = useCallback(
+    (id: string | null) => employees.find((e) => e.id === id)?.name || '-',
+    [employees]
+  )
 
-  // Filtered projects
+  // ─── Filtered & grouped data ─────────────────────────────────────
+
   const filteredProjects = useMemo(() => {
     if (!filterBrand) return projects
     return projects.filter((p) => p.brand === filterBrand)
@@ -111,17 +160,31 @@ export default function UnifiedDashboard() {
   })
   const taskCompletionRate = activeTasks.length > 0 ? Math.round((doneTasks.length / activeTasks.length) * 100) : 0
 
-  // Projects with progress
-  const projectsWithProgress = filteredProjects.map((p) => {
+  // Projects with computed progress
+  const projectsWithProgress = useMemo(() => filteredProjects.map((p) => {
     const total = p.stages.length
     const completed = p.stages.filter((s) => s.status === '완료').length
-    const inProgress = p.stages.filter((s) => s.status === '진행중').length
     const delayed = p.stages.filter((s) => s.status !== '완료' && s.deadline && new Date(s.deadline) < new Date()).length
     const progress = total > 0 ? Math.round((completed / total) * 100) : 0
     const currentStage = p.stages.find((s) => s.status === '진행중') || p.stages.find((s) => s.status === '시작전')
     const linkedTasks = tasks.filter((t) => t.linked_board_id === p.id)
-    return { ...p, progress, completed, inProgress, delayed, currentStage, linkedTasks, total }
-  })
+    return { ...p, progress, completed, delayed, currentStage, linkedTasks, total }
+  }), [filteredProjects, tasks])
+
+  // Group by brand
+  const groupedByBrand = useMemo(() => {
+    const map = new Map<string, typeof projectsWithProgress>()
+    for (const p of projectsWithProgress) {
+      const list = map.get(p.brand) || []
+      list.push(p)
+      map.set(p.brand, list)
+    }
+    return [...map.entries()].map(([brand, items], idx) => ({
+      brand,
+      items: items.sort((a, b) => a.priority - b.priority),
+      color: GROUP_COLORS[idx % GROUP_COLORS.length],
+    }))
+  }, [projectsWithProgress])
 
   // Drag & Drop handler
   const handleDrop = useCallback(async (e: React.DragEvent, targetId: string) => {
@@ -134,11 +197,10 @@ export default function UnifiedDashboard() {
       return
     }
 
-    const visibleProjects = projectsWithProgress
+    const allActive = projectsWithProgress
       .filter((p) => p.status === 'active' || p.status === 'holding')
-      .slice(0, 10)
 
-    const ids = visibleProjects.map((p) => p.id)
+    const ids = allActive.map((p) => p.id)
     const fromIdx = ids.indexOf(draggedId)
     const toIdx = ids.indexOf(targetId)
 
@@ -152,12 +214,43 @@ export default function UnifiedDashboard() {
 
     setDraggedId(null)
     for (let i = 0; i < ids.length; i++) {
-      const proj = visibleProjects.find((p) => p.id === ids[i])
+      const proj = allActive.find((p) => p.id === ids[i])
       if (proj && proj.priority !== i + 1) {
-        await updateProject(ids[i], { priority: i + 1 } as any)
+        await updateProject(ids[i], { priority: i + 1 } as Parameters<typeof updateProject>[1])
       }
     }
   }, [draggedId, projectsWithProgress, updateProject])
+
+  // Stage status change handler
+  const handleStageStatusChange = useCallback(async (stageId: string, projectId: string, newStatus: StageStatus) => {
+    const result = await updateStageStatus(stageId, newStatus, projectId)
+    if (result.error) {
+      toast(result.error, 'error')
+    } else {
+      toast('단계 상태가 변경되었습니다')
+    }
+  }, [updateStageStatus, toast])
+
+  // Toggle expand
+  const toggleExpand = useCallback((projectId: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      return next
+    })
+  }, [])
+
+  // Toggle favorite
+  const toggleFavorite = useCallback((projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setFavorites((prev) => {
+      const next = new Set(prev)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      return next
+    })
+  }, [])
 
   // Assignee workload
   const assigneeWorkload = useMemo(() => {
@@ -177,38 +270,32 @@ export default function UnifiedDashboard() {
       }
     }
     return [...map.entries()].sort((a, b) => b[1].tasks - a[1].tasks).slice(0, 8)
-  }, [filteredProjects, activeTasks, employees])
-
-  // Status distribution for pie chart visual
-  const statusDistribution = useMemo(() => [
-    { label: '진행중', count: activeProjects.length, color: 'bg-blue-500', textColor: 'text-blue-600' },
-    { label: '홀딩', count: holdingProjects.length, color: 'bg-amber-500', textColor: 'text-amber-600' },
-    { label: '완료', count: completedProjects.length, color: 'bg-emerald-500', textColor: 'text-emerald-600' },
-  ], [activeProjects, holdingProjects, completedProjects])
+  }, [filteredProjects, activeTasks, getEmpName])
 
   if (boardLoading || tasksLoading) return <PageSpinner />
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* ─── Header ──────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">프로젝트 & 업무 대시보드</h1>
           <p className="text-sm text-gray-500 mt-0.5">전체 프로젝트 현황을 한눈에 파악합니다</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <Select
             value={filterBrand}
             onChange={(e) => setFilterBrand(e.target.value)}
             options={[{ value: '', label: '전체 브랜드' }, ...brands.map((b) => ({ value: b, label: b }))]}
           />
-          <Button onClick={() => navigate('/admin/projects/new')}>+ 새 프로젝트</Button>
+          <Button onClick={() => navigate('/admin/projects/new')}>
+            <Plus className="h-4 w-4" /> 새 프로젝트
+          </Button>
         </div>
       </div>
 
-      {/* Monday.com 스타일 메인 통계 위젯 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {/* 프로젝트 현황 */}
+      {/* ─── Summary Stats Row ───────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card className="border-l-4 border-l-blue-500">
           <CardContent className="py-3 px-4">
             <div className="flex items-center gap-2 mb-1">
@@ -243,7 +330,7 @@ export default function UnifiedDashboard() {
           <CardContent className="py-3 px-4">
             <div className="flex items-center gap-2 mb-1">
               <Target className="h-4 w-4 text-violet-500" />
-              <span className="text-[11px] text-gray-500">파이프라인</span>
+              <span className="text-[11px] text-gray-500">파이프라인 진행률</span>
             </div>
             <p className="text-2xl font-bold text-violet-600">{overallProgress}%</p>
           </CardContent>
@@ -272,190 +359,361 @@ export default function UnifiedDashboard() {
         </Card>
       </div>
 
-      {/* Monday.com 스타일 프로젝트 상태 분포 + 프로젝트 현황 */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* 상태 분포 위젯 */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <PieChart className="h-4 w-4 text-violet-500" /> 프로젝트 분포
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* Visual pie representation */}
-            <div className="flex items-center justify-center mb-4">
-              <div className="relative w-28 h-28">
-                <svg className="w-28 h-28 -rotate-90" viewBox="0 0 36 36">
-                  {(() => {
-                    const total = filteredProjects.length || 1
-                    let cumulative = 0
-                    const colors = ['#3b82f6', '#f59e0b', '#10b981']
-                    return statusDistribution.map((item, i) => {
-                      const pct = (item.count / total) * 100
-                      const offset = cumulative
-                      cumulative += pct
-                      return (
-                        <circle
-                          key={i}
-                          cx="18" cy="18" r="15.5"
-                          fill="none"
-                          stroke={colors[i]}
-                          strokeWidth="4"
-                          strokeDasharray={`${pct} ${100 - pct}`}
-                          strokeDashoffset={`-${offset}`}
-                          className="transition-all duration-500"
-                        />
-                      )
-                    })
-                  })()}
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <p className="text-xl font-bold text-gray-900">{filteredProjects.length}</p>
-                    <p className="text-[9px] text-gray-400">프로젝트</p>
-                  </div>
+      {/* ─── Monday.com Style Main Table ─────────────────────────── */}
+      <div className="space-y-4">
+        {groupedByBrand.length === 0 ? (
+          <Card>
+            <CardContent className="py-16 text-center text-gray-400">
+              프로젝트가 없습니다
+            </CardContent>
+          </Card>
+        ) : (
+          groupedByBrand.map((group) => {
+            // Group summary calculations
+            const avgProgress = group.items.length > 0
+              ? Math.round(group.items.reduce((s, p) => s + p.progress, 0) / group.items.length)
+              : 0
+            const totalTasks = group.items.reduce((s, p) => s + p.linkedTasks.length, 0)
+            const priorityDist = { urgent: 0, high: 0, mid: 0, low: 0 }
+            for (const p of group.items) {
+              if (p.priority <= 3) priorityDist.urgent++
+              else if (p.priority <= 5) priorityDist.high++
+              else if (p.priority <= 7) priorityDist.mid++
+              else priorityDist.low++
+            }
+
+            return (
+              <div key={group.brand} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                {/* ── Group Header ─────────────────────────────── */}
+                <div className={`flex items-center gap-3 px-4 py-3 ${group.color.header}`}>
+                  <div className={`w-1.5 h-8 rounded-full ${group.color.bar}`} />
+                  <h2 className={`text-sm font-bold ${group.color.text}`}>
+                    {group.brand}
+                  </h2>
+                  <Badge className={`${group.color.light} ${group.color.text} text-[10px]`}>
+                    {group.items.length}개 프로젝트
+                  </Badge>
+                  <span className="text-[10px] text-gray-400 ml-auto flex items-center gap-1">
+                    <GripVertical className="h-3 w-3" /> 드래그로 우선순위 변경
+                  </span>
                 </div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {statusDistribution.map((item) => (
-                <div key={item.label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${item.color}`} />
-                    <span className="text-xs text-gray-600">{item.label}</span>
-                  </div>
-                  <span className={`text-sm font-bold ${item.textColor}`}>{item.count}</span>
+
+                {/* ── Table Headers ────────────────────────────── */}
+                <div className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                  <div />
+                  <div>프로젝트명</div>
+                  <div>담당자</div>
+                  <div>진행상황</div>
+                  <div className="text-center">우선순위</div>
+                  <div className="text-center">마감일</div>
+                  <div>현재단계</div>
+                  <div className="text-center">작업</div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* 프로젝트 현황 (3/4 너비) */}
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-blue-500" /> 프로젝트 현황
-                <Badge variant="default" className="text-[10px] ml-1">{projectsWithProgress.filter((p) => p.status === 'active' || p.status === 'holding').length}</Badge>
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                  <GripVertical className="h-3 w-3" /> 드래그로 우선순위 변경
-                </span>
-                <Button size="sm" variant="outline" onClick={() => navigate('/admin/projects/board')}>
-                  보드 보기 <ArrowRight className="h-3 w-3 ml-1" />
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {projectsWithProgress.length === 0 ? (
-              <p className="text-center py-8 text-gray-400">프로젝트가 없습니다</p>
-            ) : (
-              <div className="space-y-1.5">
-                {projectsWithProgress.filter((p) => p.status === 'active' || p.status === 'holding').slice(0, 10).map((p, idx) => (
-                  <div
-                    key={p.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, p.id)}
-                    onDragEnd={handleDragEnd}
-                    onDragEnter={(e) => handleDragEnter(e, p.id)}
-                    onDragLeave={handleDragLeave}
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, p.id)}
-                    onClick={() => navigate(`/admin/projects/${p.id}`)}
-                    className={`w-full text-left p-3 border rounded-lg transition-all cursor-pointer ${
-                      dragOverId === p.id && draggedId !== p.id
-                        ? 'border-blue-400 bg-blue-50 shadow-md'
-                        : draggedId === p.id
-                        ? 'border-gray-300 bg-gray-100 opacity-50'
-                        : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
+                {/* ── Project Rows ─────────────────────────────── */}
+                <div className="divide-y divide-gray-100">
+                  {group.items.map((p) => {
+                    const isExpanded = expandedProjects.has(p.id)
+                    const isFav = favorites.has(p.id)
+                    const priorityInfo = getPriorityInfo(p.priority)
+                    const sortedStages = [...p.stages].sort((a, b) => a.stage_order - b.stage_order)
+
+                    return (
+                      <div key={p.id}>
+                        {/* Main project row */}
                         <div
-                          className="flex items-center gap-1 cursor-grab active:cursor-grabbing select-none"
-                          onMouseDown={(e) => e.stopPropagation()}
-                        >
-                          <GripVertical className="h-4 w-4 text-gray-300" />
-                          <span className="text-[11px] font-bold text-gray-400 w-5 text-center">{idx + 1}</span>
-                        </div>
-                        <Badge className={BRAND_COLORS[p.brand] || 'bg-gray-100 text-gray-600'}>{p.brand}</Badge>
-                        <span className="text-sm font-semibold text-gray-900">{p.project_name}</span>
-                        <Badge className={PROJECT_STATUS_COLORS[p.status]}>{PROJECT_STATUS_LABELS[p.status]}</Badge>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        {p.currentStage && (
-                          <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full text-[11px] font-medium">
-                            <TrendingUp className="h-3 w-3" />
-                            {p.currentStage.stage_name}
-                          </span>
-                        )}
-                        {p.launch_date && (
-                          <span className="flex items-center gap-1 text-[11px]">
-                            <Calendar className="h-3 w-3" />
-                            {p.launch_date}
-                          </span>
-                        )}
-                        {p.delayed > 0 && (
-                          <span className="text-red-600 font-bold flex items-center gap-0.5 text-[11px]">
-                            <AlertTriangle className="h-3 w-3" /> {p.delayed}지연
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 역할 */}
-                    {(p.manager_name || p.leader_name || p.executive_name) && (
-                      <div className="flex items-center gap-3 mb-2 ml-9 text-[11px] text-gray-500">
-                        {p.manager_name && <span>담당: <span className="text-gray-700 font-medium">{p.manager_name}</span></span>}
-                        {p.leader_name && <span>리더: <span className="text-gray-700 font-medium">{p.leader_name}</span></span>}
-                        {p.executive_name && <span>이사: <span className="text-gray-700 font-medium">{p.executive_name}</span></span>}
-                      </div>
-                    )}
-
-                    {/* Progress */}
-                    <div className="flex items-center gap-3 ml-9">
-                      <div className="flex-1">
-                        <ProgressBar
-                          value={p.progress}
-                          max={100}
-                          size="sm"
-                          showPercent={false}
-                          color={p.delayed > 0 ? 'red' : p.progress >= 70 ? 'emerald' : 'brand'}
-                        />
-                      </div>
-                      <span className="text-xs font-bold text-gray-600 w-10 text-right">{p.progress}%</span>
-                      <span className="text-[10px] text-gray-400 w-24 text-right">
-                        {p.completed}/{p.total} 단계 · {p.linkedTasks.length}작업
-                      </span>
-                    </div>
-
-                    {/* Pipeline mini-view */}
-                    <div className="flex gap-0.5 mt-2 ml-9">
-                      {p.stages.sort((a, b) => a.stage_order - b.stage_order).map((s) => (
-                        <div
-                          key={s.id}
-                          className={`flex-1 h-1.5 rounded-full ${
-                            s.status === '완료' ? 'bg-emerald-400' :
-                            s.status === '진행중' ? 'bg-blue-400' :
-                            s.status === '홀딩' ? 'bg-amber-400' : 'bg-gray-200'
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, p.id)}
+                          onDragEnd={handleDragEnd}
+                          onDragEnter={(e) => handleDragEnter(e, p.id)}
+                          onDragLeave={handleDragLeave}
+                          onDragOver={handleDragOver}
+                          onDrop={(e) => handleDrop(e, p.id)}
+                          className={`grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2.5 transition-all cursor-pointer group ${
+                            dragOverId === p.id && draggedId !== p.id
+                              ? 'bg-blue-50 shadow-inner'
+                              : draggedId === p.id
+                              ? 'bg-gray-100 opacity-50'
+                              : 'hover:bg-gray-50'
                           }`}
-                          title={`${s.stage_name}: ${s.status}`}
-                        />
-                      ))}
+                        >
+                          {/* Expand chevron + drag handle */}
+                          <div className="flex items-center gap-0.5">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleExpand(p.id) }}
+                              className="p-0.5 rounded hover:bg-gray-200 transition-colors"
+                            >
+                              {isExpanded
+                                ? <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
+                                : <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
+                              }
+                            </button>
+                            <div className="cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity">
+                              <GripVertical className="h-3.5 w-3.5 text-gray-300" />
+                            </div>
+                          </div>
+
+                          {/* Project name */}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <button
+                              onClick={(e) => toggleFavorite(p.id, e)}
+                              className="shrink-0"
+                            >
+                              <Star
+                                className={`h-3.5 w-3.5 transition-colors ${
+                                  isFav ? 'text-amber-400 fill-amber-400' : 'text-gray-300 hover:text-amber-300'
+                                }`}
+                              />
+                            </button>
+                            <span
+                              onClick={() => navigate(`/admin/projects/${p.id}`)}
+                              className="text-sm font-medium text-gray-900 truncate hover:text-blue-600 hover:underline transition-colors cursor-pointer"
+                            >
+                              {p.project_name}
+                            </span>
+                            {p.linkedTasks.length > 0 && (
+                              <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-bold text-gray-600">
+                                {p.linkedTasks.length}
+                              </span>
+                            )}
+                            {p.delayed > 0 && (
+                              <span className="shrink-0 text-red-500">
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Assignees */}
+                          <div className="flex items-center -space-x-1.5">
+                            {(p.assignee_names || []).slice(0, 3).map((name, i) => (
+                              <div
+                                key={i}
+                                className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 text-white flex items-center justify-center text-[10px] font-bold border-2 border-white shadow-sm"
+                                title={name}
+                              >
+                                {name.slice(0, 1)}
+                              </div>
+                            ))}
+                            {(p.assignee_names || []).length > 3 && (
+                              <div className="w-7 h-7 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold border-2 border-white">
+                                +{(p.assignee_names || []).length - 3}
+                              </div>
+                            )}
+                            {(!p.assignee_names || p.assignee_names.length === 0) && (
+                              <span className="text-[11px] text-gray-400">-</span>
+                            )}
+                          </div>
+
+                          {/* Progress bar */}
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all duration-500"
+                                style={{ width: `${p.progress}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-bold text-gray-600 w-9 text-right tabular-nums">
+                              {p.progress}%
+                            </span>
+                          </div>
+
+                          {/* Priority */}
+                          <div className="flex justify-center">
+                            <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded text-[11px] font-bold ${priorityInfo.color}`}>
+                              {priorityInfo.label}
+                            </span>
+                          </div>
+
+                          {/* Launch date */}
+                          <div className="text-center text-xs text-gray-600">
+                            {formatDateShort(p.launch_date)}
+                          </div>
+
+                          {/* Current stage */}
+                          <div>
+                            {p.currentStage ? (
+                              <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full truncate block text-center">
+                                {p.currentStage.stage_name}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-gray-400 block text-center">-</span>
+                            )}
+                          </div>
+
+                          {/* Task count */}
+                          <div className="text-center text-xs text-gray-500 font-medium">
+                            {p.linkedTasks.length}
+                          </div>
+                        </div>
+
+                        {/* ── Expanded sub-rows (pipeline stages) ── */}
+                        {isExpanded && (
+                          <div className={`border-l-4 ${group.color.bar} bg-gray-50/70`}>
+                            <div className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+                              <div />
+                              <div className="pl-6">파이프라인 단계</div>
+                              <div>담당자</div>
+                              <div>상태</div>
+                              <div className="text-center">순서</div>
+                              <div className="text-center">마감일</div>
+                              <div className="text-center">D-Day</div>
+                              <div />
+                            </div>
+                            {sortedStages.map((stage) => {
+                              const dday = getDday(stage.deadline)
+                              const stageAssignees = (stage.stage_assignee_ids || [])
+                                .map((id) => getEmpName(id))
+                                .filter((n) => n !== '-')
+
+                              return (
+                                <div
+                                  key={stage.id}
+                                  className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2 border-b border-gray-100 last:border-b-0 hover:bg-white/80 transition-colors"
+                                >
+                                  <div />
+                                  {/* Stage name */}
+                                  <div className="pl-6 flex items-center gap-2">
+                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                      stage.status === '완료' ? 'bg-emerald-500' :
+                                      stage.status === '진행중' ? 'bg-blue-500' :
+                                      stage.status === '홀딩' ? 'bg-amber-500' : 'bg-gray-300'
+                                    }`} />
+                                    <span className="text-[12px] text-gray-700 font-medium truncate">
+                                      {stage.stage_name}
+                                    </span>
+                                  </div>
+
+                                  {/* Stage assignees */}
+                                  <div className="flex items-center -space-x-1">
+                                    {stageAssignees.length > 0 ? stageAssignees.slice(0, 2).map((name, i) => (
+                                      <div
+                                        key={i}
+                                        className="w-6 h-6 rounded-full bg-gray-300 text-gray-700 flex items-center justify-center text-[9px] font-bold border-2 border-white"
+                                        title={name}
+                                      >
+                                        {name.slice(0, 1)}
+                                      </div>
+                                    )) : (
+                                      <span className="text-[11px] text-gray-400">-</span>
+                                    )}
+                                  </div>
+
+                                  {/* Status selector pill */}
+                                  <div>
+                                    <select
+                                      value={stage.status}
+                                      onChange={(e) => handleStageStatusChange(stage.id, p.id, e.target.value as StageStatus)}
+                                      className={`text-[11px] font-bold rounded-full px-3 py-1 border-0 cursor-pointer appearance-none text-center ${STAGE_PILL_COLORS[stage.status] || STAGE_STATUS_COLORS[stage.status]}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <option value="시작전">시작전</option>
+                                      <option value="진행중">진행중</option>
+                                      <option value="완료">완료</option>
+                                      <option value="홀딩">홀딩</option>
+                                    </select>
+                                  </div>
+
+                                  {/* Order */}
+                                  <div className="text-center text-[11px] text-gray-400">
+                                    {stage.stage_order}
+                                  </div>
+
+                                  {/* Deadline */}
+                                  <div className="text-center text-[11px] text-gray-600">
+                                    {formatDateShort(stage.deadline)}
+                                  </div>
+
+                                  {/* D-day */}
+                                  <div className="flex justify-center">
+                                    {dday ? (
+                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${dday.className}`}>
+                                        {dday.label}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-gray-300">-</span>
+                                    )}
+                                  </div>
+
+                                  <div />
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* ── Add item button ──────────────────────────── */}
+                <button
+                  onClick={() => navigate('/admin/projects/new')}
+                  className={`w-full flex items-center gap-2 px-6 py-2.5 text-sm ${group.color.text} hover:${group.color.header} transition-colors border-t border-gray-100`}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="font-medium">아이템 추가</span>
+                </button>
+
+                {/* ── Group Summary Row ────────────────────────── */}
+                <div className={`px-4 py-2.5 ${group.color.header} border-t border-gray-200 flex items-center gap-6 text-[11px]`}>
+                  <span className={`font-semibold ${group.color.text}`}>요약</span>
+
+                  {/* Average progress */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">평균 진행률</span>
+                    <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500"
+                        style={{ width: `${avgProgress}%` }}
+                      />
+                    </div>
+                    <span className="font-bold text-gray-700">{avgProgress}%</span>
+                  </div>
+
+                  {/* Priority distribution mini-blocks */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-500">우선순위</span>
+                    <div className="flex gap-0.5">
+                      {priorityDist.urgent > 0 && (
+                        <div className="flex items-center gap-0.5">
+                          <div className="w-3 h-3 rounded-sm bg-rose-500" />
+                          <span className="text-rose-600 font-bold">{priorityDist.urgent}</span>
+                        </div>
+                      )}
+                      {priorityDist.high > 0 && (
+                        <div className="flex items-center gap-0.5 ml-1">
+                          <div className="w-3 h-3 rounded-sm bg-violet-500" />
+                          <span className="text-violet-600 font-bold">{priorityDist.high}</span>
+                        </div>
+                      )}
+                      {priorityDist.mid > 0 && (
+                        <div className="flex items-center gap-0.5 ml-1">
+                          <div className="w-3 h-3 rounded-sm bg-indigo-500" />
+                          <span className="text-indigo-600 font-bold">{priorityDist.mid}</span>
+                        </div>
+                      )}
+                      {priorityDist.low > 0 && (
+                        <div className="flex items-center gap-0.5 ml-1">
+                          <div className="w-3 h-3 rounded-sm bg-emerald-500" />
+                          <span className="text-emerald-600 font-bold">{priorityDist.low}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+
+                  {/* Total tasks */}
+                  <div className="flex items-center gap-1 ml-auto">
+                    <span className="text-gray-500">작업</span>
+                    <span className="font-bold text-gray-700">{totalTasks}개</span>
+                  </div>
+                </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            )
+          })
+        )}
       </div>
 
-      {/* 하단 위젯 영역 */}
+      {/* ─── Bottom Widgets ──────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 주의 필요 */}
         <Card>
@@ -474,7 +732,7 @@ export default function UnifiedDashboard() {
             ) : (
               <div className="space-y-1.5 max-h-64 overflow-y-auto">
                 {delayedStages.map((s) => {
-                  const project = filteredProjects.find((p) => p.stages.some((st) => st.id === s.id))
+                  const project = filteredProjects.find((pr) => pr.stages.some((st) => st.id === s.id))
                   const days = Math.abs(Math.ceil((new Date(s.deadline!).getTime() - Date.now()) / 86400000))
                   return (
                     <div key={s.id} className="flex items-center justify-between p-2.5 bg-red-50 rounded-lg text-sm border border-red-100">
@@ -482,7 +740,7 @@ export default function UnifiedDashboard() {
                         <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
                         <div>
                           <span className="font-medium text-red-800 text-xs">{project?.project_name}</span>
-                          <span className="text-red-500 text-[11px] ml-1">· {s.stage_name}</span>
+                          <span className="text-red-500 text-[11px] ml-1">{s.stage_name}</span>
                         </div>
                       </div>
                       <Badge variant="danger" className="text-[10px]">D+{days}</Badge>
@@ -495,10 +753,13 @@ export default function UnifiedDashboard() {
                       <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                       <div>
                         <span className="font-medium text-amber-800 text-xs">{t.title}</span>
-                        <span className="text-amber-500 text-[11px] ml-1">· {getEmpName(t.assignee_id)}</span>
+                        <span className="text-amber-500 text-[11px] ml-1">{getEmpName(t.assignee_id)}</span>
                       </div>
                     </div>
-                    <Badge variant="warning" className="text-[10px]">{t.due_date?.slice(5)}</Badge>
+                    <Badge variant="warning" className="text-[10px]">
+                      <Calendar className="h-3 w-3 mr-0.5" />
+                      {t.due_date?.slice(5)}
+                    </Badge>
                   </div>
                 ))}
               </div>
@@ -506,7 +767,7 @@ export default function UnifiedDashboard() {
           </CardContent>
         </Card>
 
-        {/* 담당자별 업무량 - Monday.com 워크로드 위젯 스타일 */}
+        {/* 담당자별 업무량 */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -517,7 +778,7 @@ export default function UnifiedDashboard() {
             {assigneeWorkload.length === 0 ? (
               <p className="text-center py-6 text-gray-400 text-sm">데이터 없음</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {assigneeWorkload.map(([id, data]) => {
                   const totalLoad = data.projects + data.tasks
                   const maxLoad = Math.max(...assigneeWorkload.map(([, d]) => d.projects + d.tasks), 1)
@@ -526,13 +787,11 @@ export default function UnifiedDashboard() {
 
                   return (
                     <div key={id} className="flex items-center gap-3">
-                      {/* Avatar */}
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
                         isOverloaded ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
                       }`}>
                         {data.name[0]}
                       </div>
-                      {/* Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <span className="text-xs font-medium text-gray-800 truncate">{data.name}</span>
@@ -542,7 +801,6 @@ export default function UnifiedDashboard() {
                             {data.overdue > 0 && <span className="text-red-600 font-bold">{data.overdue}지연</span>}
                           </div>
                         </div>
-                        {/* Workload bar */}
                         <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all ${

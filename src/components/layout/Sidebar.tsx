@@ -206,6 +206,28 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const { profile, hasRole } = useAuth()
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [messengerUnread, setMessengerUnread] = useState(0)
+  const [allowedMenus, setAllowedMenus] = useState<string[] | null>(null) // null = 로딩중 또는 권한 미설정 (전체 허용)
+
+  // Fetch menu permissions
+  useEffect(() => {
+    if (!profile?.id) return
+
+    async function fetchMenuPermissions() {
+      const { data } = await supabase
+        .from('menu_permissions')
+        .select('allowed_menus')
+        .eq('employee_id', profile!.id)
+        .single()
+
+      if (data?.allowed_menus) {
+        setAllowedMenus(data.allowed_menus as string[])
+      } else {
+        setAllowedMenus(null) // 권한 미설정 시 전체 허용
+      }
+    }
+
+    fetchMenuPermissions()
+  }, [profile?.id])
 
   // Fetch unread count for messenger badge
   useEffect(() => {
@@ -247,7 +269,23 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     if (item.hideForRoles && profile?.role && item.hideForRoles.includes(profile.role as EmployeeRole)) {
       return false
     }
-    return !item.minRole || hasRole(item.minRole)
+    if (!item.minRole || hasRole(item.minRole)) {
+      // 메뉴 권한이 설정되어 있으면 허용 목록에 있는지 확인
+      // CEO/admin은 항상 전체 접근, 권한 미설정(null)이면 전체 허용
+      if (allowedMenus === null || profile?.role === 'ceo' || profile?.role === 'admin') {
+        return true
+      }
+      const path = typeof item.to === 'string' ? item.to : ''
+      if (path === 'REPORT_SELF') return allowedMenus.includes('/report')
+      return allowedMenus.includes(path)
+    }
+    return false
+  }
+
+  // 그룹이 보이려면 최소 1개 이상의 하위 메뉴가 보여야 함
+  function isGroupVisible(group: NavGroup): boolean {
+    if (group.minRole && !hasRole(group.minRole)) return false
+    return group.items.some(isItemVisible)
   }
 
   function toggleGroup(groupId: string) {
@@ -255,7 +293,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   }
 
   const visibleStandaloneItems = standaloneItems.filter(isItemVisible)
-  const visibleGroups = navGroups.filter((g) => !g.minRole || hasRole(g.minRole))
+  const visibleGroups = navGroups.filter(isGroupVisible)
 
   const navContent = (
     <nav className="flex flex-col gap-1 p-4 overflow-y-auto">
@@ -359,6 +397,21 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           >
             <Settings className="h-5 w-5" />
             일반 설정
+          </NavLink>
+          <NavLink
+            to="/settings/menu-permissions"
+            onClick={onClose}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-brand-50 text-brand-700'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              )
+            }
+          >
+            <Shield className="h-5 w-5" />
+            메뉴 권한 관리
           </NavLink>
         </>
       )}

@@ -17,6 +17,7 @@ import Report from '@/routes/report'
 import Settings from '@/routes/settings'
 import EvaluationSettings from '@/routes/settings/evaluation'
 import GeneralSettings from '@/routes/settings/general'
+import MenuPermissions from '@/routes/settings/menu-permissions'
 
 // 채용관리
 import RecruitmentDashboard from '@/routes/recruitment/dashboard'
@@ -143,6 +144,14 @@ function App() {
                 element={
                   <AdminRoute>
                     <GeneralSettings />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="settings/menu-permissions"
+                element={
+                  <AdminRoute>
+                    <MenuPermissions />
                   </AdminRoute>
                 }
               />
