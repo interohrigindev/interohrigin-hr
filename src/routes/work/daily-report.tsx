@@ -86,14 +86,104 @@ export default function DailyReportPage() {
       setBlockers(r.blockers || '')
     } else {
       setReport(null)
-      setCompleted([])
-      setInProgress([])
-      setPlanned([])
       setSatisfaction(5)
       setSatisfactionComment('')
       setBlockers('')
       setAiSuggestion(null)
 
+      // ─── 금일 프로젝트 활동 자동 수집 ─────────────────
+      const todayStart = `${selectedDate}T00:00:00`
+      const todayEnd = `${selectedDate}T23:59:59`
+
+      // 1) 오늘의 project_updates (내가 작성한 업데이트)
+      const { data: todayUpdates } = await supabase
+        .from('project_updates')
+        .select('*, project_id')
+        .eq('author_id', employeeId)
+        .gte('created_at', todayStart)
+        .lte('created_at', todayEnd)
+        .order('created_at')
+
+      // 2) 오늘의 pipeline_stages 변경 (내가 작성한 상태변경 로그)
+      const stageChanges = (todayUpdates || []).filter(
+        (u: { status_changed_to: string | null }) => u.status_changed_to
+      )
+
+      // 3) 오늘 완료된 내 작업
+      const { data: todayDoneTasks } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('assignee_id', employeeId)
+        .eq('status', 'done')
+        .gte('updated_at', todayStart)
+        .lte('updated_at', todayEnd)
+
+      // 4) 현재 진행중인 내 작업
+      const { data: currentInProgress } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('assignee_id', employeeId)
+        .eq('status', 'in_progress')
+
+      // 프로젝트 이름 매핑용
+      const projectIds = [...new Set((todayUpdates || []).map((u: { project_id: string }) => u.project_id))]
+      let projectNames: Record<string, string> = {}
+      if (projectIds.length > 0) {
+        const { data: projData } = await supabase
+          .from('project_boards')
+          .select('id, project_name')
+          .in('id', projectIds)
+        if (projData) {
+          projectNames = Object.fromEntries(projData.map((p: { id: string; project_name: string }) => [p.id, p.project_name]))
+        }
+      }
+
+      // ─── 완료 섹션 자동 채우기 ─────────────────────────
+      const autoCompleted: DailyReportTask[] = []
+
+      // 완료된 작업
+      for (const t of (todayDoneTasks || []) as Task[]) {
+        autoCompleted.push({ id: t.id, title: `[작업 완료] ${t.title}`, status: 'done' })
+      }
+
+      // 스테이지 상태 변경
+      for (const u of stageChanges as { id: string; content: string; project_id: string }[]) {
+        const projName = projectNames[u.project_id] || ''
+        autoCompleted.push({
+          id: u.id,
+          title: `[${projName}] ${u.content}`,
+          status: 'done',
+        })
+      }
+
+      // 일반 업데이트 (상태변경 아닌 것)
+      const regularUpdates = (todayUpdates || []).filter(
+        (u: { status_changed_to: string | null }) => !u.status_changed_to
+      )
+      for (const u of regularUpdates as { id: string; content: string; project_id: string }[]) {
+        const projName = projectNames[u.project_id] || ''
+        // HTML 태그 제거하여 텍스트만 추출
+        const plainText = u.content.replace(/<[^>]*>/g, '').trim().slice(0, 100)
+        if (plainText) {
+          autoCompleted.push({
+            id: u.id,
+            title: `[${projName}] ${plainText}`,
+            status: 'done',
+          })
+        }
+      }
+
+      setCompleted(autoCompleted)
+
+      // ─── 진행중 섹션 자동 채우기 ───────────────────────
+      const autoInProgress: DailyReportTask[] = (currentInProgress || []).map((t: Task) => ({
+        id: t.id,
+        title: t.title,
+        status: 'in_progress' as const,
+      }))
+      setInProgress(autoInProgress)
+
+      // ─── 이월/계획 ────────────────────────────────────
       // Load carryover from yesterday's uncompleted tasks
       const yesterday = prevDay(selectedDate)
       const { data: yesterdayReport } = await supabase
@@ -112,16 +202,11 @@ export default function DailyReportPage() {
         ]
         setCarryover(carry)
       } else {
-        // From DB tasks that are in_progress
-        const inProgressTasks = (taskData || [])
-          .filter((t: Task) => t.status === 'in_progress')
-          .map((t: Task) => ({
-            id: t.id,
-            title: t.title,
-            status: t.status,
-          }))
-        setCarryover(inProgressTasks)
+        setCarryover([])
       }
+
+      // 계획 섹션은 비워두고 사용자가 추가
+      setPlanned([])
     }
 
     setLoading(false)
