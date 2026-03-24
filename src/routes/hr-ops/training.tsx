@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   BookOpen, AlertTriangle, CheckCircle,
   Search, Upload, Download, Clock,
-  ShieldCheck, Lock, HardHat, Heart,
+  ShieldCheck, Lock, HardHat, Heart, ExternalLink,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -88,6 +88,47 @@ export default function TrainingPage() {
   const [filterDept, setFilterDept] = useState('')
   const [activeTab, setActiveTab] = useState<'mandatory' | 'external'>('mandatory')
   const [currentYear] = useState(new Date().getFullYear())
+  const [uploadingRecordId, setUploadingRecordId] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleCertificateUpload(file: File) {
+    if (!uploadingRecordId) return
+    const record = trainingRecords.find(r => r.id === uploadingRecordId)
+    if (!record) return
+
+    const ext = file.name.split('.').pop() || 'pdf'
+    const safeName = record.training_name.replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
+    const path = `training-certs/${record.employee_id}/${safeName}_${record.year}.${ext}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('chat-attachments')
+      .upload(path, file, { upsert: true })
+
+    if (uploadError) {
+      toast('업로드 실패: ' + uploadError.message, 'error')
+      setUploadingRecordId(null)
+      return
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('chat-attachments')
+      .getPublicUrl(path)
+
+    const certificateUrl = urlData?.publicUrl || path
+
+    const { error: updateError } = await supabase
+      .from('training_records')
+      .update({ certificate_url: certificateUrl, completed_at: record.completed_at || new Date().toISOString() })
+      .eq('id', uploadingRecordId)
+
+    if (updateError) {
+      toast('기록 업데이트 실패: ' + updateError.message, 'error')
+    } else {
+      toast('수료증이 업로드되었습니다', 'success')
+      fetchData()
+    }
+    setUploadingRecordId(null)
+  }
 
   useEffect(() => {
     fetchData()
@@ -189,9 +230,17 @@ export default function TrainingPage() {
           <Button variant="outline" onClick={() => toast('엑셀 다운로드 기능 준비중', 'info')}>
             <Download className="h-4 w-4 mr-1" /> 다운로드
           </Button>
-          <Button onClick={() => toast('수료증 업로드 기능 준비중', 'info')}>
-            <Upload className="h-4 w-4 mr-1" /> 수료증 업로드
-          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleCertificateUpload(file)
+              e.target.value = ''
+            }}
+          />
         </div>
       </div>
 
@@ -422,14 +471,24 @@ export default function TrainingPage() {
                         <td className="py-2.5 px-3 text-xs text-gray-500 max-w-[200px] truncate">{rec.note || '-'}</td>
                         <td className="py-2.5 px-3 text-center">
                           {rec.certificate_url ? (
-                            <button
-                              onClick={() => toast('수료증 다운로드 기능 준비중', 'info')}
-                              className="px-2 py-1 text-[10px] font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                            <a
+                              href={rec.certificate_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
                             >
-                              다운로드
-                            </button>
+                              <ExternalLink className="h-3 w-3" /> 보기
+                            </a>
                           ) : (
-                            <span className="text-[10px] text-gray-400">없음</span>
+                            <button
+                              onClick={() => {
+                                setUploadingRecordId(rec.id)
+                                fileInputRef.current?.click()
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                            >
+                              <Upload className="h-3 w-3" /> 업로드
+                            </button>
                           )}
                         </td>
                       </tr>

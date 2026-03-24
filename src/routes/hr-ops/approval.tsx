@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   FileCheck, Clock, CheckCircle, XCircle,
   Plus, Search, ChevronRight, User,
-  Send, Paperclip,
+  Send, Paperclip, Download,
 } from 'lucide-react'
+import jsPDF from 'jspdf'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -129,6 +130,13 @@ export default function ApprovalManagementPage() {
   const [actionComment, setActionComment] = useState('')
   const [processing, setProcessing] = useState(false)
 
+  // 결재 위임
+  const [showDelegationDialog, setShowDelegationDialog] = useState(false)
+  const [delegateToId, setDelegateToId] = useState('')
+  const [delegationStart, setDelegationStart] = useState('')
+  const [delegationEnd, setDelegationEnd] = useState('')
+  const [delegationReason, setDelegationReason] = useState('')
+
   // New document dialog
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [newDocType, setNewDocType] = useState('')
@@ -232,6 +240,161 @@ export default function ApprovalManagementPage() {
     if (role === 'executive') return executives.map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role})` }))
     if (role === 'leader') return leaders.map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role})` }))
     return allEmployees.filter((e) => e.id !== profile?.id).map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role || ''})` }))
+  }
+
+  /* ── PDF Download ── */
+
+  function handleDownloadPDF(doc: ApprovalDocument) {
+    const pdf = new jsPDF()
+    const steps = stepsMap[doc.id] || []
+
+    // Title
+    pdf.setFontSize(18)
+    pdf.text('APPROVAL DOCUMENT', 105, 20, { align: 'center' })
+
+    // Horizontal line
+    pdf.setDrawColor(0)
+    pdf.setLineWidth(0.5)
+    pdf.line(20, 25, 190, 25)
+
+    // Document info
+    pdf.setFontSize(10)
+    let y = 35
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('No:', 20, y)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(doc.doc_number || '-', 50, y)
+    y += 8
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Title:', 20, y)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(doc.title, 50, y)
+    y += 8
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Type:', 20, y)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(getDocTypeLabel(doc.doc_type), 50, y)
+    y += 8
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Requester:', 20, y)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(getEmpName(doc.requester_id), 50, y)
+    y += 8
+
+    if (doc.department) {
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Department:', 20, y)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(doc.department, 50, y)
+      y += 8
+    }
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Submitted:', 20, y)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text(doc.submitted_at ? fmtDate(doc.submitted_at) : fmtDate(doc.created_at), 50, y)
+    y += 8
+
+    if (doc.completed_at) {
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Completed:', 20, y)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(fmtDate(doc.completed_at), 50, y)
+      y += 8
+    }
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Status:', 20, y)
+    pdf.setFont('helvetica', 'normal')
+    const statusLabel = STATUS_CONFIG[doc.status]?.label || doc.status
+    pdf.text(statusLabel, 50, y)
+    y += 8
+
+    if (doc.amount != null) {
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Amount:', 20, y)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(fmtAmount(doc.amount), 50, y)
+      y += 8
+    }
+
+    // Content section
+    if (doc.content && Object.keys(doc.content).length > 0) {
+      y += 5
+      pdf.setDrawColor(200)
+      pdf.line(20, y, 190, y)
+      y += 8
+
+      pdf.setFontSize(12)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Content', 20, y)
+      y += 8
+
+      pdf.setFontSize(10)
+      pdf.setFont('helvetica', 'normal')
+      for (const [key, value] of Object.entries(doc.content)) {
+        pdf.setFont('helvetica', 'bold')
+        pdf.text(`${key}:`, 25, y)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(String(value), 70, y)
+        y += 7
+        if (y > 270) {
+          pdf.addPage()
+          y = 20
+        }
+      }
+    }
+
+    // Approval steps
+    y += 5
+    pdf.setDrawColor(200)
+    pdf.line(20, y, 190, y)
+    y += 8
+
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text(`Approval Flow (${doc.current_step}/${doc.total_steps})`, 20, y)
+    y += 8
+
+    pdf.setFontSize(10)
+    for (const step of steps) {
+      if (y > 270) {
+        pdf.addPage()
+        y = 20
+      }
+
+      const actionLabel =
+        step.action === 'approved' ? 'Approved' :
+        step.action === 'rejected' ? 'Rejected' :
+        'Pending'
+      const roleLabel = ROLE_LABELS[step.approver_role] || step.approver_role
+
+      pdf.setFont('helvetica', 'bold')
+      pdf.text(`Step ${step.step_order}:`, 25, y)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(`${getEmpName(step.approver_id)} (${roleLabel}) - ${actionLabel}`, 50, y)
+      y += 6
+
+      if (step.comment) {
+        pdf.setFont('helvetica', 'italic')
+        pdf.text(`Comment: ${step.comment}`, 50, y)
+        pdf.setFont('helvetica', 'normal')
+        y += 6
+      }
+
+      if (step.acted_at) {
+        pdf.text(`Date: ${fmtDate(step.acted_at)}`, 50, y)
+        y += 6
+      }
+
+      y += 2
+    }
+
+    pdf.save(`approval_${doc.doc_number || doc.id}.pdf`)
   }
 
   /* ── Stats ── */
@@ -348,6 +511,53 @@ export default function ApprovalManagementPage() {
     setActionComment('')
     setSelectedDoc(null)
     fetchData()
+  }
+
+  /* ── 반려 후 재상신 ── */
+  async function handleResubmit(docId: string) {
+    const doc = documents.find((d) => d.id === docId)
+    if (!doc || doc.status !== 'rejected') return
+    setProcessing(true)
+
+    // 모든 approval_steps를 pending으로 초기화
+    const steps = stepsMap[docId] || []
+    for (const step of steps) {
+      await supabase.from('approval_steps').update({ action: 'pending', comment: null, acted_at: null }).eq('id', step.id)
+    }
+
+    // 문서를 submitted로 되돌리고 current_step = 1
+    await supabase.from('approval_documents').update({
+      status: 'submitted',
+      current_step: 1,
+      completed_at: null,
+    }).eq('id', docId)
+
+    setProcessing(false)
+    toast('재상신 완료. 결재가 다시 시작됩니다.', 'success')
+    setSelectedDoc(null)
+    fetchData()
+  }
+
+  /* ── 결재 위임 등록 ── */
+  async function handleSaveDelegation() {
+    if (!profile?.id || !delegateToId || !delegationStart || !delegationEnd) {
+      toast('모든 항목을 입력하세요', 'error')
+      return
+    }
+    setSaving(true)
+    const { error } = await supabase.from('approval_delegations').insert({
+      delegator_id: profile.id,
+      delegate_id: delegateToId,
+      start_date: delegationStart,
+      end_date: delegationEnd,
+      reason: delegationReason || null,
+      is_active: true,
+    })
+    setSaving(false)
+    if (error) { toast('위임 등록 실패: ' + error.message, 'error'); return }
+    toast('결재 위임이 등록되었습니다', 'success')
+    setShowDelegationDialog(false)
+    setDelegateToId(''); setDelegationStart(''); setDelegationEnd(''); setDelegationReason('')
   }
 
   /* ── Create New Document ── */
@@ -523,9 +733,14 @@ export default function ApprovalManagementPage() {
           <h1 className="text-2xl font-bold text-gray-900">전자 결재</h1>
           <p className="text-sm text-gray-500 mt-0.5">결재 요청을 관리하고 승인/반려 처리합니다</p>
         </div>
-        <Button onClick={() => setShowNewDialog(true)}>
-          <Plus className="h-4 w-4 mr-1" /> 새 결재 신청
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowDelegationDialog(true)}>
+            결재 위임
+          </Button>
+          <Button onClick={() => setShowNewDialog(true)}>
+            <Plus className="h-4 w-4 mr-1" /> 새 결재 신청
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -696,6 +911,20 @@ export default function ApprovalManagementPage() {
                 </div>
               </div>
 
+              {/* PDF Download — approved documents only */}
+              {doc.status === 'approved' && (
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDownloadPDF(doc)}
+                  >
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    PDF 다운로드
+                  </Button>
+                </div>
+              )}
+
               {/* Amount */}
               {doc.amount != null && (
                 <div className="bg-amber-50 rounded-lg p-3">
@@ -810,9 +1039,53 @@ export default function ApprovalManagementPage() {
                   </div>
                 </div>
               )}
+
+              {/* 반려된 문서 → 본인이 신청자면 재상신 가능 */}
+              {doc.status === 'rejected' && doc.requester_id === profile?.id && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700 mb-2">이 결재가 반려되었습니다. 내용을 확인 후 재상신할 수 있습니다.</p>
+                  <Button size="sm" onClick={() => handleResubmit(doc.id)} disabled={processing}>
+                    {processing ? '처리중...' : '재상신'}
+                  </Button>
+                </div>
+              )}
             </div>
           )
         })()}
+      </Dialog>
+
+      {/* ── 결재 위임 Dialog ── */}
+      <Dialog
+        open={showDelegationDialog}
+        onClose={() => setShowDelegationDialog(false)}
+        title="결재 위임 설정"
+        className="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
+            부재 시 본인의 결재 권한을 다른 직원에게 위임합니다. 위임 기간 동안 대리 결재자가 승인/반려할 수 있습니다.
+          </div>
+          <Select
+            label="대리 결재자 *"
+            value={delegateToId}
+            onChange={(e) => setDelegateToId(e.target.value)}
+            options={[
+              { value: '', label: '선택하세요' },
+              ...allEmployees.filter((e) => e.id !== profile?.id).map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role})` })),
+            ]}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="위임 시작일 *" type="date" value={delegationStart} onChange={(e) => setDelegationStart(e.target.value)} />
+            <Input label="위임 종료일 *" type="date" value={delegationEnd} onChange={(e) => setDelegationEnd(e.target.value)} />
+          </div>
+          <Input label="위임 사유" value={delegationReason} onChange={(e) => setDelegationReason(e.target.value)} placeholder="출장, 휴가 등" />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowDelegationDialog(false)}>취소</Button>
+            <Button onClick={handleSaveDelegation} disabled={saving}>
+              {saving ? '처리중...' : '위임 등록'}
+            </Button>
+          </div>
+        </div>
       </Dialog>
 
       {/* ── New Document Dialog ── */}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import * as XLSX from 'xlsx'
 import {
   Users, UserCheck, Clock, Timer,
   LogIn, LogOut, Download, ChevronLeft, ChevronRight,
@@ -405,7 +406,22 @@ export default function AttendanceManagementPage() {
               <Button variant="outline" size="sm" onClick={() => { setAdminCheckType('out'); setShowAdminDialog(true) }}>
                 <LogOut className="h-3.5 w-3.5 mr-1" /> 직원 퇴근
               </Button>
-              <Button variant="outline" size="sm" onClick={() => toast('엑셀 다운로드 기능 준비중', 'info')}>
+              <Button variant="outline" size="sm" onClick={() => {
+                const data = records.map(r => ({
+                  날짜: r.date,
+                  이름: employees.find(e => e.id === r.employee_id)?.name || '',
+                  출근: r.clock_in ? new Date(r.clock_in).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '',
+                  퇴근: r.clock_out ? new Date(r.clock_out).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '',
+                  정규시간: r.regular_hours || 0,
+                  연장시간: r.overtime_hours || 0,
+                  총시간: r.total_hours || 0,
+                  상태: STATUS_LABELS[r.status] || r.status,
+                }))
+                const ws = XLSX.utils.json_to_sheet(data)
+                const wb = XLSX.utils.book_new()
+                XLSX.utils.book_append_sheet(wb, ws, '근태기록')
+                XLSX.writeFile(wb, `근태기록_${monthRange.label}.xlsx`)
+              }}>
                 <Download className="h-3.5 w-3.5 mr-1" /> 엑셀
               </Button>
             </>

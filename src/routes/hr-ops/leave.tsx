@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import * as XLSX from 'xlsx'
 import {
   CalendarPlus, Download, Search,
   AlertTriangle, CheckCircle, Clock, Plus,
@@ -296,7 +297,20 @@ export default function LeaveManagementPage() {
         </div>
         <div className="flex gap-2">
           {isAdmin && (
-            <Button variant="outline" onClick={() => toast('엑셀 다운로드 기능 준비중', 'info')}>
+            <Button variant="outline" onClick={() => {
+              const data = filteredData.map(emp => ({
+                이름: emp.name,
+                부서: getDeptName(emp.department_id),
+                총연차: emp.totalAnnual,
+                사용: emp.usedAnnual,
+                잔여: emp.remainingAnnual,
+                소진율: `${emp.usageRate}%`,
+              }))
+              const ws = XLSX.utils.json_to_sheet(data)
+              const wb = XLSX.utils.book_new()
+              XLSX.utils.book_append_sheet(wb, ws, '연차현황')
+              XLSX.writeFile(wb, `연차현황_${currentYear}년.xlsx`)
+            }}>
               <Download className="h-4 w-4 mr-1" /> 엑셀 다운로드
             </Button>
           )}

@@ -3,6 +3,7 @@ import {
   FileText, Download, Search, Plus,
   Award, Calendar, Printer,
 } from 'lucide-react'
+import jsPDF from 'jspdf'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -132,6 +133,161 @@ export default function CertificatesPage() {
     return counts
   }, [certificates])
 
+  // PDF 생성 함수
+  function generateCertificatePDF(data: {
+    certificate_type_label: string
+    employee_name: string
+    department: string
+    position: string
+    hire_date: string
+    purpose: string
+    issued_at: string
+  }): jsPDF {
+    const pdf = new jsPDF()
+    const pageWidth = 210
+    const centerX = pageWidth / 2
+
+    // Border frame
+    pdf.setDrawColor(0)
+    pdf.setLineWidth(1)
+    pdf.rect(15, 15, 180, 267)
+    pdf.setLineWidth(0.3)
+    pdf.rect(18, 18, 174, 261)
+
+    // Company name header
+    pdf.setFontSize(11)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text('INTEROHRIGIN Co., Ltd.', centerX, 35, { align: 'center' })
+
+    // Title
+    pdf.setFontSize(24)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text(data.certificate_type_label, centerX, 55, { align: 'center' })
+
+    // Decorative line
+    pdf.setDrawColor(0)
+    pdf.setLineWidth(0.5)
+    pdf.line(60, 60, 150, 60)
+
+    // Content fields
+    let y = 85
+    const labelX = 55
+    const valueX = 100
+
+    const fields = [
+      { label: 'Name', value: data.employee_name },
+      { label: 'Department', value: data.department || '-' },
+      { label: 'Position', value: data.position || '-' },
+      { label: 'Hire Date', value: data.hire_date || '-' },
+      { label: 'Purpose', value: data.purpose || '-' },
+    ]
+
+    pdf.setFontSize(12)
+    for (const field of fields) {
+      pdf.setFont('helvetica', 'bold')
+      pdf.text(field.label + ':', labelX, y)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(field.value, valueX, y)
+
+      // Underline for value
+      pdf.setDrawColor(180)
+      pdf.setLineWidth(0.2)
+      pdf.line(valueX, y + 1, 160, y + 1)
+
+      y += 15
+    }
+
+    // Certification text
+    y += 20
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text('The above is certified to be true and correct.', centerX, y, { align: 'center' })
+
+    // Issue date
+    y += 15
+    const issueDate = data.issued_at
+      ? new Date(data.issued_at).toLocaleDateString('ko-KR', {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+        }).replace(/\. /g, '.').replace(/\.$/, '')
+      : new Date().toLocaleDateString('ko-KR', {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+        }).replace(/\. /g, '.').replace(/\.$/, '')
+
+    pdf.setFontSize(11)
+    pdf.text(`Issue Date: ${issueDate}`, centerX, y, { align: 'center' })
+
+    // Company seal area
+    y += 30
+    pdf.setFontSize(13)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('INTEROHRIGIN Co., Ltd.', centerX, y, { align: 'center' })
+    y += 8
+    pdf.setFontSize(11)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text('CEO', centerX, y, { align: 'center' })
+
+    // Seal circle placeholder
+    pdf.setDrawColor(200, 0, 0)
+    pdf.setLineWidth(0.5)
+    pdf.circle(centerX + 30, y - 4, 12)
+    pdf.setFontSize(8)
+    pdf.setTextColor(200, 0, 0)
+    pdf.text('SEAL', centerX + 30, y - 3, { align: 'center' })
+    pdf.setTextColor(0, 0, 0) // reset
+
+    return pdf
+  }
+
+  // PDF 다운로드 핸들러
+  function handleDownloadCertPDF(cert: Certificate) {
+    const data = cert.issued_data as Record<string, string> | null
+    if (!data) {
+      toast('발급 데이터가 없습니다', 'error')
+      return
+    }
+
+    const pdf = generateCertificatePDF({
+      certificate_type_label: data.certificate_type_label || CERTIFICATE_TYPES[cert.certificate_type] || cert.certificate_type,
+      employee_name: data.employee_name || '-',
+      department: data.department || '-',
+      position: data.position || '-',
+      hire_date: data.hire_date || '-',
+      purpose: data.purpose || '-',
+      issued_at: cert.issued_at,
+    })
+
+    pdf.save(`certificate_${cert.certificate_type}_${data.employee_name || 'unknown'}.pdf`)
+  }
+
+  // 인쇄 핸들러
+  function handlePrintCert(cert: Certificate) {
+    const data = cert.issued_data as Record<string, string> | null
+    if (!data) {
+      toast('발급 데이터가 없습니다', 'error')
+      return
+    }
+
+    const pdf = generateCertificatePDF({
+      certificate_type_label: data.certificate_type_label || CERTIFICATE_TYPES[cert.certificate_type] || cert.certificate_type,
+      employee_name: data.employee_name || '-',
+      department: data.department || '-',
+      position: data.position || '-',
+      hire_date: data.hire_date || '-',
+      purpose: data.purpose || '-',
+      issued_at: cert.issued_at,
+    })
+
+    // Open PDF in a new window for printing
+    const pdfBlob = pdf.output('blob')
+    const url = URL.createObjectURL(pdfBlob)
+    const printWindow = window.open(url, '_blank')
+    if (printWindow) {
+      printWindow.addEventListener('load', () => {
+        printWindow.print()
+      })
+    }
+  }
+
   // 증명서 발급
   async function handleIssueCertificate() {
     if (!issueEmployeeId) {
@@ -141,6 +297,7 @@ export default function CertificatesPage() {
     setIssuing(true)
 
     const emp = employees.find((e) => e.id === issueEmployeeId)
+    const issuedAt = new Date().toISOString()
     const issuedData = {
       employee_name: emp?.name || '',
       department: emp ? getDeptName(emp.department_id) : '',
@@ -150,11 +307,33 @@ export default function CertificatesPage() {
       certificate_type_label: CERTIFICATE_TYPES[issueCertType],
     }
 
+    // Generate PDF
+    const pdf = generateCertificatePDF({
+      ...issuedData,
+      issued_at: issuedAt,
+    })
+    const pdfBlob = pdf.output('blob')
+    const fileName = `certificates/${issueEmployeeId}_${issueCertType}_${Date.now()}.pdf`
+
+    // Upload PDF to Supabase Storage
+    let pdfUrl: string | null = null
+    const { error: uploadError } = await supabase.storage
+      .from('chat-attachments')
+      .upload(fileName, pdfBlob, { contentType: 'application/pdf', upsert: false })
+
+    if (!uploadError) {
+      const { data: urlData } = supabase.storage
+        .from('chat-attachments')
+        .getPublicUrl(fileName)
+      pdfUrl = urlData?.publicUrl || null
+    }
+
     const { error } = await supabase.from('certificates').insert({
       employee_id: issueEmployeeId,
       certificate_type: issueCertType,
-      issued_at: new Date().toISOString(),
+      issued_at: issuedAt,
       issued_data: issuedData,
+      pdf_url: pdfUrl,
     })
     setIssuing(false)
 
@@ -296,14 +475,14 @@ export default function CertificatesPage() {
                       <td className="py-2.5 px-3 text-center">
                         <div className="flex gap-1 justify-center">
                           <button
-                            onClick={() => toast('PDF 다운로드 기능 준비중', 'info')}
+                            onClick={() => handleDownloadCertPDF(cert)}
                             className="px-2 py-1 text-[10px] font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
                           >
                             <Download className="h-3 w-3 inline mr-0.5" />
                             PDF
                           </button>
                           <button
-                            onClick={() => toast('인쇄 기능 준비중', 'info')}
+                            onClick={() => handlePrintCert(cert)}
                             className="px-2 py-1 text-[10px] font-medium bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
                           >
                             <Printer className="h-3 w-3 inline mr-0.5" />
