@@ -25,7 +25,7 @@ import {
   Calendar,
   FolderKanban,
   CalendarDays,
-  Bot,
+  // Bot, // AI 챗봇 메뉴 비활성화로 미사용
   LineChart,
   CalendarCheck,
   UsersRound,
