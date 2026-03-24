@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 
 // 마이그레이션 SQL 조각들 (service_role로 실행)
-const SERVICE_URL = 'https://jlgdbofwlmhjayyjtyxv.supabase.co'
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpsZ2Rib2Z3bG1oamF5eWp0eXh2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjE4MDk4MywiZXhwIjoyMDg3NzU2OTgzfQ.GUL2AqA0FzarDMTQzCSCZ6QlSmbYNvUie3Ja4hgG4Bg'
+// ⚠️ Service Role Key는 절대 코드에 하드코딩하지 마세요
+const SERVICE_URL = import.meta.env.VITE_SUPABASE_URL
+const SERVICE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || ''
 
 // Supabase REST로 테이블 존재 여부 확인하는 헬퍼
 async function tableExists(tableName: string): Promise<boolean> {
