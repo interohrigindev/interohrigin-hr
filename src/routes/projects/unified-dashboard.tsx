@@ -568,7 +568,7 @@ export default function UnifiedDashboard() {
   const { toast } = useToast()
   const {
     projects, loading: boardLoading, employees: boardEmployees,
-    updateProject, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates,
+    updateProject, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates, refresh,
   } = useProjectBoard()
 
   const [tasks, setTasks] = useState<Task[]>([])
@@ -1190,9 +1190,15 @@ export default function UnifiedDashboard() {
                             </div>
                             {sortedStages.map((stage) => {
                               const dday = getDday(stage.deadline)
-                              const stageAssignees = (stage.stage_assignee_ids || [])
+                              // 스테이지 담당자가 없으면 프로젝트 담당자를 기본값으로 표시
+                              const rawStageAssigneeIds = stage.stage_assignee_ids || []
+                              const effectiveAssigneeIds = rawStageAssigneeIds.length > 0
+                                ? rawStageAssigneeIds
+                                : (p.assignee_ids || [])
+                              const stageAssignees = effectiveAssigneeIds
                                 .map((id) => getEmpName(id))
                                 .filter((n) => n !== '-')
+                              const isInherited = rawStageAssigneeIds.length === 0 && effectiveAssigneeIds.length > 0
 
                               return (
                                 <div
@@ -1231,6 +1237,7 @@ export default function UnifiedDashboard() {
                                               await supabase.from('pipeline_stages').update({ stage_assignee_ids: newIds }).eq('id', stage.id)
                                               toast('담당자가 변경되었습니다')
                                               setEditingField(null)
+                                              refresh()
                                             }}
                                             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs hover:bg-gray-100 ${
                                               (stage.stage_assignee_ids || []).includes(emp.id) ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
@@ -1255,13 +1262,18 @@ export default function UnifiedDashboard() {
                                         {stageAssignees.length > 0 ? stageAssignees.slice(0, 2).map((name, i) => (
                                           <div
                                             key={i}
-                                            className="w-6 h-6 rounded-full bg-gray-300 text-gray-700 flex items-center justify-center text-[9px] font-bold border-2 border-white"
-                                            title={name}
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold border-2 border-white ${
+                                              isInherited ? 'bg-gray-200 text-gray-500' : 'bg-blue-400 text-white'
+                                            }`}
+                                            title={isInherited ? `${name} (프로젝트 담당자)` : name}
                                           >
                                             {name.slice(0, 1)}
                                           </div>
                                         )) : (
                                           <span className="text-[11px] text-gray-400 group-hover/sa:text-blue-500">+ 담당자</span>
+                                        )}
+                                        {isInherited && stageAssignees.length > 0 && (
+                                          <span className="text-[9px] text-gray-400 ml-1">기본</span>
                                         )}
                                       </div>
                                     )}
