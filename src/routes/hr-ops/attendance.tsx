@@ -13,6 +13,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 
 /* ─── Types ─────────────────────────────────────────── */
 
@@ -76,10 +77,14 @@ function formatTime(ts: string | null): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+const ADMIN_ROLES = ['ceo', 'director', 'division_head', 'admin'] as const
+
 /* ─── Component ─────────────────────────────────────── */
 
 export default function AttendanceManagementPage() {
   const { toast } = useToast()
+  const { profile } = useAuth()
+  const isAdmin = profile?.role ? (ADMIN_ROLES as readonly string[]).includes(profile.role) : false
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [records, setRecords] = useState<AttendanceRecord[]>([])
@@ -100,14 +105,24 @@ export default function AttendanceManagementPage() {
 
   useEffect(() => {
     fetchData()
-  }, [selectedDate])
+  }, [selectedDate, profile?.id, isAdmin])
 
   async function fetchData() {
     setLoading(true)
+    if (!profile?.id) return
+
+    let empQuery = supabase.from('employees').select('id, name, department_id, position').eq('is_active', true)
+    let attQuery = supabase.from('attendance_records').select('*').eq('date', selectedDate)
+
+    if (!isAdmin) {
+      empQuery = empQuery.eq('id', profile.id)
+      attQuery = attQuery.eq('employee_id', profile.id)
+    }
+
     const [empRes, deptRes, attRes] = await Promise.all([
-      supabase.from('employees').select('id, name, department_id, position').eq('is_active', true).order('name'),
+      empQuery.order('name'),
       supabase.from('departments').select('id, name').order('name'),
-      supabase.from('attendance_records').select('*').eq('date', selectedDate).order('check_in', { ascending: true }),
+      attQuery.order('check_in', { ascending: true }),
     ])
     setEmployees((empRes.data || []) as Employee[])
     setDepartments((deptRes.data || []) as Department[])

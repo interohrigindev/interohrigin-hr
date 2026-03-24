@@ -12,6 +12,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Employee {
   id: string
@@ -77,8 +78,12 @@ const LEAVE_STATUS_LABELS: Record<string, string> = {
   rejected: '반려',
 }
 
+const ADMIN_ROLES = ['ceo', 'director', 'division_head', 'admin']
+
 export default function LeaveManagementPage() {
   const { toast } = useToast()
+  const { profile } = useAuth()
+  const isAdmin = profile?.role ? ADMIN_ROLES.includes(profile.role) : false
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
@@ -104,12 +109,26 @@ export default function LeaveManagementPage() {
   }, [])
 
   async function fetchData() {
+    if (!profile?.id) return
     setLoading(true)
+
+    // 임원/관리자는 전체, 일반 직원은 본인만
+    const myId = profile.id
+    let empQuery = supabase.from('employees').select('id, name, department_id, hire_date, position').eq('is_active', true).order('name')
+    let leaveQuery = supabase.from('leave_management').select('*').eq('year', currentYear)
+    let reqQuery = supabase.from('leave_requests').select('*').order('created_at', { ascending: false }).limit(100)
+
+    if (!isAdmin) {
+      empQuery = empQuery.eq('id', myId)
+      leaveQuery = leaveQuery.eq('employee_id', myId)
+      reqQuery = reqQuery.eq('employee_id', myId)
+    }
+
     const [empRes, deptRes, leaveRes, reqRes] = await Promise.all([
-      supabase.from('employees').select('id, name, department_id, hire_date, position').eq('is_active', true).order('name'),
+      empQuery,
       supabase.from('departments').select('id, name').order('name'),
-      supabase.from('leave_management').select('*').eq('year', currentYear),
-      supabase.from('leave_requests').select('*').order('created_at', { ascending: false }).limit(100),
+      leaveQuery,
+      reqQuery,
     ])
     setEmployees((empRes.data || []) as Employee[])
     setDepartments((deptRes.data || []) as Department[])

@@ -12,6 +12,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Employee {
   id: string
@@ -48,8 +49,12 @@ const CERTIFICATE_TYPE_COLORS: Record<string, string> = {
   retirement: 'bg-amber-100 text-amber-700',
 }
 
+const ADMIN_ROLES = ['ceo', 'director', 'division_head', 'admin']
+
 export default function CertificatesPage() {
   const { toast } = useToast()
+  const { profile } = useAuth()
+  const isAdmin = profile?.role ? ADMIN_ROLES.includes(profile.role) : false
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [certificates, setCertificates] = useState<Certificate[]>([])
@@ -66,14 +71,22 @@ export default function CertificatesPage() {
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [profile?.id])
 
   async function fetchData() {
+    if (!profile?.id) return
     setLoading(true)
+
+    let empQuery = supabase.from('employees').select('id, name, department_id, position, hire_date').eq('is_active', true).order('name')
+    if (!isAdmin) empQuery = empQuery.eq('id', profile.id)
+
+    let certQuery = supabase.from('certificates').select('*').order('issued_at', { ascending: false }).limit(200)
+    if (!isAdmin) certQuery = certQuery.eq('employee_id', profile.id)
+
     const [empRes, deptRes, certRes] = await Promise.all([
-      supabase.from('employees').select('id, name, department_id, position, hire_date').eq('is_active', true).order('name'),
+      empQuery,
       supabase.from('departments').select('id, name').order('name'),
-      supabase.from('certificates').select('*').order('issued_at', { ascending: false }).limit(200),
+      certQuery,
     ])
     setEmployees((empRes.data || []) as Employee[])
     setDepartments((deptRes.data || []) as Department[])

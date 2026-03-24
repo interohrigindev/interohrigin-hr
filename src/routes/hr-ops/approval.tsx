@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 
 /* ────── Types ────── */
 
@@ -77,10 +78,15 @@ const STATUS_CONFIG: Record<string, { color: string; border: string; badge: 'war
 
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace(/\.$/, '')
 
+const ADMIN_ROLES = ['ceo', 'director', 'division_head', 'admin']
+
 /* ────── Component ────── */
 
 export default function ApprovalManagementPage() {
   const { toast } = useToast()
+  const { profile } = useAuth()
+  const isAdmin = profile?.role ? ADMIN_ROLES.includes(profile.role) : false
+
   const [requests, setRequests] = useState<ApprovalRequest[]>([])
   const [templates, setTemplates] = useState<ApprovalTemplate[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -102,12 +108,19 @@ export default function ApprovalManagementPage() {
 
   /* ── Fetch ── */
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [profile?.id, isAdmin])
 
   async function fetchData() {
+    if (!profile?.id) return
     setLoading(true)
+
+    let reqQuery = supabase.from('approval_requests').select('*').order('created_at', { ascending: false }).limit(200)
+    if (!isAdmin) {
+      reqQuery = reqQuery.eq('requester_id', profile.id)
+    }
+
     const [reqRes, tplRes, empRes] = await Promise.all([
-      supabase.from('approval_requests').select('*').order('created_at', { ascending: false }).limit(200),
+      reqQuery,
       supabase.from('approval_templates').select('*').eq('is_active', true).order('name'),
       supabase.from('employees').select('id, name, position').eq('is_active', true).order('name'),
     ])

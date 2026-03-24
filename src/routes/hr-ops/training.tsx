@@ -12,6 +12,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Employee {
   id: string
@@ -73,8 +74,12 @@ const MANDATORY_TRAININGS = [
   },
 ]
 
+const ADMIN_ROLES = ['ceo', 'director', 'division_head', 'admin']
+
 export default function TrainingPage() {
   const { toast } = useToast()
+  const { profile } = useAuth()
+  const isAdmin = profile?.role ? ADMIN_ROLES.includes(profile.role) : false
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [trainingRecords, setTrainingRecords] = useState<TrainingRecord[]>([])
@@ -86,14 +91,22 @@ export default function TrainingPage() {
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [profile?.id])
 
   async function fetchData() {
+    if (!profile?.id) return
     setLoading(true)
+
+    let empQuery = supabase.from('employees').select('id, name, department_id, position').eq('is_active', true).order('name')
+    if (!isAdmin) empQuery = empQuery.eq('id', profile.id)
+
+    let trainQuery = supabase.from('training_records').select('*').eq('year', currentYear).order('created_at', { ascending: false })
+    if (!isAdmin) trainQuery = trainQuery.eq('employee_id', profile.id)
+
     const [empRes, deptRes, trainRes] = await Promise.all([
-      supabase.from('employees').select('id, name, department_id, position').eq('is_active', true).order('name'),
+      empQuery,
       supabase.from('departments').select('id, name').order('name'),
-      supabase.from('training_records').select('*').eq('year', currentYear).order('created_at', { ascending: false }),
+      trainQuery,
     ])
     setEmployees((empRes.data || []) as Employee[])
     setDepartments((deptRes.data || []) as Department[])
