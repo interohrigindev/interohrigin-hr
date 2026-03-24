@@ -247,11 +247,12 @@ export default function ApprovalManagementPage() {
     setSaving(true)
     const { error } = await supabase.from('approval_requests').insert({
       template_id: newTemplateId,
+      requester_id: profile!.id,
       title: newTitle,
       data: newData,
       attachments: null,
       status: 'pending',
-      current_step: 1,
+      current_step: 0,
       approval_history: [],
     })
     setSaving(false)
