@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  GraduationCap, BookOpen, AlertTriangle, CheckCircle,
-  Search, Upload, Download, Calendar, Clock,
+  BookOpen, AlertTriangle, CheckCircle,
+  Search, Upload, Download, Clock,
   ShieldCheck, Lock, HardHat, Heart,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -72,11 +72,6 @@ const MANDATORY_TRAININGS = [
     description: '연 1회 의무, 전 직원 대상',
   },
 ]
-
-const TRAINING_TYPE_LABELS: Record<string, string> = {
-  mandatory: '법정 의무',
-  external: '외부 교육',
-}
 
 export default function TrainingPage() {
   const { toast } = useToast()

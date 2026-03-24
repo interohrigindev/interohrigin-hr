@@ -6,7 +6,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageSpinner } from '@/components/ui/Spinner'
-import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
 
@@ -31,7 +30,6 @@ interface DeptTree extends Department {
 
 export default function OrganizationPage() {
   const navigate = useNavigate()
-  const { toast } = useToast()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)

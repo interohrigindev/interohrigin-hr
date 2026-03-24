@@ -2,15 +2,14 @@ import { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus, Table2, Columns3, Calendar, Clock, Trash2,
-  ChevronDown, ChevronRight, Users, BarChart3,
-  GripVertical, Search, Filter, ArrowUpDown,
+  ChevronDown, ChevronRight,
+  Search,
   CheckCircle2, Circle, PauseCircle, AlertTriangle,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
-import { Input } from '@/components/ui/Input'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
@@ -18,7 +17,7 @@ import type {
   ProjectWithStages, StageStatus, ViewMode,
 } from '@/types/project-board'
 import {
-  STAGE_STATUS_COLORS, PROJECT_STATUS_COLORS,
+  PROJECT_STATUS_COLORS,
   PROJECT_STATUS_LABELS, BRAND_COLORS,
 } from '@/types/project-board'
 
@@ -62,19 +61,14 @@ export default function ProjectBoardPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [filterBrand, setFilterBrand] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
-  const [filterAssignee, setFilterAssignee] = useState('')
+  const [filterAssignee] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'priority' | 'launch_date' | 'name'>('priority')
   const [groupBy, setGroupBy] = useState<GroupByOption>('brand')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
-  // Unique brands & assignees
+  // Unique brands
   const brands = useMemo(() => [...new Set(projects.map((p) => p.brand))], [projects])
-  const assignees = useMemo(() => {
-    const names = new Set<string>()
-    projects.forEach((p) => p.assignee_names?.forEach((n) => names.add(n)))
-    return [...names].sort()
-  }, [projects])
 
   // Filter + sort
   const filtered = useMemo(() => {
@@ -282,7 +276,6 @@ export default function ProjectBoardPage() {
                   </thead>
                   <tbody>
                     {group.projects.map((project, idx) => {
-                      const progress = getProjectProgress(project)
                       const currentStage = project.stages
                         .sort((a, b) => a.stage_order - b.stage_order)
                         .find((s) => s.status === '진행중') ||
@@ -687,11 +680,6 @@ export default function ProjectBoardPage() {
   const activeCount = filtered.filter((p) => p.status === 'active').length
   const holdingCount = filtered.filter((p) => p.status === 'holding').length
   const completedCount = filtered.filter((p) => p.status === 'completed').length
-  const overallStages = filtered.flatMap((p) => p.stages)
-  const overallPercent = overallStages.length > 0
-    ? Math.round((overallStages.filter((s) => s.status === '완료').length / overallStages.length) * 100)
-    : 0
-
   return (
     <div className="space-y-4">
       {/* Header */}

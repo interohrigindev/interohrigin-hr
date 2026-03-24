@@ -4,7 +4,7 @@ import {
   BarChart3, TrendingUp, AlertTriangle, CheckCircle,
   Users, ArrowRight, Calendar, GripVertical,
   Target, Clock, Activity, PieChart,
-  ChevronRight, Layers, Zap,
+  Layers,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
