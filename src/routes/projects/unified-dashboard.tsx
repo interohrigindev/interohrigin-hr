@@ -1072,35 +1072,12 @@ export default function UnifiedDashboard() {
                                 ))}
                               </select>
                             ) : (
-                              <div className="flex items-center gap-1 group/passignee relative">
-                                <span
-                                  onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee' }) }}
-                                  className="text-xs text-gray-700 truncate cursor-pointer hover:text-blue-600 transition-colors"
-                                >
-                                  {p.manager_name || (p.assignee_names?.[0]) || ''}
-                                </span>
-                                {(p.assignee_names || []).length > 1 && (
-                                  <span className="text-[10px] text-blue-600 bg-blue-50 px-1 rounded font-medium cursor-default">
-                                    +{(p.assignee_names || []).length - 1}
-                                  </span>
-                                )}
-                                {!p.manager_name && (!p.assignee_names || p.assignee_names.length === 0) && (
-                                  <span
-                                    onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee' }) }}
-                                    className="text-xs text-gray-400 cursor-pointer hover:text-blue-500"
-                                  >+ 담당자</span>
-                                )}
-                                {(p.assignee_names || []).length > 1 && (
-                                  <div className="absolute left-0 top-full mt-1 hidden group-hover/passignee:block z-40">
-                                    <div className="bg-gray-900 text-white text-[11px] rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
-                                      <p className="font-semibold mb-1 text-gray-300">참여자 ({(p.assignee_names || []).length}명)</p>
-                                      {(p.assignee_names || []).map((name, i) => (
-                                        <p key={i} className="py-0.5">{name}</p>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
+                              <span
+                                onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee' }) }}
+                                className="text-xs text-gray-700 truncate cursor-pointer hover:text-blue-600 transition-colors"
+                              >
+                                {p.manager_name || <span className="text-gray-400">+ 담당자</span>}
+                              </span>
                             )}
                           </div>
 
@@ -1196,12 +1173,9 @@ export default function UnifiedDashboard() {
                             </div>
                             {sortedStages.map((stage) => {
                               const dday = getDday(stage.deadline)
-                              // 스테이지 담당자 — 없으면 프로젝트 담당자를 기본값으로 표시
-                              const rawStageAssigneeIds = stage.stage_assignee_ids || []
-                              const effectiveAssigneeIds = rawStageAssigneeIds.length > 0
-                                ? rawStageAssigneeIds
-                                : (p.assignee_ids || [])
-                              const stageAssigneeNames = effectiveAssigneeIds
+                              // 스테이지에 직접 지정된 담당자만 표시
+                              const stageAssigneeIds = stage.stage_assignee_ids || []
+                              const stageAssigneeNames = stageAssigneeIds
                                 .map((id) => getEmpName(id))
                                 .filter((n) => n !== '-')
 
