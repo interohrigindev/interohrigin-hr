@@ -38,6 +38,13 @@ import {
   LayoutGrid,
   Columns3,
   Plus,
+  CalendarPlus,
+  Clock,
+  FileCheck,
+  Award,
+  Wallet,
+  BookOpen,
+  Building,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -161,6 +168,20 @@ const navGroups: NavGroup[] = [
       { to: '/work/daily-report', label: '일일 보고서', icon: <CalendarDays className="h-4 w-4" /> },
       // { to: '/work/chat', label: 'AI 챗봇', icon: <Bot className="h-4 w-4" /> }, // 하단 AI 플로팅과 기능 중복으로 비활성화
       { to: '/admin/projects/settings', label: '권한 설정', icon: <Settings className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+    ],
+  },
+  {
+    id: 'hr-ops',
+    label: '인사노무',
+    icon: <Building className="h-5 w-5" />,
+    items: [
+      { to: '/admin/leave', label: '연차 관리', icon: <CalendarPlus className="h-4 w-4" />, end: true },
+      { to: '/admin/attendance', label: '근태 관리', icon: <Clock className="h-4 w-4" /> },
+      { to: '/admin/approval', label: '전자 결재', icon: <FileCheck className="h-4 w-4" /> },
+      { to: '/admin/certificates', label: '증명서 발급', icon: <Award className="h-4 w-4" /> },
+      { to: '/admin/organization', label: '조직도', icon: <Users className="h-4 w-4" /> },
+      { to: '/admin/payroll', label: '급여 관리', icon: <Wallet className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+      { to: '/admin/training', label: '교육 관리', icon: <BookOpen className="h-4 w-4" /> },
     ],
   },
   {

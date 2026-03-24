@@ -67,6 +67,15 @@ import AIEvalReport from '@/routes/work/ai-eval-report'
 import AIVerification from '@/routes/work/ai-verification'
 import ExitManagement from '@/routes/work/exit-manage'
 
+// Phase 1.7: 인사노무 (v6)
+import LeaveManagement from '@/routes/hr-ops/leave'
+import AttendanceManagement from '@/routes/hr-ops/attendance'
+import ApprovalManagement from '@/routes/hr-ops/approval'
+import CertificateManagement from '@/routes/hr-ops/certificates'
+import OrganizationChart from '@/routes/hr-ops/organization'
+import PayrollManagement from '@/routes/hr-ops/payroll'
+import TrainingManagement from '@/routes/hr-ops/training'
+
 // Phase 1.5: 긴급 업무 + 평가 간소화
 import UrgentDashboard from '@/routes/urgent/dashboard'
 import SimpleEvaluation from '@/routes/urgent/simple-evaluation'
@@ -169,6 +178,15 @@ function App() {
               <Route path="admin/projects/new" element={<NewProjectPage />} />
               <Route path="admin/projects/settings" element={<AdminRoute><ProjectSettingsPage /></AdminRoute>} />
               <Route path="admin/projects/:id" element={<ProjectDetailPage />} />
+
+              {/* 인사노무 (v6) */}
+              <Route path="admin/leave" element={<LeaveManagement />} />
+              <Route path="admin/attendance" element={<AttendanceManagement />} />
+              <Route path="admin/approval" element={<ApprovalManagement />} />
+              <Route path="admin/certificates" element={<CertificateManagement />} />
+              <Route path="admin/organization" element={<OrganizationChart />} />
+              <Route path="admin/payroll" element={<AdminRoute><PayrollManagement /></AdminRoute>} />
+              <Route path="admin/training" element={<TrainingManagement />} />
 
               {/* 직원관리 확장 (관리자/임원) */}
               <Route path="admin/employees/:id/profile" element={<AdminRoute><EmployeeProfile /></AdminRoute>} />
