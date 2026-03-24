@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import {
   Users, UserCheck, Clock, Timer,
   LogIn, LogOut, Download, ChevronLeft, ChevronRight,
-  AlertTriangle, Pencil, BarChart3,
+  AlertTriangle, BarChart3,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -124,6 +124,9 @@ export default function AttendanceManagementPage() {
   // 선택된 날짜 (캘린더 셀 클릭)
   const [selectedDay, setSelectedDay] = useState<string | null>(toDateStr(new Date()))
 
+  // 관리자: 직원 모달
+  const [modalEmployee, setModalEmployee] = useState<Employee | null>(null)
+
   // 출퇴근
   const [checkingIn, setCheckingIn] = useState(false)
   const [checkingOut, setCheckingOut] = useState(false)
@@ -214,15 +217,6 @@ export default function AttendanceManagementPage() {
     }
     return days
   }, [records, currentYear, currentMonth, monthRange.daysInMonth])
-
-  // 선택 날짜의 기록
-  const selectedDayRecords = useMemo(() => {
-    if (!selectedDay) return []
-    return records.filter((r) => r.date === selectedDay).map((r) => {
-      const emp = employees.find((e) => e.id === r.employee_id)
-      return { ...r, empName: emp?.name || '?', empPosition: emp?.position || '', empDeptId: emp?.department_id || null }
-    })
-  }, [selectedDay, records, employees])
 
   // 월 통계
   const todayStr = toDateStr(new Date())
@@ -497,194 +491,291 @@ export default function AttendanceManagementPage() {
         </div>
       </div>
 
-      {/* ─── 캘린더 그리드 ────────────────────────────────── */}
-      <Card>
-        <CardContent className="p-0">
-          {/* 요일 헤더 */}
-          <div className="grid grid-cols-7 border-b border-gray-200">
-            {WEEKDAYS.map((day, i) => (
-              <div key={day} className={`py-2.5 text-center text-xs font-semibold ${i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-500'}`}>
-                {day}
+      {/* ─── 관리자 뷰: 부서별 블록 + 직원 카드 ──────────── */}
+      {isAdmin ? (
+        <div className="space-y-4">
+          {(() => {
+            // 부서별 그룹핑
+            const DEPT_COLORS = [
+              { bar: 'bg-blue-500', bg: 'bg-blue-50', text: 'text-blue-700' },
+              { bar: 'bg-violet-500', bg: 'bg-violet-50', text: 'text-violet-700' },
+              { bar: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700' },
+              { bar: 'bg-amber-500', bg: 'bg-amber-50', text: 'text-amber-700' },
+              { bar: 'bg-rose-500', bg: 'bg-rose-50', text: 'text-rose-700' },
+              { bar: 'bg-cyan-500', bg: 'bg-cyan-50', text: 'text-cyan-700' },
+            ]
+            const grouped = new Map<string, Employee[]>()
+            for (const emp of employees) {
+              const deptName = getDeptName(emp.department_id)
+              if (!grouped.has(deptName)) grouped.set(deptName, [])
+              grouped.get(deptName)!.push(emp)
+            }
+            const todayRecordsMap = new Map<string, AttendanceRecord>()
+            for (const r of records.filter((r) => r.date === todayStr)) {
+              todayRecordsMap.set(r.employee_id, r)
+            }
+
+            // 전체 통계
+            const totalPresent = [...todayRecordsMap.values()].filter((r) => r.clock_in).length
+            const totalLate = [...todayRecordsMap.values()].filter((r) => r.status === 'late').length
+            const totalAbsent = employees.length - totalPresent
+
+            return (
+              <>
+                {/* 오늘 전체 현황 요약 */}
+                <div className="grid grid-cols-4 gap-3">
+                  <Card className="border-l-4 border-l-blue-500">
+                    <CardContent className="py-3 px-4">
+                      <p className="text-[11px] text-gray-500">전체 직원</p>
+                      <p className="text-2xl font-bold text-blue-600">{employees.length}명</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-l-4 border-l-emerald-500">
+                    <CardContent className="py-3 px-4">
+                      <p className="text-[11px] text-gray-500">출근</p>
+                      <p className="text-2xl font-bold text-emerald-600">{totalPresent}명</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-l-4 border-l-amber-500">
+                    <CardContent className="py-3 px-4">
+                      <p className="text-[11px] text-gray-500">지각</p>
+                      <p className="text-2xl font-bold text-amber-600">{totalLate}명</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-l-4 border-l-red-500">
+                    <CardContent className="py-3 px-4">
+                      <p className="text-[11px] text-gray-500">미출근</p>
+                      <p className="text-2xl font-bold text-red-600">{totalAbsent}명</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* 부서별 블록 */}
+                {[...grouped.entries()].map(([deptName, deptEmployees], di) => {
+                  const color = DEPT_COLORS[di % DEPT_COLORS.length]
+                  const deptPresent = deptEmployees.filter((e) => todayRecordsMap.get(e.id)?.clock_in).length
+
+                  return (
+                    <Card key={deptName} className="overflow-hidden">
+                      {/* 부서 헤더 */}
+                      <div className={`flex items-center gap-3 px-4 py-3 ${color.bg}`}>
+                        <div className={`w-1.5 h-6 rounded-full ${color.bar}`} />
+                        <span className={`text-sm font-bold ${color.text}`}>{deptName}</span>
+                        <Badge variant="default" className="text-[10px]">{deptPresent}/{deptEmployees.length}명 출근</Badge>
+                      </div>
+
+                      {/* 직원 카드 그리드 */}
+                      <CardContent className="py-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                          {deptEmployees.map((emp) => {
+                            const rec = todayRecordsMap.get(emp.id)
+                            const sc = rec ? (STATUS_COLORS[rec.status] || STATUS_COLORS.normal) : STATUS_COLORS.absent
+                            const hasCheckedIn = !!rec?.clock_in
+                            const hasCheckedOut = !!rec?.clock_out
+
+                            return (
+                              <button
+                                key={emp.id}
+                                onClick={() => setModalEmployee(emp)}
+                                className={`relative p-3 rounded-lg border-2 text-left transition-all hover:shadow-md ${
+                                  !hasCheckedIn ? 'border-red-200 bg-red-50/50' :
+                                  rec?.status === 'late' ? 'border-amber-200 bg-amber-50/30' :
+                                  hasCheckedOut ? 'border-emerald-200 bg-emerald-50/30' :
+                                  'border-blue-200 bg-blue-50/30'
+                                }`}
+                              >
+                                {/* 상태 도트 */}
+                                <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${
+                                  !hasCheckedIn ? 'bg-red-500' :
+                                  rec?.status === 'late' ? 'bg-amber-500' :
+                                  hasCheckedOut ? 'bg-emerald-500' : 'bg-blue-500'
+                                }`} />
+
+                                {/* 아바타 + 이름 */}
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                                    !hasCheckedIn ? 'bg-red-400' :
+                                    rec?.status === 'late' ? 'bg-amber-400' :
+                                    hasCheckedOut ? 'bg-emerald-500' : 'bg-blue-500'
+                                  }`}>
+                                    {emp.name[0]}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-gray-900 truncate">{emp.name}</p>
+                                    {emp.position && <p className="text-[10px] text-gray-400 truncate">{emp.position}</p>}
+                                  </div>
+                                </div>
+
+                                {/* 출퇴근 시간 */}
+                                {hasCheckedIn ? (
+                                  <div className="space-y-0.5">
+                                    <div className="flex items-center justify-between text-[11px]">
+                                      <span className="text-gray-500">출근</span>
+                                      <span className="font-medium text-gray-800">{formatTime(rec!.clock_in)}</span>
+                                    </div>
+                                    {hasCheckedOut && (
+                                      <div className="flex items-center justify-between text-[11px]">
+                                        <span className="text-gray-500">퇴근</span>
+                                        <span className="font-medium text-gray-800">{formatTime(rec!.clock_out)}</span>
+                                      </div>
+                                    )}
+                                    {rec!.total_hours != null && rec!.total_hours > 0 && (
+                                      <div className="flex items-center justify-between text-[11px]">
+                                        <span className="text-gray-500">근무</span>
+                                        <span className="font-bold text-gray-900">{formatHours(rec!.total_hours)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-[11px] text-red-500 font-medium">미출근</p>
+                                )}
+
+                                {/* 상태 뱃지 */}
+                                {hasCheckedIn && (
+                                  <div className="mt-1.5">
+                                    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold ${sc.bg} ${sc.text}`}>
+                                      {STATUS_LABELS[rec!.status] || rec!.status}
+                                    </span>
+                                  </div>
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </>
+            )
+          })()}
+        </div>
+      ) : (
+        <>
+          {/* ─── 일반 직원 뷰: 캘린더 ──────────────────────── */}
+          <Card>
+            <CardContent className="p-0">
+              <div className="grid grid-cols-7 border-b border-gray-200">
+                {WEEKDAYS.map((day, i) => (
+                  <div key={day} className={`py-2.5 text-center text-xs font-semibold ${i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-500'}`}>{day}</div>
+                ))}
               </div>
-            ))}
-          </div>
-
-          {/* 캘린더 셀 */}
-          <div className="grid grid-cols-7">
-            {/* 시작 요일 이전 빈 셀 */}
-            {Array.from({ length: monthRange.startWeekday }).map((_, i) => (
-              <div key={`empty-${i}`} className="min-h-[100px] border-b border-r border-gray-100 bg-gray-50/30" />
-            ))}
-
-            {/* 일자 셀 */}
-            {calendarDays.map((dayData) => {
-              const dow = new Date(dayData.date).getDay()
-              const isWeekend = dow === 0 || dow === 6
-              const isSelected = dayData.date === selectedDay
-              const dayRecords = dayData.records
-
-              // 해당일의 상태 요약
-              const hasNormal = dayRecords.some((r) => r.status === 'normal')
-              const hasLate = dayRecords.some((r) => r.status === 'late')
-              const hasLeave = dayRecords.some((r) => r.status === 'leave')
-              const hasAbsent = isAdmin
-                ? employees.length > dayRecords.length && !isWeekend && new Date(dayData.date) <= new Date()
-                : dayRecords.length === 0 && !isWeekend && new Date(dayData.date) <= new Date()
-
-              return (
-                <button
-                  key={dayData.date}
-                  onClick={() => setSelectedDay(dayData.date)}
-                  className={`min-h-[100px] border-b border-r border-gray-100 p-1.5 text-left transition-all hover:bg-blue-50/50 ${
-                    isSelected ? 'bg-blue-50 ring-2 ring-blue-400 ring-inset z-10' : ''
-                  } ${isWeekend ? 'bg-gray-50/50' : ''}`}
-                >
-                  {/* 날짜 숫자 */}
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${
-                      dayData.isToday
-                        ? 'bg-blue-600 text-white'
-                        : dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : 'text-gray-700'
-                    }`}>
-                      {dayData.day}
-                    </span>
-                    {dayRecords.length > 0 && isAdmin && (
-                      <span className="text-[9px] text-gray-400">{dayRecords.length}명</span>
-                    )}
-                  </div>
-
-                  {/* 상태 도트 */}
-                  <div className="flex flex-wrap gap-0.5">
-                    {hasNormal && <div className="w-2 h-2 rounded-full bg-emerald-500" title="정상" />}
-                    {hasLate && <div className="w-2 h-2 rounded-full bg-amber-500" title="지각" />}
-                    {hasLeave && <div className="w-2 h-2 rounded-full bg-blue-500" title="휴가" />}
-                    {hasAbsent && <div className="w-2 h-2 rounded-full bg-red-500" title="결근" />}
-                  </div>
-
-                  {/* 출퇴근 시간 + 근무시간 */}
-                  {dayRecords.length > 0 && (
-                    <div className="mt-1 space-y-0.5">
-                      {(isAdmin ? dayRecords.slice(0, 2) : dayRecords).map((r) => {
-                        const empName = isAdmin ? (employees.find((e) => e.id === r.employee_id)?.name || '?') : ''
+              <div className="grid grid-cols-7">
+                {Array.from({ length: monthRange.startWeekday }).map((_, i) => (
+                  <div key={`empty-${i}`} className="min-h-[100px] border-b border-r border-gray-100 bg-gray-50/30" />
+                ))}
+                {calendarDays.map((dayData) => {
+                  const dow = new Date(dayData.date).getDay()
+                  const isWeekend = dow === 0 || dow === 6
+                  const isSelected = dayData.date === selectedDay
+                  const dayRecords = dayData.records
+                  return (
+                    <button
+                      key={dayData.date}
+                      onClick={() => setSelectedDay(dayData.date)}
+                      className={`min-h-[100px] border-b border-r border-gray-100 p-1.5 text-left transition-all hover:bg-blue-50/50 ${isSelected ? 'bg-blue-50 ring-2 ring-blue-400 ring-inset z-10' : ''} ${isWeekend ? 'bg-gray-50/50' : ''}`}
+                    >
+                      <span className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${dayData.isToday ? 'bg-blue-600 text-white' : dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : 'text-gray-700'}`}>{dayData.day}</span>
+                      {dayRecords.length > 0 && dayRecords.map((r) => {
                         const sc = STATUS_COLORS[r.status] || STATUS_COLORS.normal
                         return (
-                          <div key={r.id} className={`flex items-center gap-1 px-1 py-0.5 rounded text-[9px] ${sc.bg} ${sc.text}`}>
-                            {isAdmin && <span className="font-medium truncate max-w-[40px]">{empName}</span>}
+                          <div key={r.id} className={`mt-1 flex items-center gap-1 px-1 py-0.5 rounded text-[9px] ${sc.bg} ${sc.text}`}>
                             <span>{formatTime(r.clock_in)}</span>
                             {r.clock_out && <span>~{formatTime(r.clock_out)}</span>}
-                            {r.total_hours != null && r.total_hours > 0 && (
-                              <span className="ml-auto font-medium">{Math.round(r.total_hours * 10) / 10}h</span>
-                            )}
+                            {r.total_hours != null && r.total_hours > 0 && <span className="ml-auto font-medium">{Math.round(r.total_hours * 10) / 10}h</span>}
                           </div>
                         )
                       })}
-                      {isAdmin && dayRecords.length > 2 && (
-                        <span className="text-[8px] text-gray-400 pl-1">+{dayRecords.length - 2}명</span>
-                      )}
-                    </div>
-                  )}
-                </button>
-              )
-            })}
+                    </button>
+                  )
+                })}
+                {(() => {
+                  const totalCells = monthRange.startWeekday + monthRange.daysInMonth
+                  const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7)
+                  return Array.from({ length: remaining }).map((_, i) => (
+                    <div key={`trail-${i}`} className="min-h-[100px] border-b border-r border-gray-100 bg-gray-50/30" />
+                  ))
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
-            {/* 마지막 행 빈 셀 채우기 */}
-            {(() => {
-              const totalCells = monthRange.startWeekday + monthRange.daysInMonth
-              const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7)
-              return Array.from({ length: remaining }).map((_, i) => (
-                <div key={`trail-${i}`} className="min-h-[100px] border-b border-r border-gray-100 bg-gray-50/30" />
-              ))
-            })()}
-          </div>
-        </CardContent>
-      </Card>
+      {/* ─── 직원 상세 모달 (관리자 클릭시) ──────────────── */}
+      <Dialog
+        open={!!modalEmployee}
+        onClose={() => setModalEmployee(null)}
+        title={modalEmployee ? `${modalEmployee.name} — ${monthRange.label} 근태` : ''}
+        className="max-w-2xl"
+      >
+        {modalEmployee && (() => {
+          const empRecords = records.filter((r) => r.employee_id === modalEmployee.id).sort((a, b) => b.date.localeCompare(a.date))
+          const presentDays = empRecords.filter((r) => r.status === 'normal' || r.status === 'late' || r.status === 'early_leave').length
+          const lateDays = empRecords.filter((r) => r.status === 'late').length
+          const totalH = empRecords.reduce((s, r) => s + (r.total_hours || 0), 0)
+          const otH = empRecords.reduce((s, r) => s + (r.overtime_hours || 0), 0)
 
-      {/* ─── 선택 날짜 상세 ──────────────────────────────── */}
-      {selectedDay && (
-        <Card>
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-gray-900">
-                {selectedDay.replace(/-/g, '.')} ({WEEKDAYS[new Date(selectedDay).getDay()]}) 상세
-              </h3>
-              {selectedDayRecords.length > 0 && (
-                <Badge variant="default" className="text-[10px]">{selectedDayRecords.length}건</Badge>
-              )}
-            </div>
+          return (
+            <div className="space-y-4">
+              {/* 요약 */}
+              <div className="grid grid-cols-4 gap-2">
+                <div className="bg-blue-50 rounded-lg p-2 text-center">
+                  <p className="text-lg font-bold text-blue-600">{presentDays}일</p>
+                  <p className="text-[10px] text-blue-500">출근</p>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-2 text-center">
+                  <p className="text-lg font-bold text-amber-600">{lateDays}일</p>
+                  <p className="text-[10px] text-amber-500">지각</p>
+                </div>
+                <div className="bg-violet-50 rounded-lg p-2 text-center">
+                  <p className="text-lg font-bold text-violet-600">{Math.round(totalH * 10) / 10}h</p>
+                  <p className="text-[10px] text-violet-500">총 근무</p>
+                </div>
+                <div className="bg-orange-50 rounded-lg p-2 text-center">
+                  <p className="text-lg font-bold text-orange-600">{Math.round(otH * 10) / 10}h</p>
+                  <p className="text-[10px] text-orange-500">초과 근무</p>
+                </div>
+              </div>
 
-            {selectedDayRecords.length === 0 ? (
-              <p className="text-center py-6 text-gray-400 text-sm">해당 날짜에 출결 기록이 없습니다</p>
-            ) : (
-              <div className="overflow-x-auto">
+              {/* 기록 테이블 */}
+              <div className="overflow-y-auto max-h-[400px]">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200 bg-gray-50/80">
-                      <th className="text-left py-2.5 px-3 font-medium text-gray-500 text-xs">이름</th>
-                      <th className="text-left py-2.5 px-3 font-medium text-gray-500 text-xs">부서</th>
-                      <th className="text-center py-2.5 px-3 font-medium text-gray-500 text-xs">출근</th>
-                      <th className="text-center py-2.5 px-3 font-medium text-gray-500 text-xs">퇴근</th>
-                      <th className="text-center py-2.5 px-3 font-medium text-gray-500 text-xs">정규</th>
-                      <th className="text-center py-2.5 px-3 font-medium text-gray-500 text-xs">초과</th>
-                      <th className="text-center py-2.5 px-3 font-medium text-gray-500 text-xs">합계</th>
-                      <th className="text-center py-2.5 px-3 font-medium text-gray-500 text-xs">상태</th>
-                      <th className="text-left py-2.5 px-3 font-medium text-gray-500 text-xs">비고</th>
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-2 text-xs text-gray-500">날짜</th>
+                      <th className="text-center py-2 px-2 text-xs text-gray-500">출근</th>
+                      <th className="text-center py-2 px-2 text-xs text-gray-500">퇴근</th>
+                      <th className="text-center py-2 px-2 text-xs text-gray-500">근무</th>
+                      <th className="text-center py-2 px-2 text-xs text-gray-500">초과</th>
+                      <th className="text-center py-2 px-2 text-xs text-gray-500">상태</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedDayRecords.map((r) => {
+                    {empRecords.length === 0 ? (
+                      <tr><td colSpan={6} className="text-center py-8 text-gray-400">이번 달 기록이 없습니다</td></tr>
+                    ) : empRecords.map((r) => {
                       const sc = STATUS_COLORS[r.status] || STATUS_COLORS.normal
                       return (
-                        <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-700">
-                                {r.empName[0]}
-                              </div>
-                              <span className="font-medium text-gray-900">{r.empName}</span>
-                              {r.is_modified && (
-                                <span title={r.modified_reason || '수정됨'}><Pencil className="h-3 w-3 text-orange-400" /></span>
-                              )}
-                            </div>
+                        <tr key={r.id} className="border-b border-gray-100">
+                          <td className="py-1.5 px-2 text-xs text-gray-700">{r.date.slice(5).replace('-', '/')}</td>
+                          <td className="py-1.5 px-2 text-center text-xs font-medium">{formatTime(r.clock_in) || '-'}</td>
+                          <td className="py-1.5 px-2 text-center text-xs font-medium">{formatTime(r.clock_out) || '-'}</td>
+                          <td className="py-1.5 px-2 text-center text-xs">{formatHours(r.total_hours)}</td>
+                          <td className="py-1.5 px-2 text-center text-xs">{r.overtime_hours && r.overtime_hours > 0 ? <span className="text-orange-600">{formatHours(r.overtime_hours)}</span> : '-'}</td>
+                          <td className="py-1.5 px-2 text-center">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${sc.bg} ${sc.text}`}>{STATUS_LABELS[r.status]}</span>
                           </td>
-                          <td className="py-2 px-3 text-xs text-gray-500">{getDeptName(r.empDeptId)}</td>
-                          <td className="py-2 px-3 text-center">
-                            <div>
-                              <span className="font-medium text-gray-900">{formatTime(r.clock_in) || '-'}</span>
-                              {r.clock_in_method && (
-                                <span className="block text-[9px] text-gray-400">
-                                  {r.clock_in_method === 'web' ? 'WEB' : r.clock_in_method === 'mobile' ? 'APP' : '수동'}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-2 px-3 text-center font-medium text-gray-900">{formatTime(r.clock_out) || '-'}</td>
-                          <td className="py-2 px-3 text-center text-gray-600">{formatHours(r.regular_hours)}</td>
-                          <td className="py-2 px-3 text-center">
-                            {r.overtime_hours != null && r.overtime_hours > 0
-                              ? <span className="text-orange-600 font-medium">{formatHours(r.overtime_hours)}</span>
-                              : <span className="text-gray-400">-</span>}
-                          </td>
-                          <td className="py-2 px-3 text-center font-semibold text-gray-800">{formatHours(r.total_hours)}</td>
-                          <td className="py-2 px-3 text-center">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${sc.bg} ${sc.text}`}>
-                              {(r.status === 'late' || r.status === 'absent') && <AlertTriangle className="h-2.5 w-2.5" />}
-                              {STATUS_LABELS[r.status] || r.status}
-                              {r.status === 'late' && r.late_minutes != null && r.late_minutes > 0 && (
-                                <span className="ml-0.5">({r.late_minutes}분)</span>
-                              )}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-xs text-gray-500 max-w-[200px] truncate">{r.note || '-'}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+            </div>
+          )
+        })()}
+      </Dialog>
 
       {/* ─── 주 52시간 현황 ──────────────────────────────── */}
       {myWeeklyData.length > 0 && (
