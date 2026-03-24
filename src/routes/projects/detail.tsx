@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
+import { RichEditor } from '@/components/ui/RichEditor'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
 import { Dialog } from '@/components/ui/Dialog'
@@ -49,6 +50,7 @@ export default function ProjectDetailPage() {
   const [taskAssignee, setTaskAssignee] = useState('')
   const [taskPriority, setTaskPriority] = useState<TaskPriority>('normal')
   const [taskDueDate, setTaskDueDate] = useState('')
+  const [taskDescription, setTaskDescription] = useState('')
 
   // Update form
   const [showUpdateForm, setShowUpdateForm] = useState(false)
@@ -119,7 +121,7 @@ export default function ProjectDetailPage() {
     setSaving(false)
     if (error) { toast('작업 추가 실패: ' + error.message, 'error'); return }
     toast('작업이 추가되었습니다', 'success')
-    setTaskTitle(''); setTaskAssignee(''); setTaskPriority('normal'); setTaskDueDate('')
+    setTaskTitle(''); setTaskAssignee(''); setTaskPriority('normal'); setTaskDueDate(''); setTaskDescription('')
     setShowTaskForm(false)
     loadTasks()
   }
@@ -509,7 +511,15 @@ export default function ProjectDetailPage() {
                   onChange={(e) => setUpdateStageId(e.target.value)}
                   options={[{ value: '', label: '전체' }, ...stages.map((s) => ({ value: s.id, label: s.stage_name }))]}
                 />
-                <Textarea label="내용" value={updateContent} onChange={(e) => setUpdateContent(e.target.value)} rows={3} placeholder="진행 상황을 기록하세요..." />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">내용</label>
+                  <RichEditor
+                    value={updateContent}
+                    onChange={setUpdateContent}
+                    placeholder="진행 상황을 기록하세요... (이미지 붙여넣기, 파일 드래그 가능)"
+                    minHeight="150px"
+                  />
+                </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setShowUpdateForm(false)}>취소</Button>
                   <Button onClick={handleAddUpdate} disabled={saving}>
@@ -544,7 +554,7 @@ export default function ProjectDetailPage() {
                           {new Date(u.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{u.content}</p>
+                      <div className="text-sm text-gray-700 prose prose-sm max-w-none [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: u.content }} />
                     </div>
                   </div>
                 )
@@ -578,6 +588,15 @@ export default function ProjectDetailPage() {
                     options={[{ value: 'urgent', label: '긴급' }, { value: 'high', label: '높음' }, { value: 'normal', label: '보통' }, { value: 'low', label: '낮음' }]}
                   />
                   <Input label="마감일" type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">상세 내용</label>
+                  <RichEditor
+                    value={taskDescription}
+                    onChange={setTaskDescription}
+                    placeholder="작업 내용을 상세히 작성하세요... (이미지 붙여넣기, 파일 드래그 가능)"
+                    minHeight="180px"
+                  />
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setShowTaskForm(false)}>취소</Button>
