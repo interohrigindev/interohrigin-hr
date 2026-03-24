@@ -559,6 +559,8 @@ function SlidePanel({
 interface EditingField {
   projectId: string
   field: 'assignee' | 'priority' | 'launch_date'
+  stageId?: string       // 스테이지 인라인 편집용
+  stageField?: 'stage_assignee' | 'stage_deadline'
 }
 
 export default function UnifiedDashboard() {
@@ -566,7 +568,7 @@ export default function UnifiedDashboard() {
   const { toast } = useToast()
   const {
     projects, loading: boardLoading, employees: boardEmployees,
-    updateProject, updateStageStatus, addUpdate, fetchUpdates,
+    updateProject, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates,
   } = useProjectBoard()
 
   const [tasks, setTasks] = useState<Task[]>([])
@@ -1213,18 +1215,54 @@ export default function UnifiedDashboard() {
                                     </span>
                                   </div>
 
-                                  {/* Stage assignees */}
-                                  <div className="flex items-center -space-x-1">
-                                    {stageAssignees.length > 0 ? stageAssignees.slice(0, 2).map((name, i) => (
-                                      <div
-                                        key={i}
-                                        className="w-6 h-6 rounded-full bg-gray-300 text-gray-700 flex items-center justify-center text-[9px] font-bold border-2 border-white"
-                                        title={name}
-                                      >
-                                        {name.slice(0, 1)}
+                                  {/* Stage assignees — inline editable */}
+                                  <div className="relative">
+                                    {editingField?.stageId === stage.id && editingField.stageField === 'stage_assignee' ? (
+                                      <div ref={editRef} className="absolute z-30 top-0 left-0 bg-white border border-gray-200 rounded-lg shadow-xl p-2 w-48 max-h-48 overflow-y-auto">
+                                        {allEmployees.map((emp) => (
+                                          <button
+                                            key={emp.id}
+                                            onClick={async () => {
+                                              const currentIds = stage.stage_assignee_ids || []
+                                              const newIds = currentIds.includes(emp.id)
+                                                ? currentIds.filter((id) => id !== emp.id)
+                                                : [...currentIds, emp.id]
+                                              await supabase.from('pipeline_stages').update({ stage_assignee_ids: newIds }).eq('id', stage.id)
+                                              toast('담당자가 변경되었습니다')
+                                              setEditingField(null)
+                                            }}
+                                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs hover:bg-gray-100 ${
+                                              (stage.stage_assignee_ids || []).includes(emp.id) ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                                            }`}
+                                          >
+                                            <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                              {emp.name[0]}
+                                            </div>
+                                            {emp.name}
+                                            {(stage.stage_assignee_ids || []).includes(emp.id) && (
+                                              <span className="ml-auto text-blue-500 text-[10px]">✓</span>
+                                            )}
+                                          </button>
+                                        ))}
                                       </div>
-                                    )) : (
-                                      <span className="text-[11px] text-gray-400">-</span>
+                                    ) : (
+                                      <div
+                                        onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee', stageId: stage.id, stageField: 'stage_assignee' }) }}
+                                        className="flex items-center -space-x-1 cursor-pointer hover:opacity-80 group/sa"
+                                        title="클릭하여 담당자 변경"
+                                      >
+                                        {stageAssignees.length > 0 ? stageAssignees.slice(0, 2).map((name, i) => (
+                                          <div
+                                            key={i}
+                                            className="w-6 h-6 rounded-full bg-gray-300 text-gray-700 flex items-center justify-center text-[9px] font-bold border-2 border-white"
+                                            title={name}
+                                          >
+                                            {name.slice(0, 1)}
+                                          </div>
+                                        )) : (
+                                          <span className="text-[11px] text-gray-400 group-hover/sa:text-blue-500">+ 담당자</span>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
 
@@ -1248,9 +1286,34 @@ export default function UnifiedDashboard() {
                                     {stage.stage_order}
                                   </div>
 
-                                  {/* Deadline */}
-                                  <div className="text-center text-[11px] text-gray-600">
-                                    {formatDateShort(stage.deadline)}
+                                  {/* Deadline — inline editable */}
+                                  <div className="text-center relative">
+                                    {editingField?.stageId === stage.id && editingField.stageField === 'stage_deadline' ? (
+                                      <div ref={editRef}>
+                                        <input
+                                          type="date"
+                                          defaultValue={stage.deadline || ''}
+                                          autoFocus
+                                          onChange={async (e) => {
+                                            if (e.target.value) {
+                                              await updateStageDeadline(stage.id, e.target.value)
+                                              toast('마감일이 변경되었습니다')
+                                            }
+                                            setEditingField(null)
+                                          }}
+                                          onBlur={() => setEditingField(null)}
+                                          className="text-[11px] border border-blue-300 rounded px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <span
+                                        onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'launch_date', stageId: stage.id, stageField: 'stage_deadline' }) }}
+                                        className="text-[11px] text-gray-600 cursor-pointer hover:text-blue-600 hover:underline"
+                                        title="클릭하여 마감일 변경"
+                                      >
+                                        {stage.deadline ? formatDateShort(stage.deadline) : <span className="text-gray-400">+ 설정</span>}
+                                      </span>
+                                    )}
                                   </div>
 
                                   {/* D-day */}
