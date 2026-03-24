@@ -1072,29 +1072,16 @@ export default function UnifiedDashboard() {
                                 ))}
                               </select>
                             ) : (
-                              <div
+                              <span
                                 onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee' }) }}
-                                className="flex items-center -space-x-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+                                className="text-xs text-gray-700 truncate cursor-pointer hover:text-blue-600 transition-colors"
                                 title="클릭하여 담당자 변경"
                               >
-                                {(p.assignee_names || []).slice(0, 3).map((name, i) => (
-                                  <div
-                                    key={i}
-                                    className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 text-white flex items-center justify-center text-[10px] font-bold border-2 border-white shadow-sm"
-                                    title={name}
-                                  >
-                                    {name.slice(0, 1)}
-                                  </div>
-                                ))}
-                                {(p.assignee_names || []).length > 3 && (
-                                  <div className="w-7 h-7 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold border-2 border-white">
-                                    +{(p.assignee_names || []).length - 3}
-                                  </div>
+                                {p.manager_name || (p.assignee_names && p.assignee_names.length > 0
+                                  ? p.assignee_names.join('/')
+                                  : <span className="text-gray-400">+ 담당자</span>
                                 )}
-                                {(!p.assignee_names || p.assignee_names.length === 0) && (
-                                  <span className="text-[11px] text-gray-400 hover:text-blue-500">+ 담당자</span>
-                                )}
-                              </div>
+                              </span>
                             )}
                           </div>
 
@@ -1190,15 +1177,14 @@ export default function UnifiedDashboard() {
                             </div>
                             {sortedStages.map((stage) => {
                               const dday = getDday(stage.deadline)
-                              // 스테이지 담당자가 없으면 프로젝트 담당자를 기본값으로 표시
+                              // 스테이지 담당자 — 없으면 프로젝트 담당자를 기본값으로 표시
                               const rawStageAssigneeIds = stage.stage_assignee_ids || []
                               const effectiveAssigneeIds = rawStageAssigneeIds.length > 0
                                 ? rawStageAssigneeIds
                                 : (p.assignee_ids || [])
-                              const stageAssignees = effectiveAssigneeIds
+                              const stageAssigneeNames = effectiveAssigneeIds
                                 .map((id) => getEmpName(id))
                                 .filter((n) => n !== '-')
-                              const isInherited = rawStageAssigneeIds.length === 0 && effectiveAssigneeIds.length > 0
 
                               return (
                                 <div
@@ -1254,28 +1240,16 @@ export default function UnifiedDashboard() {
                                         ))}
                                       </div>
                                     ) : (
-                                      <div
+                                      <span
                                         onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee', stageId: stage.id, stageField: 'stage_assignee' }) }}
-                                        className="flex items-center -space-x-1 cursor-pointer hover:opacity-80 group/sa"
+                                        className="text-[11px] text-gray-600 truncate cursor-pointer hover:text-blue-600 transition-colors"
                                         title="클릭하여 담당자 변경"
                                       >
-                                        {stageAssignees.length > 0 ? stageAssignees.slice(0, 2).map((name, i) => (
-                                          <div
-                                            key={i}
-                                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold border-2 border-white ${
-                                              isInherited ? 'bg-gray-200 text-gray-500' : 'bg-blue-400 text-white'
-                                            }`}
-                                            title={isInherited ? `${name} (프로젝트 담당자)` : name}
-                                          >
-                                            {name.slice(0, 1)}
-                                          </div>
-                                        )) : (
-                                          <span className="text-[11px] text-gray-400 group-hover/sa:text-blue-500">+ 담당자</span>
-                                        )}
-                                        {isInherited && stageAssignees.length > 0 && (
-                                          <span className="text-[9px] text-gray-400 ml-1">기본</span>
-                                        )}
-                                      </div>
+                                        {stageAssigneeNames.length > 0
+                                          ? stageAssigneeNames.join('/')
+                                          : <span className="text-gray-400">+ 담당자</span>
+                                        }
+                                      </span>
                                     )}
                                   </div>
 
