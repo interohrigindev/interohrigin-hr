@@ -67,6 +67,7 @@ export default function TabEmployees() {
   const [showDeptDialog, setShowDeptDialog] = useState(false)
   const [editingDept, setEditingDept] = useState<Department | null>(null)
   const [deptName, setDeptName] = useState('')
+  const [deptParentId, setDeptParentId] = useState('')
 
   // 직원 추가 다이얼로그
   const [showInviteDialog, setShowInviteDialog] = useState(false)
@@ -200,12 +201,14 @@ export default function TabEmployees() {
   function openCreateDept() {
     setEditingDept(null)
     setDeptName('')
+    setDeptParentId('')
     setShowDeptDialog(true)
   }
 
   function openEditDept(dept: Department) {
     setEditingDept(dept)
     setDeptName(dept.name)
+    setDeptParentId(dept.parent_id || '')
     setShowDeptDialog(true)
   }
 
@@ -215,20 +218,25 @@ export default function TabEmployees() {
       return
     }
 
+    const deptData = {
+      name: deptName,
+      parent_id: deptParentId || null,
+    }
+
     if (editingDept) {
       const { error } = await supabase
         .from('departments')
-        .update({ name: deptName })
+        .update(deptData)
         .eq('id', editingDept.id)
       if (error) {
         toast('수정 실패: ' + error.message, 'error')
       } else {
-        toast('부서명이 수정되었습니다')
+        toast('부서가 수정되었습니다')
         setShowDeptDialog(false)
         fetchData()
       }
     } else {
-      const { error } = await supabase.from('departments').insert({ name: deptName })
+      const { error } = await supabase.from('departments').insert(deptData)
       if (error) {
         toast('생성 실패: ' + error.message, 'error')
       } else {
@@ -579,7 +587,9 @@ export default function TabEmployees() {
                   >
                     <div>
                       <p className="text-sm font-medium text-gray-900">{dept.name}</p>
-                      <p className="text-xs text-gray-500">{count}명</p>
+                      <p className="text-xs text-gray-500">
+                        {dept.parent_id ? `${departments.find((d) => d.id === dept.parent_id)?.name || ''} 소속 · ` : ''}{count}명
+                      </p>
                     </div>
                     <div className="flex gap-1">
                       <button
@@ -779,6 +789,18 @@ export default function TabEmployees() {
             value={deptName}
             onChange={(e) => setDeptName(e.target.value)}
             placeholder="예: 브랜드사업본부"
+          />
+          <Select
+            id="dept-parent"
+            label="상위 부서"
+            options={[
+              { value: '', label: '없음 (최상위 부서)' },
+              ...departments
+                .filter((d) => d.id !== editingDept?.id)
+                .map((d) => ({ value: d.id, label: d.name })),
+            ]}
+            value={deptParentId}
+            onChange={(e) => setDeptParentId(e.target.value)}
           />
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="outline" onClick={() => setShowDeptDialog(false)}>

@@ -33,6 +33,7 @@ export interface Employee {
 export interface Department {
   id: string
   name: string
+  parent_id: string | null
   created_at: string
 }
 
