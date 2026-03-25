@@ -120,29 +120,24 @@ ${postingInfo || '정보 없음'}
 - 자기소개서 (파일): ${candidate.cover_letter_url ? '제출됨 (파일)' : '미제출'}
 - 자기소개서 (텍스트): ${candidate.cover_letter_text || '미작성'}
 
-다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
-{
-  "summary": "1~2줄 요약",
-  "strengths": ["강점 3개"],
-  "weaknesses": ["약점 2개"],
-  "position_fit": 0~100,
-  "organization_fit": 0~100,
-  "suggested_department": "추천 부서",
-  "suggested_position": "추천 직급",
-  "suggested_salary_range": "추천 연봉 범위",
-  "red_flags": ["우려 사항"],
-  "recommendation": "PROCEED 또는 REVIEW 또는 REJECT"
-}`
+반드시 아래 JSON 형식으로만 응답하세요. 마크다운 코드블록이나 다른 텍스트 없이 순수 JSON만 출력하세요:
+{"summary": "1~2줄 요약", "strengths": ["강점1", "강점2", "강점3"], "weaknesses": ["약점1", "약점2"], "position_fit": 50, "organization_fit": 50, "suggested_department": "추천 부서", "suggested_position": "추천 직급", "suggested_salary_range": "추천 연봉 범위", "red_flags": ["우려 사항"], "recommendation": "PROCEED 또는 REVIEW 또는 REJECT"}
+
+position_fit과 organization_fit은 0에서 100 사이의 정수입니다.`
 
       const result = await generateAIContent(config, prompt)
 
-      // JSON 파싱
+      // JSON 파싱 — markdown 코드블록 제거 후 추출
       let parsed
       try {
-        const jsonMatch = result.content.match(/\{[\s\S]*\}/)
-        parsed = JSON.parse(jsonMatch?.[0] || result.content)
-      } catch {
-        toast('AI 응답 파싱 실패', 'error')
+        let raw = result.content
+        // ```json ... ``` 또는 ``` ... ``` 제거
+        raw = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+        const jsonMatch = raw.match(/\{[\s\S]*\}/)
+        parsed = JSON.parse(jsonMatch?.[0] || raw)
+      } catch (parseErr) {
+        console.error('AI 파싱 실패:', parseErr, result.content)
+        toast('AI 응답 파싱 실패. 다시 시도해주세요.', 'error')
         setAnalyzing(false)
         return
       }
