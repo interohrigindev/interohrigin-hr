@@ -12,6 +12,7 @@ import { runComprehensiveAnalysis } from '@/lib/recruitment-ai'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
 import type { Candidate, CandidateStatus, SourceChannel, ResumeAnalysis, RecruitmentReport } from '@/types/recruitment'
 import { formatDate } from '@/lib/utils'
+import { surveyInviteEmail } from '@/lib/email-templates'
 
 export default function CandidateReport() {
   const { id } = useParams()
@@ -177,7 +178,37 @@ ${postingInfo || '정보 없음'}
   }
 
   async function handleDecision(decision: 'proceed' | 'reject') {
-    if (!id) return
+    if (!id || !candidate) return
+
+    if (decision === 'proceed') {
+      // 이메일 발송
+      const baseUrl = window.location.origin
+      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}`
+      const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl)
+
+      try {
+        const emailRes = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: candidate.email,
+            subject,
+            html,
+          }),
+        })
+
+        if (!emailRes.ok) {
+          const errData = await emailRes.json().catch(() => ({}))
+          toast('이메일 발송 실패: ' + ((errData as Record<string, string>)?.error || '알 수 없는 오류'), 'error')
+          return
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : '네트워크 오류'
+        toast('이메일 발송 실패: ' + message, 'error')
+        return
+      }
+    }
+
     const newStatus = decision === 'proceed' ? 'survey_sent' : 'rejected'
     const { error } = await supabase
       .from('candidates')
@@ -187,8 +218,8 @@ ${postingInfo || '정보 없음'}
     if (error) {
       toast('상태 변경 실패', 'error')
     } else {
-      toast(decision === 'proceed' ? '사전 질의서 발송 처리되었습니다.' : '불합격 처리되었습니다.', 'success')
-      setCandidate((prev) => prev ? { ...prev, status: newStatus as any } : prev)
+      toast(decision === 'proceed' ? '사전 질의서 이메일이 발송되었습니다.' : '불합격 처리되었습니다.', 'success')
+      setCandidate((prev) => prev ? { ...prev, status: newStatus as CandidateStatus } : prev)
     }
   }
 

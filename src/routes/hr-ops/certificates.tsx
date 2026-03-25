@@ -4,6 +4,7 @@ import {
   Award, Calendar, Printer,
 } from 'lucide-react'
 import jsPDF from 'jspdf'
+import { registerKoreanFonts } from '@/lib/pdf-fonts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -134,7 +135,7 @@ export default function CertificatesPage() {
   }, [certificates])
 
   // PDF 생성 함수
-  function generateCertificatePDF(data: {
+  async function generateCertificatePDF(data: {
     certificate_type_label: string
     employee_name: string
     department: string
@@ -142,10 +143,14 @@ export default function CertificatesPage() {
     hire_date: string
     purpose: string
     issued_at: string
-  }): jsPDF {
+  }): Promise<jsPDF> {
     const pdf = new jsPDF()
     const pageWidth = 210
     const centerX = pageWidth / 2
+
+    // 한글 폰트 로드
+    const hasKorean = await registerKoreanFonts(pdf)
+    const fontFamily = hasKorean ? 'NanumGothic' : 'helvetica'
 
     // Border frame
     pdf.setDrawColor(0)
@@ -156,12 +161,12 @@ export default function CertificatesPage() {
 
     // Company name header
     pdf.setFontSize(11)
-    pdf.setFont('helvetica', 'normal')
+    pdf.setFont(fontFamily, 'normal')
     pdf.text('INTEROHRIGIN Co., Ltd.', centerX, 35, { align: 'center' })
 
     // Title
     pdf.setFontSize(24)
-    pdf.setFont('helvetica', 'bold')
+    pdf.setFont(fontFamily, 'bold')
     pdf.text(data.certificate_type_label, centerX, 55, { align: 'center' })
 
     // Decorative line
@@ -175,18 +180,18 @@ export default function CertificatesPage() {
     const valueX = 100
 
     const fields = [
-      { label: 'Name', value: data.employee_name },
-      { label: 'Department', value: data.department || '-' },
-      { label: 'Position', value: data.position || '-' },
-      { label: 'Hire Date', value: data.hire_date || '-' },
-      { label: 'Purpose', value: data.purpose || '-' },
+      { label: '성  명', value: data.employee_name },
+      { label: '소  속', value: data.department || '-' },
+      { label: '직  위', value: data.position || '-' },
+      { label: '입사일', value: data.hire_date || '-' },
+      { label: '용  도', value: data.purpose || '-' },
     ]
 
     pdf.setFontSize(12)
     for (const field of fields) {
-      pdf.setFont('helvetica', 'bold')
+      pdf.setFont(fontFamily, 'bold')
       pdf.text(field.label + ':', labelX, y)
-      pdf.setFont('helvetica', 'normal')
+      pdf.setFont(fontFamily, 'normal')
       pdf.text(field.value, valueX, y)
 
       // Underline for value
@@ -200,8 +205,8 @@ export default function CertificatesPage() {
     // Certification text
     y += 20
     pdf.setFontSize(12)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text('The above is certified to be true and correct.', centerX, y, { align: 'center' })
+    pdf.setFont(fontFamily, 'normal')
+    pdf.text('위 사항을 증명합니다.', centerX, y, { align: 'center' })
 
     // Issue date
     y += 15
@@ -214,17 +219,17 @@ export default function CertificatesPage() {
         }).replace(/\. /g, '.').replace(/\.$/, '')
 
     pdf.setFontSize(11)
-    pdf.text(`Issue Date: ${issueDate}`, centerX, y, { align: 'center' })
+    pdf.text(`발급일: ${issueDate}`, centerX, y, { align: 'center' })
 
     // Company seal area
     y += 30
     pdf.setFontSize(13)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('INTEROHRIGIN Co., Ltd.', centerX, y, { align: 'center' })
+    pdf.setFont(fontFamily, 'bold')
+    pdf.text('주식회사 인터오리진', centerX, y, { align: 'center' })
     y += 8
     pdf.setFontSize(11)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text('CEO', centerX, y, { align: 'center' })
+    pdf.setFont(fontFamily, 'normal')
+    pdf.text('대표이사', centerX, y, { align: 'center' })
 
     // Seal circle placeholder
     pdf.setDrawColor(200, 0, 0)
@@ -232,21 +237,22 @@ export default function CertificatesPage() {
     pdf.circle(centerX + 30, y - 4, 12)
     pdf.setFontSize(8)
     pdf.setTextColor(200, 0, 0)
-    pdf.text('SEAL', centerX + 30, y - 3, { align: 'center' })
+    pdf.setFont(fontFamily, 'normal')
+    pdf.text('인', centerX + 30, y - 3, { align: 'center' })
     pdf.setTextColor(0, 0, 0) // reset
 
     return pdf
   }
 
   // PDF 다운로드 핸들러
-  function handleDownloadCertPDF(cert: Certificate) {
+  async function handleDownloadCertPDF(cert: Certificate) {
     const data = cert.issued_data as Record<string, string> | null
     if (!data) {
       toast('발급 데이터가 없습니다', 'error')
       return
     }
 
-    const pdf = generateCertificatePDF({
+    const pdf = await generateCertificatePDF({
       certificate_type_label: data.certificate_type_label || CERTIFICATE_TYPES[cert.certificate_type] || cert.certificate_type,
       employee_name: data.employee_name || '-',
       department: data.department || '-',
@@ -260,14 +266,14 @@ export default function CertificatesPage() {
   }
 
   // 인쇄 핸들러
-  function handlePrintCert(cert: Certificate) {
+  async function handlePrintCert(cert: Certificate) {
     const data = cert.issued_data as Record<string, string> | null
     if (!data) {
       toast('발급 데이터가 없습니다', 'error')
       return
     }
 
-    const pdf = generateCertificatePDF({
+    const pdf = await generateCertificatePDF({
       certificate_type_label: data.certificate_type_label || CERTIFICATE_TYPES[cert.certificate_type] || cert.certificate_type,
       employee_name: data.employee_name || '-',
       department: data.department || '-',
@@ -308,7 +314,7 @@ export default function CertificatesPage() {
     }
 
     // Generate PDF
-    const pdf = generateCertificatePDF({
+    const pdf = await generateCertificatePDF({
       ...issuedData,
       issued_at: issuedAt,
     })

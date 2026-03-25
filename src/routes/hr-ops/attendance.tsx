@@ -317,6 +317,33 @@ export default function AttendanceManagementPage() {
     fetchData()
   }
 
+  // ─── 원클릭 조퇴 ────────────────────────────────────
+  async function handleQuickEarlyLeave() {
+    if (!profile?.id) return
+    setCheckingOut(true)
+    const now = new Date().toISOString()
+    const existing = records.find((r) => r.employee_id === profile.id && r.date === todayStr)
+    if (!existing?.clock_in) {
+      toast('출근 기록이 없습니다', 'error')
+      setCheckingOut(false)
+      return
+    }
+    if (existing.clock_out) {
+      toast('이미 퇴근 기록이 있습니다', 'error')
+      setCheckingOut(false)
+      return
+    }
+
+    await supabase.from('attendance_records').update({
+      clock_out: now,
+      status: 'early_leave',
+    }).eq('id', existing.id)
+
+    setCheckingOut(false)
+    toast(`조퇴 처리 완료 (${formatTime(now)})`, 'success')
+    fetchData()
+  }
+
   // ─── 관리자 수동 기록 ──────────────────────────────
   async function handleAdminCheckSubmit() {
     if (!adminEmployeeId) { toast('직원을 선택하세요', 'error'); return }
@@ -385,9 +412,15 @@ export default function AttendanceManagementPage() {
               <LogIn className="h-4 w-4 mr-1" /> {checkingIn ? '처리중...' : '출근'}
             </Button>
           ) : !myTodayRecord?.clock_out ? (
-            <Button onClick={handleQuickCheckOut} disabled={checkingOut}>
-              <LogOut className="h-4 w-4 mr-1" /> {checkingOut ? '처리중...' : '퇴근'}
-            </Button>
+            <>
+              <Button variant="outline" onClick={handleQuickEarlyLeave} disabled={checkingOut}
+                className="border-purple-300 text-purple-700 hover:bg-purple-50">
+                <Clock className="h-4 w-4 mr-1" /> {checkingOut ? '처리중...' : '조퇴'}
+              </Button>
+              <Button onClick={handleQuickCheckOut} disabled={checkingOut}>
+                <LogOut className="h-4 w-4 mr-1" /> {checkingOut ? '처리중...' : '퇴근'}
+              </Button>
+            </>
           ) : (
             <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg font-medium">
               근무 완료 ({formatHours(myTodayRecord.total_hours)})

@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import OrgChartTree from '@/components/hr-ops/OrgChartTree'
 
 interface Employee {
   id: string
@@ -131,7 +132,7 @@ export default function OrganizationPage() {
     const totalInDept = dept.employees.length
 
     return (
-      <div key={dept.id} className={depth > 0 ? 'ml-6' : ''}>
+      <div key={dept.id} id={`dept-${dept.id}`} className={depth > 0 ? 'ml-6' : ''}>
         {/* 부서 헤더 */}
         <button
           onClick={() => toggleDept(dept.id)}
@@ -209,6 +210,24 @@ export default function OrganizationPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 조직도 시각화 */}
+      {deptTree.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>조직 구조</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <OrgChartTree
+              tree={deptTree}
+              onDeptClick={(deptId) => {
+                setExpandedDepts((prev) => new Set([...prev, deptId]))
+                document.getElementById(`dept-${deptId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              }}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* 검색 */}
       <div className="flex gap-2">
