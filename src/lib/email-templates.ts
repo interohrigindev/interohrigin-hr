@@ -64,6 +64,116 @@ export function surveyInviteEmail(
   }
 }
 
+export function hiringAcceptEmail(
+  candidateName: string,
+  jobTitle?: string
+): { subject: string; html: string } {
+  return {
+    subject: `[인터오리진] ${candidateName}님, 합격을 축하드립니다`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">INTEROHRIGIN</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${candidateName}</strong>님, 안녕하세요.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
+        인터오리진에 관심을 가져주시고 채용 과정에 참여해 주셔서 진심으로 감사드립니다.
+      </p>
+
+      <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:24px;margin:20px 0;text-align:center;">
+        <p style="font-size:18px;font-weight:bold;color:#065f46;margin:0 0 8px;">
+          합격을 축하드립니다!
+        </p>
+        ${jobTitle ? `<p style="font-size:14px;color:#047857;margin:0;"><strong>${jobTitle}</strong> 포지션</p>` : ''}
+      </div>
+
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
+        심사숙고 끝에 ${candidateName}님을 인터오리진의 새로운 구성원으로 모시게 되었습니다.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
+        입사 일정 및 필요 서류 등 세부 사항은 별도로 안내드릴 예정입니다.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 24px;">
+        궁금하신 사항이 있으시면 언제든 아래 연락처로 문의해 주시기 바랍니다.
+      </p>
+
+      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:16px 0 0;">
+        문의: hr@interohrigin.com
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
+        문의: hr@interohrigin.com
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim(),
+  }
+}
+
+export function hiringRejectEmail(
+  candidateName: string,
+  jobTitle?: string
+): { subject: string; html: string } {
+  return {
+    subject: `[인터오리진] ${candidateName}님, 채용 결과 안내`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">INTEROHRIGIN</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${candidateName}</strong>님, 안녕하세요.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
+        인터오리진에 관심을 가져주시고 채용 과정에 참여해 주셔서 진심으로 감사드립니다.
+      </p>
+      ${jobTitle ? `<p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">지원하신 <strong>${jobTitle}</strong> 포지션에 대해 신중하게 검토하였습니다.</p>` : ''}
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
+        안타깝지만, 종합적인 검토 결과 이번 채용에서는 함께하지 못하게 되었음을 알려드립니다.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
+        ${candidateName}님의 역량과 경험은 충분히 인상적이었으며,
+        향후 적합한 포지션이 생길 경우 다시 연락드릴 수 있기를 희망합니다.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 24px;">
+        ${candidateName}님의 앞으로의 행보를 응원하며, 좋은 결과 있으시길 바랍니다.
+      </p>
+
+      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:16px 0 0;">
+        문의: hr@interohrigin.com
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
+        문의: hr@interohrigin.com
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim(),
+  }
+}
+
 export function interviewInviteEmail(
   candidateName: string,
   scheduledAt: string,

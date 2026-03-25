@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -12,7 +12,8 @@ import { runComprehensiveAnalysis } from '@/lib/recruitment-ai'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
 import type { Candidate, CandidateStatus, SourceChannel, ResumeAnalysis, RecruitmentReport } from '@/types/recruitment'
 import { formatDate } from '@/lib/utils'
-import { surveyInviteEmail } from '@/lib/email-templates'
+import { surveyInviteEmail, hiringAcceptEmail, hiringRejectEmail } from '@/lib/email-templates'
+import { Dialog } from '@/components/ui/Dialog'
 import InterviewAnalysis from '@/components/recruitment/InterviewAnalysis'
 
 export default function CandidateReport() {
@@ -33,6 +34,9 @@ export default function CandidateReport() {
   const [resendingSurvey, setResendingSurvey] = useState(false)
   const [surveyReanalyzing, setSurveyReanalyzing] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState('')
+  const [decisionDialog, setDecisionDialog] = useState<{ open: boolean; decision: 'hired' | 'rejected' | null }>({ open: false, decision: null })
+  const [sendEmail, setSendEmail] = useState(true)
+  const [decidingInProgress, setDecidingInProgress] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -323,9 +327,17 @@ ${fileInfo}
     }
   }
 
-  // 최종 합격/불합격 결정 + AI 신뢰도 자동 기록
+  // 공고 제목 가져오기 (이메일 템플릿용)
+  function getJobTitle(): string | undefined {
+    if (!candidate?.job_posting_id) return undefined
+    // report에 공고 제목이 포함되어 있으면 사용
+    return (report as any)?.job_title || undefined
+  }
+
+  // 최종 합격/불합격 결정 + AI 신뢰도 자동 기록 + 이메일 발송
   async function handleHiringDecision(decision: 'hired' | 'rejected') {
     if (!id || !candidate || !report) return
+    setDecidingInProgress(true)
 
     try {
       // 1. hiring_decisions 기록
@@ -361,10 +373,39 @@ ${fileInfo}
       // 4. ai_trust_metrics 자동 집계 업데이트
       await updateTrustMetrics()
 
+      // 5. 이메일 발송
+      if (sendEmail) {
+        try {
+          const jobTitle = getJobTitle()
+          const template = decision === 'hired'
+            ? hiringAcceptEmail(candidate.name, jobTitle)
+            : hiringRejectEmail(candidate.name, jobTitle)
+
+          const emailRes = await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: candidate.email, subject: template.subject, html: template.html }),
+          })
+
+          if (!emailRes.ok) {
+            const errData = await emailRes.json().catch(() => ({}))
+            toast(`이메일 발송 실패: ${(errData as any)?.error || emailRes.status}`, 'error')
+          }
+        } catch {
+          toast('이메일 발송 중 오류가 발생했습니다.', 'error')
+        }
+      }
+
       setCandidate((p) => p ? { ...p, status: decision as CandidateStatus } : p)
-      toast(decision === 'hired' ? '합격 처리되었습니다.' : '불합격 처리되었습니다.', 'success')
+      setDecisionDialog({ open: false, decision: null })
+
+      const decisionLabel = decision === 'hired' ? '합격' : '불합격'
+      const emailLabel = sendEmail ? ' 및 이메일 발송' : ''
+      toast(`${decisionLabel} 처리${emailLabel} 완료`, 'success')
     } catch (err: any) {
       toast('결정 처리 실패: ' + err.message, 'error')
+    } finally {
+      setDecidingInProgress(false)
     }
   }
 
@@ -1227,10 +1268,10 @@ ${surveyText || '응답 없음'}
               ) : /* Step 5: 분석 완료 → 합격/불합격 결정 */
               candidate.status === 'analyzed' && report ? (
                 <>
-                  <Button className="w-full" onClick={() => handleHiringDecision('hired')}>
+                  <Button className="w-full" onClick={() => { setSendEmail(true); setDecisionDialog({ open: true, decision: 'hired' }) }}>
                     <CheckCircle className="h-4 w-4 mr-1" /> 합격
                   </Button>
-                  <Button variant="danger" className="w-full" onClick={() => handleHiringDecision('rejected')}>
+                  <Button variant="danger" className="w-full" onClick={() => { setSendEmail(true); setDecisionDialog({ open: true, decision: 'rejected' }) }}>
                     <XCircle className="h-4 w-4 mr-1" /> 불합격
                   </Button>
                 </>
@@ -1284,6 +1325,108 @@ ${surveyText || '응답 없음'}
           </Card>
         </div>
       </div>
+
+      {/* 합격/불합격 확인 다이얼로그 */}
+      {candidate && decisionDialog.decision && (
+        <Dialog
+          open={decisionDialog.open}
+          onClose={() => setDecisionDialog({ open: false, decision: null })}
+          title={decisionDialog.decision === 'hired' ? '합격 처리' : '불합격 처리'}
+        >
+          <div className="space-y-4">
+            <div className={`p-4 rounded-lg text-center ${
+              decisionDialog.decision === 'hired'
+                ? 'bg-green-50 border border-green-200'
+                : 'bg-red-50 border border-red-200'
+            }`}>
+              {decisionDialog.decision === 'hired' ? (
+                <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
+              ) : (
+                <XCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+              )}
+              <p className={`font-semibold ${
+                decisionDialog.decision === 'hired' ? 'text-green-700' : 'text-red-700'
+              }`}>
+                {candidate.name}님을 {decisionDialog.decision === 'hired' ? '합격' : '불합격'} 처리합니다.
+              </p>
+            </div>
+
+            {/* 이메일 발송 옵션 */}
+            <div className="border rounded-lg p-4 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendEmail}
+                  onChange={(e) => setSendEmail(e.target.checked)}
+                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <Mail className="h-4 w-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">지원자에게 결과 이메일 발송</span>
+              </label>
+
+              {sendEmail && (
+                <div className="ml-6 space-y-2">
+                  <p className="text-xs text-gray-500">
+                    받는 사람: <strong>{candidate.email}</strong>
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    제목: <strong>
+                      {decisionDialog.decision === 'hired'
+                        ? `[인터오리진] ${candidate.name}님, 합격을 축하드립니다`
+                        : `[인터오리진] ${candidate.name}님, 채용 결과 안내`}
+                    </strong>
+                  </p>
+                  <div className="border rounded p-3 bg-gray-50 max-h-40 overflow-y-auto">
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      {decisionDialog.decision === 'hired' ? (
+                        <>
+                          {candidate.name}님, 안녕하세요.<br />
+                          인터오리진에 관심을 가져주시고 채용 과정에 참여해 주셔서 진심으로 감사드립니다.<br /><br />
+                          <strong className="text-green-700">합격을 축하드립니다!</strong><br /><br />
+                          심사숙고 끝에 {candidate.name}님을 인터오리진의 새로운 구성원으로 모시게 되었습니다.
+                          입사 일정 및 필요 서류 등 세부 사항은 별도로 안내드릴 예정입니다.
+                        </>
+                      ) : (
+                        <>
+                          {candidate.name}님, 안녕하세요.<br />
+                          인터오리진에 관심을 가져주시고 채용 과정에 참여해 주셔서 진심으로 감사드립니다.<br /><br />
+                          안타깝지만, 종합적인 검토 결과 이번 채용에서는 함께하지 못하게 되었음을 알려드립니다.<br /><br />
+                          {candidate.name}님의 역량과 경험은 충분히 인상적이었으며,
+                          향후 적합한 포지션이 생길 경우 다시 연락드릴 수 있기를 희망합니다.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                onClick={() => setDecisionDialog({ open: false, decision: null })}
+                disabled={decidingInProgress}
+              >
+                취소
+              </Button>
+              <Button
+                variant={decisionDialog.decision === 'hired' ? 'default' : 'danger'}
+                onClick={() => handleHiringDecision(decisionDialog.decision!)}
+                disabled={decidingInProgress}
+              >
+                {decidingInProgress ? (
+                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 처리 중...</>
+                ) : (
+                  <>
+                    {sendEmail ? <Mail className="h-4 w-4 mr-1" /> : decisionDialog.decision === 'hired' ? <CheckCircle className="h-4 w-4 mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
+                    {decisionDialog.decision === 'hired' ? '합격' : '불합격'} 확정{sendEmail ? ' 및 이메일 발송' : ''}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
     </div>
   )
 }
