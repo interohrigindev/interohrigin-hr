@@ -17,7 +17,6 @@ import { generateAIContent, type AIConfig } from '@/lib/ai-client'
 import { useAllSchedules, useInterviewScheduleMutations } from '@/hooks/useInterviewSchedules'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS } from '@/lib/recruitment-constants'
 import { interviewInviteEmail } from '@/lib/email-templates'
-import { formatDateTime, formatDate } from '@/lib/utils'
 import { format, addDays, startOfWeek, isToday as isDateToday } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import type { Candidate, CandidateStatus } from '@/types/recruitment'
@@ -36,18 +35,6 @@ const SCHEDULE_STATUS_COLORS: Record<string, string> = {
   completed: 'bg-green-100 text-green-700',
   cancelled: 'bg-gray-100 text-gray-700',
   no_show: 'bg-red-100 text-red-700',
-}
-
-const PRIORITY_LABELS: Record<string, string> = {
-  urgent: '긴급',
-  normal: '일반',
-  low: '낮음',
-}
-
-const PRIORITY_COLORS: Record<string, string> = {
-  urgent: 'bg-red-100 text-red-700',
-  normal: 'bg-gray-100 text-gray-700',
-  low: 'bg-slate-100 text-slate-600',
 }
 
 /* ─── 메인 컴포넌트 ────────────────────────────────────── */
