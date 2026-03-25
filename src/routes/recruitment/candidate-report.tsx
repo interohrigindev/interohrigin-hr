@@ -27,6 +27,8 @@ export default function CandidateReport() {
   const [report, setReport] = useState<RecruitmentReport | null>(null)
   const [comprehensiveAnalyzing, setComprehensiveAnalyzing] = useState(false)
   const [, setActiveTab] = useState<'resume' | 'comprehensive'>('resume')
+  const [resumeSignedUrl, setResumeSignedUrl] = useState<string | null>(null)
+  const [coverLetterSignedUrl, setCoverLetterSignedUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -35,7 +37,23 @@ export default function CandidateReport() {
         supabase.from('candidates').select('*').eq('id', id).single(),
         supabase.from('resume_analysis').select('*').eq('candidate_id', id).order('created_at', { ascending: false }).limit(1).single(),
       ])
-      if (candRes.data) setCandidate(candRes.data as Candidate)
+      const cand = candRes.data as Candidate | null
+      if (cand) {
+        setCandidate(cand)
+        // private 버킷 → signed URL 생성 (1시간 유효)
+        if (cand.resume_url && !cand.resume_url.startsWith('http')) {
+          const { data: sUrl } = await supabase.storage.from('resumes').createSignedUrl(cand.resume_url, 3600)
+          if (sUrl?.signedUrl) setResumeSignedUrl(sUrl.signedUrl)
+        } else if (cand.resume_url) {
+          setResumeSignedUrl(cand.resume_url)
+        }
+        if (cand.cover_letter_url && !cand.cover_letter_url.startsWith('http')) {
+          const { data: sUrl } = await supabase.storage.from('resumes').createSignedUrl(cand.cover_letter_url, 3600)
+          if (sUrl?.signedUrl) setCoverLetterSignedUrl(sUrl.signedUrl)
+        } else if (cand.cover_letter_url) {
+          setCoverLetterSignedUrl(cand.cover_letter_url)
+        }
+      }
       if (analysisRes.data) setAnalysis(analysisRes.data as ResumeAnalysis)
 
       // 종합 리포트
@@ -98,7 +116,9 @@ ${postingInfo || '정보 없음'}
 지원자 정보:
 - 이름: ${candidate.name}
 - 이메일: ${candidate.email}
-- 자기소개서: ${candidate.cover_letter_text || '미제출'}
+- 이력서: ${candidate.resume_url ? '제출됨 (파일)' : '미제출'}
+- 자기소개서 (파일): ${candidate.cover_letter_url ? '제출됨 (파일)' : '미제출'}
+- 자기소개서 (텍스트): ${candidate.cover_letter_text || '미작성'}
 
 다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
 {
@@ -270,27 +290,35 @@ ${postingInfo || '정보 없음'}
               {candidate.resume_url && (
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="text-sm text-gray-700">이력서</span>
-                  <a
-                    href={candidate.resume_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-brand-600 hover:underline"
-                  >
-                    다운로드
-                  </a>
+                  {resumeSignedUrl ? (
+                    <a
+                      href={resumeSignedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-brand-600 hover:underline"
+                    >
+                      다운로드
+                    </a>
+                  ) : (
+                    <span className="text-sm text-gray-400">URL 생성 중...</span>
+                  )}
                 </div>
               )}
               {candidate.cover_letter_url && (
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="text-sm text-gray-700">자기소개서 (파일)</span>
-                  <a
-                    href={candidate.cover_letter_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-brand-600 hover:underline"
-                  >
-                    다운로드
-                  </a>
+                  {coverLetterSignedUrl ? (
+                    <a
+                      href={coverLetterSignedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-brand-600 hover:underline"
+                    >
+                      다운로드
+                    </a>
+                  ) : (
+                    <span className="text-sm text-gray-400">URL 생성 중...</span>
+                  )}
                 </div>
               )}
               {candidate.cover_letter_text && (
@@ -309,15 +337,15 @@ ${postingInfo || '정보 없음'}
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4" /> AI 1차 분석
                 </CardTitle>
-                {!analysis && (
-                  <Button size="sm" onClick={runAIAnalysis} disabled={analyzing}>
-                    {analyzing ? (
-                      <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
-                    ) : (
-                      <><Sparkles className="h-4 w-4 mr-1" /> AI 분석 실행</>
-                    )}
-                  </Button>
-                )}
+                <Button size="sm" variant={analysis ? 'outline' : 'primary'} onClick={runAIAnalysis} disabled={analyzing}>
+                  {analyzing ? (
+                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
+                  ) : analysis ? (
+                    <><Sparkles className="h-4 w-4 mr-1" /> 재분석</>
+                  ) : (
+                    <><Sparkles className="h-4 w-4 mr-1" /> AI 분석 실행</>
+                  )}
+                </Button>
               </div>
             </CardHeader>
             <CardContent>

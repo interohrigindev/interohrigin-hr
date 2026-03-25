@@ -79,17 +79,16 @@ export default function PublicApply() {
         return dot >= 0 ? name.slice(dot).toLowerCase() : ''
       }
 
+      // 파일 경로만 DB에 저장 (private 버킷이므로 public URL 사용 불가)
       const resumePath = `${postingId}/${Date.now()}_resume${getExt(resumeFile.name)}`
       const { error: uploadErr } = await supabase.storage.from('resumes').upload(resumePath, resumeFile)
       if (uploadErr) throw new Error('이력서 업로드 실패: ' + uploadErr.message)
-      const { data: resumeUrlData } = supabase.storage.from('resumes').getPublicUrl(resumePath)
 
-      let coverLetterUrl = null
+      let coverLetterPath = null
       if (coverLetterFile) {
-        const clPath = `${postingId}/${Date.now()}_cover_letter${getExt(coverLetterFile.name)}`
-        await supabase.storage.from('resumes').upload(clPath, coverLetterFile)
-        const { data: clUrlData } = supabase.storage.from('resumes').getPublicUrl(clPath)
-        coverLetterUrl = clUrlData.publicUrl
+        coverLetterPath = `${postingId}/${Date.now()}_cover_letter${getExt(coverLetterFile.name)}`
+        const { error: clUploadErr } = await supabase.storage.from('resumes').upload(coverLetterPath, coverLetterFile)
+        if (clUploadErr) throw new Error('자기소개서 업로드 실패: ' + clUploadErr.message)
       }
 
       const { error: insertErr } = await supabase.rpc('submit_application', {
@@ -99,8 +98,8 @@ export default function PublicApply() {
         p_phone: form.phone || null,
         p_source_channel: source,
         p_source_detail: ref || null,
-        p_resume_url: resumeUrlData.publicUrl,
-        p_cover_letter_url: coverLetterUrl,
+        p_resume_url: resumePath,
+        p_cover_letter_url: coverLetterPath,
         p_cover_letter_text: form.cover_letter_text || null,
       })
       if (insertErr) throw new Error('지원서 제출 실패: ' + insertErr.message)

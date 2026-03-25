@@ -3,6 +3,7 @@
 -- 문제: job_postings SELECT가 authenticated 전용이라 공고 조회 불가
 
 -- ─── 1) job_postings: anon 사용자도 open 상태 공고 조회 가능 ───
+DROP POLICY IF EXISTS "job_postings_select_anon_open" ON public.job_postings;
 CREATE POLICY "job_postings_select_anon_open" ON public.job_postings
   FOR SELECT TO anon
   USING (status = 'open');
@@ -38,17 +39,17 @@ BEGIN
     RAISE EXCEPTION '채용공고가 존재하지 않거나 마감되었습니다.';
   END IF;
 
-  -- 지원자 INSERT
+  -- 지원자 INSERT (created_at은 DEFAULT now() 자동 적용)
   INSERT INTO candidates (
     job_posting_id, name, email, phone,
     source_channel, source_detail,
     resume_url, cover_letter_url, cover_letter_text,
-    status, applied_at
+    status
   ) VALUES (
     p_job_posting_id, p_name, p_email, p_phone,
     p_source_channel, p_source_detail,
     p_resume_url, p_cover_letter_url, p_cover_letter_text,
-    'applied', now()
+    'applied'
   )
   RETURNING id INTO v_candidate_id;
 
