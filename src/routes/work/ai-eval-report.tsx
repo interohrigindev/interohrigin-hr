@@ -6,7 +6,7 @@ import { Select } from '@/components/ui/Select'
 import { Spinner, PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import type { Employee } from '@/types/database'
 
 export default function AIEvalReport() {
@@ -44,19 +44,12 @@ export default function AIEvalReport() {
     setReport(null)
 
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings').select('*').eq('is_active', true).limit(1).single()
+      const config = await getAIConfigForFeature('evaluation_report')
 
-      if (!aiSettings) {
+      if (!config) {
         toast('AI 설정이 필요합니다.', 'error')
         setGenerating(false)
         return
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
       }
 
       const emp = employees.find((e) => e.id === selectedEmployee)

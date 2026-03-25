@@ -3,10 +3,46 @@
  * 브라우저에서 직접 AI API 호출하지 않고 /api/ai 프록시를 통해 호출
  */
 
+import { supabase } from '@/lib/supabase'
+
 export interface AIConfig {
   provider: 'gemini' | 'openai' | 'claude'
   apiKey: string
   model: string
+}
+
+// ─── 기능별 AI 설정 조회 ──────────────────────────────────────────
+// ai_feature_settings에 매핑이 있으면 해당 provider 사용, 없으면 is_active=true 기본 설정 사용
+export async function getAIConfigForFeature(featureKey: string): Promise<AIConfig | null> {
+  // 1) 기능별 매핑 확인
+  const { data: featureSetting } = await supabase
+    .from('ai_feature_settings')
+    .select('ai_setting_id')
+    .eq('feature_key', featureKey)
+    .single()
+
+  if (featureSetting?.ai_setting_id) {
+    const { data: setting } = await supabase
+      .from('ai_settings')
+      .select('provider, api_key, model')
+      .eq('id', featureSetting.ai_setting_id)
+      .single()
+
+    if (setting) {
+      return { provider: setting.provider, apiKey: setting.api_key, model: setting.model }
+    }
+  }
+
+  // 2) fallback: 기본 활성 설정
+  const { data: defaultSetting } = await supabase
+    .from('ai_settings')
+    .select('provider, api_key, model')
+    .eq('is_active', true)
+    .limit(1)
+    .single()
+
+  if (!defaultSetting) return null
+  return { provider: defaultSetting.provider, apiKey: defaultSetting.api_key, model: defaultSetting.model }
 }
 
 export interface AIResponse {

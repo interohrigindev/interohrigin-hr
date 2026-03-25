@@ -15,7 +15,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useRealtimeRooms } from '@/hooks/useRealtimeRooms'
 import { useRealtimeMessages } from '@/hooks/useRealtimeMessages'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { getOrCreateDM, createGroupRoom } from '@/lib/chat-room-creator'
 import {
   ROOM_TYPE_ICONS,
@@ -156,19 +156,12 @@ export default function MessengerPage() {
     setAiTyping(true)
 
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings').select('*').eq('is_active', true).limit(1).single()
+      const config = await getAIConfigForFeature('messenger_ai')
 
-      if (!aiSettings) {
+      if (!config) {
         await sendSystemMsg('AI 설정이 필요합니다. 설정에서 API 키를 등록하세요.')
         setAiTyping(false)
         return
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
       }
 
       const employeeContext = employees.slice(0, 50).map((e) =>

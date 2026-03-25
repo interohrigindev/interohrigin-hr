@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { generateAIChat } from '@/lib/ai-client'
+import { generateAIChat, getAIConfigForFeature } from '@/lib/ai-client'
 import type { AIConfig } from '@/lib/ai-client'
 import { useAuth } from '@/hooks/useAuth'
 import type { AgentConversation, AgentMessage, AgentContextType } from '@/types/ai-agent'
@@ -99,17 +99,12 @@ export function useAIAgent() {
 
   // ─── AI 설정 로드 ────────────────────────────────────────
   async function getAIConfig(): Promise<AIConfig | null> {
-    const { data, error } = await supabase
-      .from('ai_settings')
-      .select('*')
-      .eq('is_active', true)
-      .limit(1)
-      .single()
-    if (error || !data) {
-      console.error('[AIAgent] ai_settings 조회 실패:', error?.message)
+    const config = await getAIConfigForFeature('ai_agent')
+    if (!config) {
+      console.error('[AIAgent] ai_settings 조회 실패')
       return null
     }
-    return { provider: data.provider, apiKey: data.api_key, model: data.model }
+    return config
   }
 
   // ─── 시스템 프롬프트 빌드 ────────────────────────────────

@@ -1,16 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, buildEvalReportPrompt, type AIConfig, type EvalReportData } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature, buildEvalReportPrompt, type AIConfig, type EvalReportData } from '@/lib/ai-client'
 import { ROLE_LABELS } from '@/lib/constants'
-
-interface AISettingsRow {
-  id: string
-  provider: 'gemini' | 'openai'
-  api_key: string
-  model: string
-  is_active: boolean
-  module: string
-}
 
 interface AIReportRow {
   id: string
@@ -39,20 +30,9 @@ export function useAIReport(
   // Load active AI config
   useEffect(() => {
     async function loadConfig() {
-      const { data } = await supabase
-        .from('ai_settings')
-        .select('*')
-        .eq('is_active', true)
-        .eq('module', 'hr')
-        .limit(1)
-        .maybeSingle()
-
-      if (data) {
-        setAiConfig({
-          provider: (data as AISettingsRow).provider,
-          apiKey: (data as AISettingsRow).api_key,
-          model: (data as AISettingsRow).model,
-        })
+      const config = await getAIConfigForFeature('evaluation_report')
+      if (config) {
+        setAiConfig(config)
       }
       setConfigLoading(false)
     }

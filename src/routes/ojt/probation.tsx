@@ -11,7 +11,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { getProbationGrade, PROBATION_GRADE_CONFIG } from '@/lib/constants'
 import {
   PROBATION_CRITERIA,
@@ -188,19 +188,12 @@ export default function ProbationManage() {
     if (!selectedEmployeeId) { toast('직원을 선택하세요.', 'error'); return }
     setGeneratingAI(true)
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings').select('*').eq('is_active', true).limit(1).single()
+      const config = await getAIConfigForFeature('probation_eval')
 
-      if (!aiSettings) {
+      if (!config) {
         toast('AI 설정이 필요합니다.', 'error')
         setGeneratingAI(false)
         return
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
       }
 
       const empName = employees.find((e) => e.id === selectedEmployeeId)?.name || '미정'
@@ -300,16 +293,9 @@ ${prevSummary}
     }
     setTrendAnalyzing(true)
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings').select('*').eq('is_active', true).limit(1).single()
+      const config = await getAIConfigForFeature('probation_eval')
 
-      if (!aiSettings) { toast('AI 설정이 필요합니다.', 'error'); setTrendAnalyzing(false); return }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
-      }
+      if (!config) { toast('AI 설정이 필요합니다.', 'error'); setTrendAnalyzing(false); return }
 
       const evalsSummary = trendEvaluations.map((ev) => {
         const s = ev.scores as Record<string, number>

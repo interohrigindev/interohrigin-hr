@@ -9,7 +9,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { useAuth } from '@/hooks/useAuth'
 import type { PreSurveyTemplate, SurveyQuestion } from '@/types/recruitment'
 
@@ -61,23 +61,12 @@ export default function SurveyManage() {
   async function generateQuestions() {
     setGenerating(true)
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings')
-        .select('*')
-        .eq('is_active', true)
-        .limit(1)
-        .single()
+      const config = await getAIConfigForFeature('survey_generation')
 
-      if (!aiSettings) {
+      if (!config) {
         toast('AI 설정이 필요합니다.', 'error')
         setGenerating(false)
         return
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
       }
 
       const expLabel = form.experience_type === 'entry' ? '신입' : form.experience_type === 'experienced' ? '경력직' : '무관'

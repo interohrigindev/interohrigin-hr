@@ -7,7 +7,7 @@ import { PageSpinner, Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import type { EmployeeProfile, PersonalityAnalysis as PAType } from '@/types/employee-lifecycle'
 import type { Employee } from '@/types/database'
 
@@ -142,22 +142,16 @@ export default function PersonalityAnalysisPage() {
     setAiRunning(true)
     try {
       // DB에서 활성 AI 설정 조회
-      const { data: aiSetting } = await supabase
-        .from('ai_settings')
-        .select('*')
-        .eq('is_active', true)
-        .eq('module', 'hr')
-        .limit(1)
-        .maybeSingle()
+      const config = await getAIConfigForFeature('personality_analysis')
 
-      if (!aiSetting) {
+      if (!config) {
         toast('AI 설정에서 API 키를 먼저 등록하세요 (설정 > AI 설정)', 'error')
         return
       }
 
-      const provider = aiSetting.provider as 'gemini' | 'openai' | 'claude'
-      const apiKey = aiSetting.api_key
-      const model = aiSetting.model
+      const provider = config.provider
+      const apiKey = config.apiKey
+      const model = config.model
 
       const prompt = `다음 직원의 사주/MBTI 기반 성향 분석을 해주세요.
 

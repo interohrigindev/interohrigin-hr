@@ -5,7 +5,7 @@ import { Spinner, PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import type { ChatMessage } from '@/types/work'
 import type { Employee } from '@/types/database'
 
@@ -76,19 +76,12 @@ export default function WorkChatbot() {
 
     // Get AI config
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings').select('*').eq('is_active', true).limit(1).single()
+      const config = await getAIConfigForFeature('work_chat')
 
-      if (!aiSettings) {
+      if (!config) {
         toast('AI 설정이 필요합니다. 설정 > AI 탭에서 API 키를 등록하세요.', 'error')
         setSending(false)
         return
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
       }
 
       // Build context about employees

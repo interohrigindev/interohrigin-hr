@@ -3,9 +3,9 @@
  */
 
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature, type AIConfig } from '@/lib/ai-client'
 
-// AI 설정 가져오기
+// AI 설정 가져오기 (기본 — 레거시 호환)
 export async function getAIConfig(): Promise<AIConfig | null> {
   const { data } = await supabase
     .from('ai_settings')
@@ -104,7 +104,7 @@ ${data.talentProfiles.length > 0 ? data.talentProfiles.map((t) => `${t.name}: ${
 
 // 종합 분석 실행
 export async function runComprehensiveAnalysis(candidateId: string) {
-  const config = await getAIConfig()
+  const config = await getAIConfigForFeature('comprehensive_analysis')
   if (!config) throw new Error('AI 설정이 필요합니다.')
 
   // 데이터 수집

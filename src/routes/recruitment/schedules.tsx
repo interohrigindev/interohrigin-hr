@@ -13,7 +13,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { useAllSchedules, useInterviewScheduleMutations } from '@/hooks/useInterviewSchedules'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS } from '@/lib/recruitment-constants'
 import { interviewInviteEmail } from '@/lib/email-templates'
@@ -293,22 +293,12 @@ export default function InterviewSchedules() {
         return
       }
 
-      const { data: aiSettings } = await supabase
-        .from('ai_settings')
-        .select('*')
-        .eq('is_active', true)
-        .limit(1)
-        .single()
+      const config = await getAIConfigForFeature('schedule_optimization')
 
       let priorityOrder = unscheduledCandidates.map((c) => c.id)
 
-      if (aiSettings) {
+      if (config) {
         try {
-          const config: AIConfig = {
-            provider: aiSettings.provider,
-            apiKey: aiSettings.api_key,
-            model: aiSettings.model,
-          }
 
           const candidateList = unscheduledCandidates
             .map((c, i) => `${i + 1}. ${c.name} (매칭점수: ${c.talent_match_score ?? '미측정'})`)

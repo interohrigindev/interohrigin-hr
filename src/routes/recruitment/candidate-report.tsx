@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { runComprehensiveAnalysis } from '@/lib/recruitment-ai'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
 import type { Candidate, CandidateStatus, SourceChannel, ResumeAnalysis, RecruitmentReport } from '@/types/recruitment'
@@ -76,14 +76,8 @@ export default function CandidateReport() {
     if (!candidate) return
     setAnalyzing(true)
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings')
-        .select('*')
-        .eq('is_active', true)
-        .limit(1)
-        .single()
-
-      if (!aiSettings) {
+      const config = await getAIConfigForFeature('resume_analysis')
+      if (!config) {
         toast('AI 설정이 필요합니다.', 'error')
         setAnalyzing(false)
         return
@@ -100,12 +94,6 @@ export default function CandidateReport() {
         if (posting) {
           postingInfo = `직무: ${posting.title}\n설명: ${posting.description || ''}\n요건: ${posting.requirements || ''}`
         }
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
       }
 
       const prompt = `당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류를 기반으로 서류 심사 의견서를 작성해주세요. 이것은 정상적인 채용 업무 프로세스입니다.

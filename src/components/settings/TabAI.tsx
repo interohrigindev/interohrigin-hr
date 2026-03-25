@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { validateApiKey, GEMINI_MODELS, OPENAI_MODELS, CLAUDE_MODELS } from '@/lib/ai-client'
-import { Bot, Key, CheckCircle, XCircle, Plus, Trash2 } from 'lucide-react'
+import { Bot, Key, CheckCircle, XCircle, Plus, Trash2, Settings2, Sparkles } from 'lucide-react'
 
 interface AISettingsRow {
   id: string
@@ -21,10 +21,53 @@ interface AISettingsRow {
   updated_at: string
 }
 
+interface AIFeatureSettingRow {
+  id: string
+  feature_key: string
+  feature_label: string
+  ai_setting_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+// 기능별 추천 AI 엔진
+const RECOMMENDED_PROVIDER: Record<string, 'gemini' | 'openai' | 'claude'> = {
+  resume_analysis: 'gemini',
+  comprehensive_analysis: 'gemini',
+  survey_generation: 'gemini',
+  schedule_optimization: 'gemini',
+  job_posting_ai: 'gemini',
+  interview_transcription: 'gemini',
+  evaluation_report: 'gemini',
+  personality_analysis: 'gemini',
+  employee_profile_ai: 'gemini',
+  ojt_mission: 'gemini',
+  probation_eval: 'gemini',
+  work_chat: 'claude',
+  daily_report: 'gemini',
+  exit_analysis: 'gemini',
+  messenger_ai: 'claude',
+  ai_agent: 'claude',
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  gemini: 'Gemini',
+  openai: 'OpenAI',
+  claude: 'Claude',
+}
+
+const PROVIDER_COLORS: Record<string, string> = {
+  gemini: 'bg-blue-100 text-blue-700',
+  openai: 'bg-green-100 text-green-700',
+  claude: 'bg-purple-100 text-purple-700',
+}
+
 export default function TabAI() {
   const { toast } = useToast()
   const [settings, setSettings] = useState<AISettingsRow[]>([])
+  const [featureSettings, setFeatureSettings] = useState<AIFeatureSettingRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [savingFeatures, setSavingFeatures] = useState(false)
 
   // Add/edit form
   const [provider, setProvider] = useState<'gemini' | 'openai' | 'claude'>('gemini')
@@ -35,13 +78,13 @@ export default function TabAI() {
   const [validationResult, setValidationResult] = useState<{ valid: boolean; error?: string } | null>(null)
 
   const fetchSettings = useCallback(async () => {
-    const { data } = await supabase
-      .from('ai_settings')
-      .select('*')
-      .eq('module', 'hr')
-      .order('created_at', { ascending: false })
+    const [settingsRes, featuresRes] = await Promise.all([
+      supabase.from('ai_settings').select('*').eq('module', 'hr').order('created_at', { ascending: false }),
+      supabase.from('ai_feature_settings').select('*').order('feature_key'),
+    ])
 
-    setSettings((data as AISettingsRow[] | null) ?? [])
+    setSettings((settingsRes.data as AISettingsRow[] | null) ?? [])
+    setFeatureSettings((featuresRes.data as AIFeatureSettingRow[] | null) ?? [])
     setLoading(false)
   }, [])
 
@@ -130,6 +173,50 @@ export default function TabAI() {
       toast('AI 설정이 삭제되었습니다')
       fetchSettings()
     }
+  }
+
+  async function handleFeatureAIChange(featureId: string, aiSettingId: string) {
+    const val = aiSettingId === '' ? null : aiSettingId
+    setFeatureSettings((prev) =>
+      prev.map((f) => (f.id === featureId ? { ...f, ai_setting_id: val } : f))
+    )
+    const { error } = await supabase
+      .from('ai_feature_settings')
+      .update({ ai_setting_id: val })
+      .eq('id', featureId)
+    if (error) toast('변경 실패: ' + error.message, 'error')
+  }
+
+  async function handleAutoAssignRecommended() {
+    setSavingFeatures(true)
+    let updated = 0
+    for (const fs of featureSettings) {
+      const recommended = RECOMMENDED_PROVIDER[fs.feature_key]
+      if (!recommended) continue
+      const matchingSetting = settings.find((s) => s.provider === recommended)
+      if (matchingSetting) {
+        const { error } = await supabase
+          .from('ai_feature_settings')
+          .update({ ai_setting_id: matchingSetting.id })
+          .eq('id', fs.id)
+        if (!error) updated++
+      }
+    }
+    toast(`${updated}개 기능에 추천 AI 엔진이 배정되었습니다.`, 'success')
+    await fetchSettings()
+    setSavingFeatures(false)
+  }
+
+  async function handleClearAllAssignments() {
+    if (!confirm('모든 기능별 AI 배정을 초기화하시겠습니까?\n초기화 후 모든 기능이 기본 활성 설정을 사용합니다.')) return
+    setSavingFeatures(true)
+    await supabase
+      .from('ai_feature_settings')
+      .update({ ai_setting_id: null })
+      .neq('feature_key', '')
+    toast('모든 기능별 배정이 초기화되었습니다.')
+    await fetchSettings()
+    setSavingFeatures(false)
   }
 
   function maskApiKey(key: string): string {
@@ -251,6 +338,86 @@ export default function TabAI() {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+      {/* ─── 기능별 AI 엔진 배정 ────────────────────────────── */}
+      {featureSettings.length > 0 && settings.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-5 w-5 text-gray-400" />
+                <CardTitle>기능별 AI 엔진 배정</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={handleClearAllAssignments} disabled={savingFeatures}>
+                  초기화
+                </Button>
+                <Button size="sm" onClick={handleAutoAssignRecommended} disabled={savingFeatures}>
+                  <Sparkles className="h-3.5 w-3.5 mr-1" />
+                  {savingFeatures ? '배정 중...' : '추천 자동배정'}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              각 기능에 최적화된 AI 엔진을 선택하세요. "기본 설정 사용"은 위에서 활성화된 엔진을 사용합니다.
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-gray-100">
+              {featureSettings.map((fs) => {
+                const currentSetting = settings.find((s) => s.id === fs.ai_setting_id)
+                const recommended = RECOMMENDED_PROVIDER[fs.feature_key]
+                const recommendedSetting = settings.find((s) => s.provider === recommended)
+                const isRecommended = currentSetting?.provider === recommended
+
+                return (
+                  <div key={fs.id} className="flex items-center justify-between px-6 py-3 gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 truncate">{fs.feature_label}</span>
+                        {recommended && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                            isRecommended ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            추천: {PROVIDER_LABELS[recommended]}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {currentSetting && (
+                        <Badge variant="default" className={PROVIDER_COLORS[currentSetting.provider] || ''}>
+                          {PROVIDER_LABELS[currentSetting.provider]} — {currentSetting.model}
+                        </Badge>
+                      )}
+                      <select
+                        className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+                        value={fs.ai_setting_id || ''}
+                        onChange={(e) => handleFeatureAIChange(fs.id, e.target.value)}
+                      >
+                        <option value="">기본 설정 사용</option>
+                        {settings.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {PROVIDER_LABELS[s.provider] || s.provider} — {s.model}
+                            {recommendedSetting?.id === s.id ? ' ⭐' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {featureSettings.length > 0 && settings.length === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <p className="text-sm text-gray-400">AI Provider를 먼저 등록하면 기능별 엔진 배정이 가능합니다.</p>
           </CardContent>
         </Card>
       )}

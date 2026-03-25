@@ -8,7 +8,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { Spinner, PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import type { Employee } from '@/types/database'
 import type { ExitSurvey } from '@/types/employee-lifecycle'
 
@@ -77,19 +77,12 @@ export default function ExitManagement() {
   async function handleAIInsight() {
     setAiLoading(true)
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings').select('*').eq('is_active', true).limit(1).single()
+      const config = await getAIConfigForFeature('exit_analysis')
 
-      if (!aiSettings) {
+      if (!config) {
         toast('AI 설정이 필요합니다.', 'error')
         setAiLoading(false)
         return
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
       }
 
       const completedSurveys = surveys.filter((s) => s.completed_at)

@@ -10,7 +10,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import type { MentorAssignment, MentorDailyReport, AssignmentType, AttitudeLevel } from '@/types/employee-lifecycle'
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -225,19 +225,12 @@ export default function MentorManage() {
     if (!selectedAssignment) return
     setGeneratingMissions(true)
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings').select('*').eq('is_active', true).limit(1).single()
+      const config = await getAIConfigForFeature('ojt_mission')
 
-      if (!aiSettings) {
+      if (!config) {
         toast('AI 설정이 필요합니다.', 'error')
         setGeneratingMissions(false)
         return
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
       }
 
       const recentReports = dailyReports.slice(-3)

@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { useJobPostingMutations } from '@/hooks/useRecruitment'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { EMPLOYMENT_TYPE_LABELS, EXPERIENCE_LEVEL_LABELS } from '@/lib/recruitment-constants'
 import type { Department } from '@/types/database'
 import type { JobPosting } from '@/types/recruitment'
@@ -107,23 +107,12 @@ export default function RecruitmentJobNew() {
   async function generateAIQuestions() {
     setGeneratingAI(true)
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings')
-        .select('*')
-        .eq('is_active', true)
-        .limit(1)
-        .single()
+      const config = await getAIConfigForFeature('job_posting_ai')
 
-      if (!aiSettings) {
+      if (!config) {
         toast('AI 설정이 필요합니다. 설정 > AI 탭에서 API 키를 등록하세요.', 'error')
         setGeneratingAI(false)
         return
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
       }
 
       const prompt = `채용 면접 질문을 5개 생성해주세요.
