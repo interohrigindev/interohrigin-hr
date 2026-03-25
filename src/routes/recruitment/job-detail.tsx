@@ -108,7 +108,7 @@ export default function RecruitmentJobDetail() {
             </div>
           </div>
           <div className="shrink-0 flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate(`/admin/recruitment/jobs/new?edit=${id}`)}>
+            <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={() => navigate(`/admin/recruitment/jobs/new?edit=${id}`)}>
               <Pencil className="h-4 w-4 mr-1" /> 수정
             </Button>
             <Select
