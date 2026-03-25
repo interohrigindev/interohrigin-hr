@@ -27,25 +27,16 @@ CREATE POLICY "ai_feature_settings_select_auth"
   USING (true);
 
 CREATE POLICY "ai_feature_settings_insert_admin"
-  ON public.ai_feature_settings FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (SELECT 1 FROM public.employees WHERE user_id = auth.uid() AND role IN ('admin','super_admin'))
-  );
+  ON public.ai_feature_settings FOR INSERT
+  WITH CHECK (public.is_admin());
 
 CREATE POLICY "ai_feature_settings_update_admin"
-  ON public.ai_feature_settings FOR UPDATE TO authenticated
-  USING (
-    EXISTS (SELECT 1 FROM public.employees WHERE user_id = auth.uid() AND role IN ('admin','super_admin'))
-  )
-  WITH CHECK (
-    EXISTS (SELECT 1 FROM public.employees WHERE user_id = auth.uid() AND role IN ('admin','super_admin'))
-  );
+  ON public.ai_feature_settings FOR UPDATE
+  USING (public.is_admin());
 
 CREATE POLICY "ai_feature_settings_delete_admin"
-  ON public.ai_feature_settings FOR DELETE TO authenticated
-  USING (
-    EXISTS (SELECT 1 FROM public.employees WHERE user_id = auth.uid() AND role IN ('admin','super_admin'))
-  );
+  ON public.ai_feature_settings FOR DELETE
+  USING (public.is_admin());
 
 -- ─── 기본 기능 목록 시드 (ai_setting_id는 NULL = 기본 설정 사용) ───
 INSERT INTO public.ai_feature_settings (feature_key, feature_label) VALUES
