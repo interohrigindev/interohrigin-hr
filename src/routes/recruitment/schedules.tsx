@@ -101,12 +101,16 @@ export default function InterviewSchedules() {
     return Array.from({ length: count }, (_, i) => addDays(viewStartDate, i))
   }, [viewMode, viewStartDate])
 
-  /** 면접 일정이 잡힌 지원자를 제외한 대기 목록 */
+  /** 면접 일정이 잡힌 지원자를 제외한 대기 목록 (1차 또는 2차 대기) */
   const waitingCandidates = useMemo(() => {
     const activelyScheduled = new Set(
       schedules.filter((s) => s.status === 'scheduled').map((s) => s.candidate_id),
     )
-    return candidates.filter((c) => !activelyScheduled.has(c.id))
+    return candidates.filter((c) => {
+      if (activelyScheduled.has(c.id)) return false
+      // 1차 면접 대기 (survey_done) 또는 2차 면접 대기 (video_done)
+      return c.status === 'survey_done' || c.status === 'video_done'
+    })
   }, [candidates, schedules])
 
   /** 날짜별 일정 그룹 (시간순 정렬) */
@@ -247,9 +251,13 @@ export default function InterviewSchedules() {
     if (error) {
       toast('일정 생성 실패: ' + error.message, 'error')
     } else {
+      // 1차 화상면접 → interview_scheduled, 2차 대면면접 → face_to_face_scheduled
+      const newCandidateStatus = form.interview_type === 'face_to_face'
+        ? 'face_to_face_scheduled'
+        : 'interview_scheduled'
       await supabase
         .from('candidates')
-        .update({ status: 'interview_scheduled' })
+        .update({ status: newCandidateStatus })
         .eq('id', form.candidate_id)
 
       toast('면접 일정이 등록되었습니다.', 'success')
@@ -553,11 +561,13 @@ ${candidateList}
                     className="ml-0.5 px-2 py-0.5 text-[11px] font-medium text-brand-600 hover:text-white hover:bg-brand-600 rounded-full border border-brand-200 hover:border-brand-600 transition-all"
                     onClick={(e) => {
                       e.stopPropagation()
-                      setForm((p) => ({ ...p, candidate_id: c.id }))
+                      // video_done → 2차 대면면접 자동 설정
+                      const interviewType = c.status === 'video_done' ? 'face_to_face' : 'video'
+                      setForm((p) => ({ ...p, candidate_id: c.id, interview_type: interviewType }))
                       setDialogOpen(true)
                     }}
                   >
-                    배정
+                    {c.status === 'video_done' ? '2차 배정' : '1차 배정'}
                   </button>
                 </div>
               ))}
@@ -713,7 +723,11 @@ ${candidateList}
           <Select
             label="지원자 *"
             value={form.candidate_id}
-            onChange={(e) => setForm((p) => ({ ...p, candidate_id: e.target.value }))}
+            onChange={(e) => {
+              const cand = candidates.find((c) => c.id === e.target.value)
+              const autoType = cand?.status === 'video_done' ? 'face_to_face' : 'video'
+              setForm((p) => ({ ...p, candidate_id: e.target.value, interview_type: autoType }))
+            }}
             options={[
               { value: '', label: '선택하세요' },
               ...candidates.map((c) => ({
@@ -727,8 +741,8 @@ ${candidateList}
             value={form.interview_type}
             onChange={(e) => setForm((p) => ({ ...p, interview_type: e.target.value }))}
             options={[
-              { value: 'video', label: 'Google Meet 화상면접' },
-              { value: 'face_to_face', label: '대면면접' },
+              { value: 'video', label: '1차 — Google Meet 화상면접' },
+              { value: 'face_to_face', label: '2차 — 대면면접' },
             ]}
           />
           {/* 면접 일시 — 날짜 + 시간 분리 */}
@@ -939,8 +953,9 @@ ${candidateList}
             />
           </div>
 
-          <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-700">
-            배정 대기 지원자: {candidates.filter((c) => c.status === 'survey_done').length}명
+          <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-700 space-y-1">
+            <p>1차 화상면접 대기: {candidates.filter((c) => c.status === 'survey_done').length}명</p>
+            <p>2차 대면면접 대기: {candidates.filter((c) => c.status === 'video_done').length}명</p>
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">

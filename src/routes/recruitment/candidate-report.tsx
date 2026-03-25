@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -419,19 +419,19 @@ ${postingInfo || '정보 없음'}
           {/* 면접 분석 */}
           <InterviewAnalysis candidateId={id!} candidateName={candidate.name} />
 
-          {/* 종합 AI 분석 리포트 */}
+          {/* 종합 AI 분석 리포트 — 2차 대면면접 완료 후에만 실행 가능 */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" /> AI 종합 분석
+                  <Sparkles className="h-4 w-4" /> AI 최종 종합 분석
                 </CardTitle>
-                {!report && (
+                {!report && ['face_to_face_done', 'processing'].includes(candidate.status) && (
                   <Button size="sm" onClick={runComprehensive} disabled={comprehensiveAnalyzing}>
                     {comprehensiveAnalyzing ? (
                       <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
                     ) : (
-                      <><Sparkles className="h-4 w-4 mr-1" /> 종합 분석 실행</>
+                      <><Sparkles className="h-4 w-4 mr-1" /> 최종 종합 분석 실행</>
                     )}
                   </Button>
                 )}
@@ -440,14 +440,16 @@ ${postingInfo || '정보 없음'}
             <CardContent>
               {!report ? (
                 <div className="space-y-2">
-                  <p className="text-gray-400 text-sm">이력서 분석, 사전 질의서, 면접 결과를 모두 종합한 AI 분석을 실행합니다.</p>
-                  <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                    <span className="text-amber-500 mt-0.5 shrink-0">⚠️</span>
-                    <p className="text-sm text-amber-700">
-                      종합 분석은 <strong>화상면접 또는 대면면접이 모두 완료된 후</strong>에 실행해주세요.
-                      면접 데이터가 포함되어야 정확한 분석 결과를 얻을 수 있습니다.
-                    </p>
-                  </div>
+                  <p className="text-gray-400 text-sm">1차 화상면접 + 2차 대면면접 결과를 모두 종합한 최종 AI 분석을 실행합니다.</p>
+                  {!['face_to_face_done', 'processing', 'analyzed', 'decided', 'hired', 'rejected'].includes(candidate.status) && (
+                    <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                      <p className="text-sm text-amber-700">
+                        종합 분석은 <strong>2차 대면면접이 완료된 후</strong>에 실행할 수 있습니다.
+                        1차 화상면접 → 2차 대면면접 순서로 진행해주세요.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -534,13 +536,76 @@ ${postingInfo || '정보 없음'}
           </Card>
         </div>
 
-        {/* 사이드바: 의사결정 */}
+        {/* 사이드바: 의사결정 + 채용 전형 진행 현황 */}
         <div className="space-y-6">
+          {/* 채용 전형 진행 단계 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">채용 전형 진행</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const steps = [
+                  { key: 'applied', label: '서류 접수' },
+                  { key: 'resume_reviewed', label: 'AI 이력서 분석' },
+                  { key: 'survey', label: '사전 질의서' },
+                  { key: 'interview_1', label: '1차 화상면접' },
+                  { key: 'interview_2', label: '2차 대면면접' },
+                  { key: 'analyzed', label: '최종 종합 분석' },
+                  { key: 'decided', label: '최종 결정' },
+                ]
+                const statusOrder = [
+                  'applied', 'resume_reviewed', 'survey_sent', 'survey_done',
+                  'interview_scheduled', 'video_done', 'face_to_face_scheduled',
+                  'face_to_face_done', 'processing', 'analyzed', 'decided', 'hired', 'rejected',
+                ]
+                const currentIdx = statusOrder.indexOf(candidate.status)
+                const getStepState = (key: string) => {
+                  const thresholds: Record<string, number> = {
+                    applied: 0, resume_reviewed: 1, survey: 2,
+                    interview_1: 4, interview_2: 6, analyzed: 9, decided: 10,
+                  }
+                  const threshold = thresholds[key] ?? 0
+                  if (currentIdx > threshold) return 'done'
+                  if (currentIdx === threshold) return 'current'
+                  return 'pending'
+                }
+                return (
+                  <div className="space-y-1">
+                    {steps.map((step, i) => {
+                      const state = getStepState(step.key)
+                      return (
+                        <div key={step.key} className="flex items-center gap-2">
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                            state === 'done' ? 'bg-green-500 text-white' :
+                            state === 'current' ? 'bg-brand-500 text-white ring-2 ring-brand-200' :
+                            'bg-gray-200 text-gray-400'
+                          }`}>
+                            {state === 'done' ? '✓' : i + 1}
+                          </div>
+                          <span className={`text-xs ${
+                            state === 'done' ? 'text-green-700' :
+                            state === 'current' ? 'text-brand-700 font-semibold' :
+                            'text-gray-400'
+                          }`}>
+                            {step.label}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </CardContent>
+          </Card>
+
+          {/* 의사결정 액션 */}
           <Card>
             <CardHeader>
               <CardTitle>의사결정</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {/* Step 1: 이력서 분석 완료 → 사전 질의서 발송 */}
               {candidate.status === 'resume_reviewed' && analysis ? (
                 <>
                   <Button className="w-full" onClick={() => handleDecision('proceed')}>
@@ -550,7 +615,60 @@ ${postingInfo || '정보 없음'}
                     <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
                   </Button>
                 </>
-              ) : candidate.status === 'analyzed' && report ? (
+              ) : /* Step 2: 질의서 완료 → 1차 화상면접 일정 잡기 */
+              candidate.status === 'survey_done' ? (
+                <>
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-700 font-medium mb-1">
+                      <Video className="h-4 w-4 inline mr-1" />
+                      다음 단계: 1차 화상면접
+                    </p>
+                    <p className="text-xs text-blue-600">면접 일정을 배정해주세요.</p>
+                  </div>
+                  <Button className="w-full" onClick={() => navigate('/admin/recruitment/schedules')}>
+                    <Calendar className="h-4 w-4 mr-1" /> 1차 면접 일정 잡기
+                  </Button>
+                  <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
+                    <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
+                  </Button>
+                </>
+              ) : /* Step 3: 1차 화상면접 완료 → 2차 대면면접 일정 잡기 */
+              candidate.status === 'video_done' ? (
+                <>
+                  <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <p className="text-sm text-orange-700 font-medium mb-1">
+                      <CheckCircle className="h-4 w-4 inline mr-1" />
+                      1차 화상면접 완료
+                    </p>
+                    <p className="text-xs text-orange-600">면접 녹화 AI 분석 확인 후, 2차 대면면접을 배정해주세요.</p>
+                  </div>
+                  <Button className="w-full" onClick={() => navigate('/admin/recruitment/schedules')}>
+                    <MapPin className="h-4 w-4 mr-1" /> 2차 대면면접 일정 잡기
+                  </Button>
+                  <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
+                    <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
+                  </Button>
+                </>
+              ) : /* Step 4: 2차 대면면접 완료 → 최종 종합 분석 */
+              candidate.status === 'face_to_face_done' && !report ? (
+                <>
+                  <div className="p-3 bg-brand-50 border border-brand-200 rounded-lg">
+                    <p className="text-sm text-brand-700 font-medium mb-1">
+                      <CheckCircle className="h-4 w-4 inline mr-1" />
+                      2차 대면면접 완료
+                    </p>
+                    <p className="text-xs text-brand-600">최종 종합 분석을 실행하여 합격 여부를 결정하세요.</p>
+                  </div>
+                  <Button className="w-full" onClick={runComprehensive} disabled={comprehensiveAnalyzing}>
+                    {comprehensiveAnalyzing ? (
+                      <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
+                    ) : (
+                      <><Sparkles className="h-4 w-4 mr-1" /> 최종 종합 분석 실행</>
+                    )}
+                  </Button>
+                </>
+              ) : /* Step 5: 분석 완료 → 합격/불합격 결정 */
+              candidate.status === 'analyzed' && report ? (
                 <>
                   <Button className="w-full" onClick={async () => {
                     await supabase.from('hiring_decisions').insert({
@@ -582,7 +700,17 @@ ${postingInfo || '정보 없음'}
                   </Button>
                 </>
               ) : candidate.status === 'applied' ? (
-                <p className="text-sm text-gray-500">AI 분석을 먼저 실행하세요.</p>
+                <p className="text-sm text-gray-500">AI 이력서 분석을 먼저 실행하세요.</p>
+              ) : candidate.status === 'hired' ? (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                  <CheckCircle className="h-5 w-5 text-green-600 mx-auto mb-1" />
+                  <p className="text-sm text-green-700 font-semibold">합격</p>
+                </div>
+              ) : candidate.status === 'rejected' ? (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+                  <XCircle className="h-5 w-5 text-red-600 mx-auto mb-1" />
+                  <p className="text-sm text-red-700 font-semibold">불합격</p>
+                </div>
               ) : (
                 <p className="text-sm text-gray-500">
                   현재 상태: {CANDIDATE_STATUS_LABELS[candidate.status as CandidateStatus]}

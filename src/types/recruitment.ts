@@ -44,9 +44,10 @@ export type CandidateStatus =
   | 'resume_reviewed'
   | 'survey_sent'
   | 'survey_done'
-  | 'interview_scheduled'
-  | 'video_done'
-  | 'face_to_face_done'
+  | 'interview_scheduled'    // 1차 화상면접 예정
+  | 'video_done'             // 1차 화상면접 완료
+  | 'face_to_face_scheduled' // 2차 대면면접 예정
+  | 'face_to_face_done'      // 2차 대면면접 완료
   | 'processing'
   | 'analyzed'
   | 'decided'
