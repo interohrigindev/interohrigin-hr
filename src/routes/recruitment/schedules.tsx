@@ -455,6 +455,18 @@ ${candidateList}
     if (error) {
       toast('상태 변경 실패', 'error')
     } else {
+      // 면접 완료 시 지원자 상태도 업데이트
+      if (newStatus === 'completed') {
+        const schedule = schedules.find((s: any) => s.id === scheduleId)
+        if (schedule) {
+          const candidateStatus =
+            schedule.interview_type === 'video' ? 'video_done' : 'face_to_face_done'
+          await supabase
+            .from('candidates')
+            .update({ status: candidateStatus })
+            .eq('id', schedule.candidate_id)
+        }
+      }
       toast('상태가 변경되었습니다.', 'success')
       refetch()
     }
