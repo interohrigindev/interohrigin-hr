@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Sparkles, Loader2, Copy, ClipboardList } from 'lucide-react'
+import { ArrowLeft, Copy, ClipboardList } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -10,7 +10,6 @@ import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { useJobPostingMutations } from '@/hooks/useRecruitment'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { EMPLOYMENT_TYPE_LABELS, EXPERIENCE_LEVEL_LABELS } from '@/lib/recruitment-constants'
 import type { Department } from '@/types/database'
 import type { JobPosting } from '@/types/recruitment'
@@ -50,7 +49,6 @@ export default function RecruitmentJobNew() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [surveyTemplates, setSurveyTemplates] = useState<{ id: string; name: string; experience_type: string; questions: any[] }[]>([])
   const [saving, setSaving] = useState(false)
-  const [generatingAI, setGeneratingAI] = useState(false)
   const [isClone, setIsClone] = useState(false)
   const [isEdit, setIsEdit] = useState(false)
   const [editStatus, setEditStatus] = useState<string>('draft')
@@ -153,47 +151,6 @@ export default function RecruitmentJobNew() {
 
   function updateForm(key: string, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
-  }
-
-  async function generateAIQuestions() {
-    setGeneratingAI(true)
-    try {
-      const config = await getAIConfigForFeature('job_posting_ai')
-
-      if (!config) {
-        toast('AI 설정이 필요합니다. 설정 > AI 탭에서 API 키를 등록하세요.', 'error')
-        setGeneratingAI(false)
-        return
-      }
-
-      const prompt = `채용 면접 질문을 5개 생성해주세요.
-
-채용공고 정보:
-- 제목: ${form.title}
-- 포지션: ${form.position || '미정'}
-- 경력: ${EXPERIENCE_LEVEL_LABELS[form.experience_level]}
-- 고용형태: ${EMPLOYMENT_TYPE_LABELS[form.employment_type]}
-- 근무지: ${form.location || '미정'}
-- 직무 설명: ${form.description || '없음'}
-- 자격 요건: ${form.requirements || '없음'}
-- 우대 사항: ${form.preferred || '없음'}
-- 팀 소개: ${form.team_intro || '없음'}
-
-각 질문은 번호 없이 한 줄씩 출력해주세요. 직무 역량, 문제 해결 능력, 팀워크, 성장 가능성, 조직 적합성을 평가할 수 있는 질문으로 생성하세요.`
-
-      const result = await generateAIContent(config, prompt)
-      const questions = result.content
-        .split('\n')
-        .map((q) => q.replace(/^\d+[\.\)]\s*/, '').replace(/^[-*]\s*/, '').trim())
-        .filter((q) => q.length > 5)
-        .slice(0, 5)
-
-      setAiQuestions(questions)
-      toast('AI 면접 질문이 생성되었습니다.', 'success')
-    } catch (err: any) {
-      toast('AI 질문 생성 실패: ' + err.message, 'error')
-    }
-    setGeneratingAI(false)
   }
 
   async function handleSubmit(status: 'draft' | 'open') {
@@ -502,51 +459,6 @@ export default function RecruitmentJobNew() {
               </div>
             )
           })()}
-        </CardContent>
-      </Card>
-
-      {/* AI 면접 질문 */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>AI 면접 질문 (참고용)</CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={generateAIQuestions}
-              disabled={generatingAI || !form.title.trim()}
-            >
-              {generatingAI ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4 mr-1" />
-              )}
-              AI 질문 생성
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {aiQuestions.length === 0 ? (
-            <p className="text-gray-400 text-sm">
-              공고 정보를 입력하고 "AI 질문 생성"을 누르면 면접 시 참고할 질문이 자동으로 생성됩니다.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {aiQuestions.map((q, i) => (
-                <div key={i} className="flex gap-3 items-start">
-                  <span className="text-sm font-medium text-brand-600 mt-0.5">{i + 1}.</span>
-                  <Input
-                    value={q}
-                    onChange={(e) => {
-                      const updated = [...aiQuestions]
-                      updated[i] = e.target.value
-                      setAiQuestions(updated)
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
         </CardContent>
       </Card>
 
