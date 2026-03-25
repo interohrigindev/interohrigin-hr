@@ -74,11 +74,11 @@ export default function InterviewSchedules() {
   })
 
   useEffect(() => {
-    // 면접 대기 상태 지원자 목록
+    // 면접 배정 가능한 지원자 목록 (이력서 검토 이후 ~ 면접 완료 전)
     supabase
       .from('candidates')
       .select('*')
-      .in('status', ['survey_done', 'interview_scheduled'])
+      .in('status', ['resume_reviewed', 'survey_sent', 'survey_done', 'interview_scheduled', 'video_done', 'face_to_face_done'])
       .order('created_at', { ascending: true })
       .then(({ data }) => {
         if (data) setCandidates(data as Candidate[])
