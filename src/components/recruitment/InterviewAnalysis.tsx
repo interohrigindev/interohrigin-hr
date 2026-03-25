@@ -131,6 +131,14 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
     const recordings = (recRes.data || []) as RecordingRow[]
     const analyses = (anaRes.data || []) as AnalysisRow[]
 
+    // 분석 매칭 헬퍼: completed 우선, 그 다음 error, stuck(transcribing) 레코드는 무시
+    function findBestAnalysis(filter: (a: AnalysisRow) => boolean): AnalysisRow | null {
+      const matching = analyses.filter(filter)
+      return matching.find((a) => a.status === 'completed')
+        || matching.find((a) => a.status === 'error')
+        || null
+    }
+
     // 스케줄 기준으로 그룹화
     const grouped: InterviewGroup[] = schedules.map((s) => ({
       schedule: s,
@@ -142,7 +150,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
             : r.recording_type === 'audio',
         ) ||
         null,
-      analysis: analyses.find((a) => a.schedule_id === s.id) || null,
+      analysis: findBestAnalysis((a) => a.schedule_id === s.id),
       type: s.interview_type as 'video' | 'face_to_face',
     }))
 
@@ -152,7 +160,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         grouped.push({
           schedule: null,
           recording: r,
-          analysis: analyses.find((a) => a.recording_id === r.id) || null,
+          analysis: findBestAnalysis((a) => a.recording_id === r.id),
           type: r.recording_type === 'video' ? 'video' : 'face_to_face',
         })
       }
@@ -790,6 +798,15 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
                         </>
                       )}
                     </Button>
+                  )}
+
+                  {step === 'analyzing' && (
+                    <div className="flex items-center gap-2 p-2.5 bg-blue-50 rounded-lg">
+                      <Loader2 className="h-4 w-4 text-blue-500 animate-spin shrink-0" />
+                      <span className="text-sm text-blue-600 flex-1">
+                        AI 분석 진행 중... (1~3분 소요)
+                      </span>
+                    </div>
                   )}
 
                   {step === 'error' && analysis && (
