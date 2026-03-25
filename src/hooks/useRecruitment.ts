@@ -2,6 +2,19 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { JobPosting, Candidate } from '@/types/recruitment'
 
+// ─── 부서 목록 ──────────────────────────────────────────────────
+export function useDepartments() {
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.from('departments').select('id, name').order('name')
+      .then(({ data }) => { setDepartments(data || []); setLoading(false) })
+  }, [])
+
+  return { departments, loading }
+}
+
 // ─── 채용공고 목록 ──────────────────────────────────────────────
 export function useJobPostings() {
   const [postings, setPostings] = useState<JobPosting[]>([])

@@ -1410,7 +1410,7 @@ ${surveyText || '응답 없음'}
                 취소
               </Button>
               <Button
-                variant={decisionDialog.decision === 'hired' ? 'default' : 'danger'}
+                variant={decisionDialog.decision === 'hired' ? 'primary' : 'danger'}
                 onClick={() => handleHiringDecision(decisionDialog.decision!)}
                 disabled={decidingInProgress}
               >

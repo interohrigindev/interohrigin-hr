@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Sparkles, Loader2 } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Plus, Pencil, Trash2, Sparkles, Loader2, FileText, GraduationCap, Briefcase, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -13,6 +13,12 @@ import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { useAuth } from '@/hooks/useAuth'
 import type { PreSurveyTemplate, SurveyQuestion } from '@/types/recruitment'
 
+const EXP_GROUPS = [
+  { key: 'entry', label: '신입용 템플릿', Icon: GraduationCap, color: { bar: 'bg-blue-500', bg: 'bg-blue-50', text: 'text-blue-700' } },
+  { key: 'experienced', label: '경력용 템플릿', Icon: Briefcase, color: { bar: 'bg-violet-500', bg: 'bg-violet-50', text: 'text-violet-700' } },
+  { key: 'any', label: '공통 템플릿', Icon: FileText, color: { bar: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700' } },
+]
+
 export default function SurveyManage() {
   const { profile } = useAuth()
   const { toast } = useToast()
@@ -21,6 +27,7 @@ export default function SurveyManage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(['entry', 'experienced', 'any']))
 
   const [form, setForm] = useState({
     name: '',
@@ -157,12 +164,35 @@ type은 "text", "choice", "scale" 중 하나입니다.`
     }))
   }
 
+  const toggleExpand = (key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // 경력구분별 그룹핑
+  const grouped = useMemo(() => {
+    const map = new Map<string, PreSurveyTemplate[]>()
+    for (const t of templates) {
+      const key = t.experience_type || 'any'
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(t)
+    }
+    return map
+  }, [templates])
+
   if (loading) return <PageSpinner />
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">사전 질의서 관리</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">사전 질의서 관리</h1>
+          <p className="text-sm text-gray-500 mt-0.5">경력 구분별 질의서 템플릿을 관리합니다</p>
+        </div>
         <Button onClick={openNew}>
           <Plus className="h-4 w-4 mr-1" /> 새 템플릿
         </Button>
@@ -177,34 +207,84 @@ type은 "text", "choice", "scale" 중 하나입니다.`
         </Card>
       ) : (
         <div className="space-y-4">
-          {templates.map((t) => (
-            <Card key={t.id}>
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-gray-900">{t.name}</h3>
-                      {t.experience_type && (
-                        <Badge variant="info">
-                          {t.experience_type === 'entry' ? '신입용' : t.experience_type === 'experienced' ? '경력용' : '공통'}
-                        </Badge>
-                      )}
-                      {t.job_type && <Badge variant="default">{t.job_type}</Badge>}
+          {EXP_GROUPS.map((group) => {
+            const items = grouped.get(group.key) || []
+            if (items.length === 0) return null
+            const isOpen = expanded.has(group.key)
+            const { Icon } = group
+
+            return (
+              <Card key={group.key} className="overflow-hidden">
+                {/* 그룹 헤더 */}
+                <button
+                  onClick={() => toggleExpand(group.key)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 ${group.color.bg} hover:opacity-90 transition-opacity`}
+                >
+                  <div className={`w-1.5 h-6 rounded-full ${group.color.bar}`} />
+                  {isOpen
+                    ? <ChevronDown className={`h-4 w-4 ${group.color.text}`} />
+                    : <ChevronRight className={`h-4 w-4 ${group.color.text}`} />
+                  }
+                  <Icon className={`h-4 w-4 ${group.color.text}`} />
+                  <span className={`text-sm font-bold ${group.color.text}`}>{group.label}</span>
+                  <Badge variant="default" className="text-[10px]">
+                    {items.length}개 템플릿
+                  </Badge>
+                  <span className="ml-auto text-[10px] text-gray-400">
+                    {isOpen ? '접기' : '펼치기'}
+                  </span>
+                </button>
+
+                {/* 템플릿 카드 그리드 */}
+                {isOpen && (
+                  <CardContent className="py-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {items.map((t) => (
+                        <div
+                          key={t.id}
+                          className="p-4 rounded-lg border border-gray-200 hover:shadow-md transition-all cursor-pointer"
+                          onClick={() => openEdit(t)}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className={`w-10 h-10 rounded-lg ${group.color.bg} flex items-center justify-center shrink-0`}>
+                                <Icon className={`h-5 w-5 ${group.color.text}`} />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-semibold text-gray-900 text-sm truncate">{t.name}</h4>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  {t.job_type && (
+                                    <Badge variant="default" className="text-[10px]">{t.job_type}</Badge>
+                                  )}
+                                  <Badge variant="info" className="text-[10px]">
+                                    질문 {t.questions?.length || 0}개
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-1 shrink-0 ml-2">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openEdit(t) }}
+                                className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                              >
+                                <Pencil className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDelete(t.id) }}
+                                className="p-1.5 rounded hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-red-400 hover:text-red-600" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <p className="text-sm text-gray-500">질문 {t.questions?.length || 0}개</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(t)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(t.id)}>
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  </CardContent>
+                )}
+              </Card>
+            )
+          })}
         </div>
       )}
 
