@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -29,6 +29,10 @@ export default function CandidateReport() {
   const [, setActiveTab] = useState<'resume' | 'comprehensive'>('resume')
   const [resumeSignedUrl, setResumeSignedUrl] = useState<string | null>(null)
   const [coverLetterSignedUrl, setCoverLetterSignedUrl] = useState<string | null>(null)
+  const [surveyQuestions, setSurveyQuestions] = useState<{ id: string; question: string; type: string; options?: string[]; required?: boolean }[]>([])
+  const [resendingSurvey, setResendingSurvey] = useState(false)
+  const [surveyReanalyzing, setSurveyReanalyzing] = useState(false)
+  const [analysisStatus, setAnalysisStatus] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -56,6 +60,23 @@ export default function CandidateReport() {
       }
       if (analysisRes.data) setAnalysis(analysisRes.data as ResumeAnalysis)
 
+      // 사전질의서 질문 목록 가져오기 (응답이 있는 경우)
+      if (cand?.pre_survey_data && cand.job_posting_id) {
+        const { data: posting } = await supabase
+          .from('job_postings')
+          .select('survey_template_id')
+          .eq('id', cand.job_posting_id)
+          .single()
+        if (posting?.survey_template_id) {
+          const { data: tmpl } = await supabase
+            .from('pre_survey_templates')
+            .select('questions')
+            .eq('id', posting.survey_template_id)
+            .single()
+          if (tmpl?.questions) setSurveyQuestions(tmpl.questions as typeof surveyQuestions)
+        }
+      }
+
       // 종합 리포트
       const reportRes = await supabase
         .from('recruitment_reports')
@@ -75,15 +96,18 @@ export default function CandidateReport() {
   async function runAIAnalysis() {
     if (!candidate) return
     setAnalyzing(true)
+    setAnalysisStatus('AI 설정 확인 중...')
     try {
       const config = await getAIConfigForFeature('resume_analysis')
       if (!config) {
         toast('AI 설정이 필요합니다.', 'error')
         setAnalyzing(false)
+        setAnalysisStatus('')
         return
       }
 
       // 채용공고 정보
+      setAnalysisStatus('채용공고 정보 로딩 중...')
       let postingInfo = ''
       if (candidate.job_posting_id) {
         const { data: posting } = await supabase
@@ -135,15 +159,18 @@ export default function CandidateReport() {
         }
       }
 
+      setAnalysisStatus('이력서 파일 다운로드 중...')
       if (candidate.resume_url) {
         const file = await downloadFileAsBase64(candidate.resume_url)
         if (file) files.push({ ...file, name: '이력서' })
       }
       if (candidate.cover_letter_url) {
+        setAnalysisStatus('자기소개서 파일 다운로드 중...')
         const file = await downloadFileAsBase64(candidate.cover_letter_url)
         if (file) files.push({ ...file, name: '자기소개서' })
       }
 
+      setAnalysisStatus('AI 분석 요청 중... (약 10~30초 소요)')
       const fileInfo = files.length > 0
         ? `\n첨부된 파일 ${files.length}개가 함께 전달됩니다. 파일 내용을 꼼꼼히 읽고 분석에 반영해주세요.`
         : ''
@@ -171,6 +198,7 @@ ${fileInfo}
 
       const result = await generateAIContent(config, prompt, files.length > 0 ? files : undefined)
 
+      setAnalysisStatus('AI 응답 분석 중...')
       // JSON 파싱 — markdown 코드블록 제거 후 추출
       let parsed
       try {
@@ -196,6 +224,7 @@ ${fileInfo}
         return
       }
 
+      setAnalysisStatus('분석 결과 저장 중...')
       // resume_analysis 저장
       const { data: savedAnalysis, error: saveErr } = await supabase
         .from('resume_analysis')
@@ -230,6 +259,7 @@ ${fileInfo}
       toast('AI 분석 실패: ' + err.message, 'error')
     }
     setAnalyzing(false)
+    setAnalysisStatus('')
   }
 
   async function runComprehensive() {
@@ -291,6 +321,226 @@ ${fileInfo}
       toast(decision === 'proceed' ? '사전 질의서 이메일이 발송되었습니다.' : '불합격 처리되었습니다.', 'success')
       setCandidate((prev) => prev ? { ...prev, status: newStatus as CandidateStatus } : prev)
     }
+  }
+
+  // 사전질의서 재발송 (상태를 survey_sent로 리셋 + 이메일 재발송)
+  async function handleResendSurvey() {
+    if (!candidate) return
+    setResendingSurvey(true)
+    try {
+      const baseUrl = window.location.origin
+      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}`
+      const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl)
+
+      const emailRes = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: candidate.email, subject, html }),
+      })
+      if (!emailRes.ok) {
+        const errData = await emailRes.json().catch(() => ({}))
+        toast('이메일 발송 실패: ' + ((errData as Record<string, string>)?.error || '알 수 없는 오류'), 'error')
+        setResendingSurvey(false)
+        return
+      }
+
+      // 상태를 survey_sent로 리셋 + pre_survey_data 초기화
+      await supabase
+        .from('candidates')
+        .update({ status: 'survey_sent', pre_survey_data: null })
+        .eq('id', candidate.id)
+
+      setCandidate((prev) => prev ? { ...prev, status: 'survey_sent' as CandidateStatus, pre_survey_data: null } : prev)
+      toast('사전질의서가 재발송되었습니다.', 'success')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '네트워크 오류'
+      toast('재발송 실패: ' + message, 'error')
+    }
+    setResendingSurvey(false)
+  }
+
+  // 사전질의서 포함 AI 재분석
+  async function runSurveyInclusiveAnalysis() {
+    if (!candidate || !candidate.pre_survey_data) return
+    setSurveyReanalyzing(true)
+    setAnalysisStatus('AI 설정 확인 중...')
+    try {
+      const config = await getAIConfigForFeature('resume_analysis')
+      if (!config) {
+        toast('AI 설정이 필요합니다.', 'error')
+        setSurveyReanalyzing(false)
+        setAnalysisStatus('')
+        return
+      }
+
+      // 채용공고 정보
+      setAnalysisStatus('채용공고 정보 로딩 중...')
+      let postingInfo = ''
+      if (candidate.job_posting_id) {
+        const { data: posting } = await supabase
+          .from('job_postings')
+          .select('title, description, requirements')
+          .eq('id', candidate.job_posting_id)
+          .single()
+        if (posting) {
+          postingInfo = `직무: ${posting.title}\n설명: ${posting.description || ''}\n요건: ${posting.requirements || ''}`
+        }
+      }
+
+      // 첨부 파일 다운로드
+      const files: AIFileAttachment[] = []
+      async function downloadFileAsBase64(storagePath: string): Promise<{ base64: string; mimeType: string } | null> {
+        try {
+          let filePath = storagePath
+          if (storagePath.startsWith('http')) {
+            const match = storagePath.match(/\/resumes\/(.+)$/)
+            if (match) filePath = match[1]
+            else return null
+          }
+          const { data, error } = await supabase.storage.from('resumes').download(filePath)
+          if (error || !data) return null
+          const arrayBuffer = await data.arrayBuffer()
+          const uint8 = new Uint8Array(arrayBuffer)
+          let binary = ''
+          for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i])
+          const base64 = btoa(binary)
+          const ext = filePath.split('.').pop()?.toLowerCase() || ''
+          const mimeMap: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', txt: 'text/plain' }
+          return { base64, mimeType: mimeMap[ext] || 'application/octet-stream' }
+        } catch { return null }
+      }
+      setAnalysisStatus('첨부 파일 다운로드 중...')
+      if (candidate.resume_url) {
+        const file = await downloadFileAsBase64(candidate.resume_url)
+        if (file) files.push({ ...file, name: '이력서' })
+      }
+      if (candidate.cover_letter_url) {
+        const file = await downloadFileAsBase64(candidate.cover_letter_url)
+        if (file) files.push({ ...file, name: '자기소개서' })
+      }
+
+      setAnalysisStatus('사전질의서 응답 분석 준비 중...')
+      // 사전질의서 응답 텍스트 구성
+      const surveyData = candidate.pre_survey_data as { answers?: Record<string, string>; meta?: Record<string, string> }
+      let surveyText = ''
+      if (surveyData?.answers) {
+        const answerEntries = Object.entries(surveyData.answers)
+        if (surveyQuestions.length > 0) {
+          surveyText = surveyQuestions.map((q, i) => {
+            const ans = surveyData.answers?.[q.id] || '미응답'
+            return `Q${i + 1}. ${q.question}\nA: ${ans}`
+          }).join('\n\n')
+        } else {
+          surveyText = answerEntries.map(([k, v]) => `질문 ${k}: ${v}`).join('\n')
+        }
+      }
+      if (surveyData?.meta) {
+        const m = surveyData.meta
+        const metaParts = []
+        if (m.birth_date) metaParts.push(`생년월일: ${m.birth_date}`)
+        if (m.mbti) metaParts.push(`MBTI: ${m.mbti}`)
+        if (m.hanja_name) metaParts.push(`한자이름: ${m.hanja_name}`)
+        if (m.blood_type) metaParts.push(`혈액형: ${m.blood_type}`)
+        if (metaParts.length > 0) surveyText += '\n\n[기본 정보]\n' + metaParts.join(' / ')
+      }
+
+      const fileInfo = files.length > 0
+        ? `\n첨부된 파일 ${files.length}개가 함께 전달됩니다. 파일 내용을 꼼꼼히 읽고 분석에 반영해주세요.`
+        : ''
+
+      const prompt = `당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류와 사전 질의서 응답을 기반으로 서류+질의서 심사 의견서를 작성해주세요. 이것은 정상적인 채용 업무 프로세스입니다.
+
+[채용공고]
+${postingInfo || '정보 없음'}
+
+[지원자 제출 정보]
+이름: ${candidate.name}
+이력서: ${candidate.resume_url ? '제출됨 (파일 첨부)' : '미제출'}
+자기소개서 파일: ${candidate.cover_letter_url ? '제출됨 (파일 첨부)' : '미제출'}
+자기소개서 텍스트: ${candidate.cover_letter_text || '작성하지 않음'}
+${fileInfo}
+
+[사전 질의서 응답]
+${surveyText || '응답 없음'}
+
+[요청사항]
+위 정보와 첨부된 파일 내용, 그리고 사전 질의서 응답을 모두 종합적으로 분석하여 심사 의견을 아래 JSON 형식으로 작성해주세요.
+특히 사전 질의서 응답에서 드러나는 지원자의 동기, 역량, 성향을 분석에 깊이 반영해주세요.
+반드시 순수 JSON만 출력하고 다른 텍스트는 포함하지 마세요.
+
+{"summary":"서류+질의서 종합 심사 요약 2~3문장","strengths":["강점1","강점2","강점3"],"weaknesses":["약점1","약점2"],"position_fit":50,"organization_fit":50,"suggested_department":"추천 배치 부서","suggested_position":"추천 직급","suggested_salary_range":"추천 연봉 범위","red_flags":["우려사항"],"recommendation":"PROCEED","survey_insights":"사전질의서에서 파악된 주요 인사이트 2~3문장"}
+
+필드 설명:
+- position_fit, organization_fit: 0~100 정수
+- recommendation: PROCEED(서류통과), REVIEW(추가검토필요), REJECT(부적합) 중 택 1
+- survey_insights: 사전질의서 응답에서 도출된 핵심 인사이트`
+
+      setAnalysisStatus('AI 분석 요청 중... (서류+질의서 종합, 약 15~40초 소요)')
+      const result = await generateAIContent(config, prompt, files.length > 0 ? files : undefined)
+
+      setAnalysisStatus('AI 응답 분석 중...')
+      let parsed
+      try {
+        let raw = result.content
+        if (!raw || raw.trim().length === 0) throw new Error('빈 응답')
+        if (/I'm sorry|I cannot|I can't|unable to/i.test(raw) && !raw.includes('{')) {
+          throw new Error('AI_REFUSED')
+        }
+        raw = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+        const jsonMatch = raw.match(/\{[\s\S]*\}/)
+        if (!jsonMatch) throw new Error('JSON 없음')
+        parsed = JSON.parse(jsonMatch[0])
+      } catch (parseErr: any) {
+        console.error('AI 파싱 실패:', parseErr, result.content)
+        if (parseErr.message === 'AI_REFUSED') {
+          toast('AI가 분석을 거부했습니다. AI 설정에서 다른 모델을 시도해주세요.', 'error')
+        } else {
+          toast('AI 응답 파싱 실패. 다시 시도해주세요.', 'error')
+        }
+        setSurveyReanalyzing(false)
+        return
+      }
+
+      // resume_analysis 저장 (사전질의서 포함 버전)
+      const { data: savedAnalysis, error: saveErr } = await supabase
+        .from('resume_analysis')
+        .insert({
+          candidate_id: id,
+          ai_summary: parsed.summary,
+          strengths: parsed.strengths,
+          weaknesses: parsed.weaknesses,
+          position_fit: parsed.position_fit,
+          organization_fit: parsed.organization_fit,
+          suggested_department: parsed.suggested_department,
+          suggested_position: parsed.suggested_position,
+          suggested_salary_range: parsed.suggested_salary_range,
+          red_flags: parsed.red_flags,
+          recommendation: parsed.recommendation,
+        })
+        .select()
+        .single()
+
+      if (saveErr) throw new Error(saveErr.message)
+
+      // 사전질의서 분석 결과를 candidate에 저장
+      await supabase
+        .from('candidates')
+        .update({
+          pre_survey_analysis: { survey_insights: parsed.survey_insights, analyzed_at: new Date().toISOString() },
+        })
+        .eq('id', id)
+
+      setAnalysis(savedAnalysis as ResumeAnalysis)
+      setCandidate((prev) => prev ? {
+        ...prev,
+        pre_survey_analysis: { survey_insights: parsed.survey_insights, analyzed_at: new Date().toISOString() },
+      } : prev)
+      toast('사전질의서 포함 AI 재분석이 완료되었습니다.', 'success')
+    } catch (err: any) {
+      toast('AI 분석 실패: ' + err.message, 'error')
+    }
+    setSurveyReanalyzing(false)
+    setAnalysisStatus('')
   }
 
   if (loading) return <PageSpinner />
@@ -379,6 +629,133 @@ ${fileInfo}
             </CardContent>
           </Card>
 
+          {/* 사전질의서 응답 상세 */}
+          {candidate.pre_survey_data && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" /> 사전 질의서 응답
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={handleResendSurvey} disabled={resendingSurvey}>
+                      {resendingSurvey ? (
+                        <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 발송 중...</>
+                      ) : (
+                        <><Send className="h-3 w-3 mr-1" /> 재발송</>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {(() => {
+                  const surveyData = candidate.pre_survey_data as {
+                    answers?: Record<string, string>
+                    meta?: { birth_date?: string; mbti?: string; hanja_name?: string; blood_type?: string }
+                    completed_at?: string
+                  }
+
+                  return (
+                    <>
+                      {/* 기본 정보 (메타데이터) */}
+                      {surveyData.meta && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {surveyData.meta.birth_date && (
+                            <div className="p-2 bg-gray-50 rounded-lg text-center">
+                              <p className="text-xs text-gray-500">생년월일</p>
+                              <p className="text-sm font-medium">{surveyData.meta.birth_date}</p>
+                            </div>
+                          )}
+                          {surveyData.meta.mbti && (
+                            <div className="p-2 bg-purple-50 rounded-lg text-center">
+                              <p className="text-xs text-purple-500">MBTI</p>
+                              <p className="text-sm font-bold text-purple-700">{surveyData.meta.mbti}</p>
+                            </div>
+                          )}
+                          {surveyData.meta.hanja_name && (
+                            <div className="p-2 bg-gray-50 rounded-lg text-center">
+                              <p className="text-xs text-gray-500">한자 이름</p>
+                              <p className="text-sm font-medium">{surveyData.meta.hanja_name}</p>
+                            </div>
+                          )}
+                          {surveyData.meta.blood_type && (
+                            <div className="p-2 bg-gray-50 rounded-lg text-center">
+                              <p className="text-xs text-gray-500">혈액형</p>
+                              <p className="text-sm font-medium">{surveyData.meta.blood_type}형</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 질의 응답 */}
+                      {surveyData.answers && Object.keys(surveyData.answers).length > 0 && (
+                        <div className="space-y-3">
+                          {surveyQuestions.length > 0 ? (
+                            surveyQuestions.map((q, i) => (
+                              <div key={q.id} className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-xs font-medium text-gray-600 mb-1">
+                                  Q{i + 1}. {q.question}
+                                  {q.required && <span className="text-red-500 ml-1">*</span>}
+                                </p>
+                                <p className="text-sm text-gray-900">
+                                  {surveyData.answers?.[q.id] || <span className="text-gray-400 italic">미응답</span>}
+                                </p>
+                              </div>
+                            ))
+                          ) : (
+                            Object.entries(surveyData.answers).map(([qId, answer], i) => (
+                              <div key={qId} className="p-3 bg-gray-50 rounded-lg">
+                                <p className="text-xs font-medium text-gray-600 mb-1">질문 {i + 1}</p>
+                                <p className="text-sm text-gray-900">{answer}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+
+                      {/* 완료 시간 */}
+                      {surveyData.completed_at && (
+                        <p className="text-xs text-gray-400 text-right">
+                          응답 완료: {formatDate(surveyData.completed_at, 'yyyy.MM.dd HH:mm')}
+                        </p>
+                      )}
+
+                      {/* 사전질의서 AI 인사이트 */}
+                      {candidate.pre_survey_analysis && (candidate.pre_survey_analysis as any).survey_insights && (
+                        <div className="p-3 bg-brand-50 border border-brand-200 rounded-lg">
+                          <p className="text-xs font-medium text-brand-600 mb-1">
+                            <Sparkles className="h-3 w-3 inline mr-1" />AI 질의서 분석 인사이트
+                          </p>
+                          <p className="text-sm text-brand-800">
+                            {(candidate.pre_survey_analysis as any).survey_insights}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 발송 완료 but 미응답 상태 */}
+          {!candidate.pre_survey_data && ['survey_sent'].includes(candidate.status) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4" /> 사전 질의서
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
+                  <p className="text-sm text-amber-700">사전 질의서가 발송되었습니다. 지원자의 응답을 기다리고 있습니다.</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* AI 분석 결과 */}
           <Card>
             <CardHeader>
@@ -386,15 +763,29 @@ ${fileInfo}
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4" /> AI 1차 분석
                 </CardTitle>
-                <Button size="sm" variant={analysis ? 'outline' : 'primary'} onClick={runAIAnalysis} disabled={analyzing}>
-                  {analyzing ? (
-                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
-                  ) : analysis ? (
-                    <><Sparkles className="h-4 w-4 mr-1" /> 재분석</>
-                  ) : (
-                    <><Sparkles className="h-4 w-4 mr-1" /> AI 분석 실행</>
+                <div className="flex items-center gap-2">
+                  {analysisStatus && (
+                    <span className="text-xs text-brand-600 animate-pulse">{analysisStatus}</span>
                   )}
-                </Button>
+                  <Button size="sm" variant={analysis ? 'outline' : 'primary'} onClick={runAIAnalysis} disabled={analyzing || surveyReanalyzing}>
+                    {analyzing ? (
+                      <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
+                    ) : analysis ? (
+                      <><Sparkles className="h-4 w-4 mr-1" /> 재분석</>
+                    ) : (
+                      <><Sparkles className="h-4 w-4 mr-1" /> AI 분석 실행</>
+                    )}
+                  </Button>
+                  {candidate.pre_survey_data && (
+                    <Button size="sm" variant="primary" onClick={runSurveyInclusiveAnalysis} disabled={surveyReanalyzing || analyzing}>
+                      {surveyReanalyzing ? (
+                        <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
+                      ) : (
+                        <><RefreshCw className="h-4 w-4 mr-1" /> 질의서 포함 재분석</>
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Sparkles, Loader2, Copy } from 'lucide-react'
+import { ArrowLeft, Sparkles, Loader2, Copy, ClipboardList } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -47,16 +47,22 @@ export default function RecruitmentJobNew() {
   const { createPosting } = useJobPostingMutations()
 
   const [departments, setDepartments] = useState<Department[]>([])
+  const [surveyTemplates, setSurveyTemplates] = useState<{ id: string; name: string; experience_type: string; questions: any[] }[]>([])
   const [saving, setSaving] = useState(false)
   const [generatingAI, setGeneratingAI] = useState(false)
   const [isClone, setIsClone] = useState(false)
 
   const [form, setForm] = useState({ ...INITIAL_FORM })
   const [aiQuestions, setAiQuestions] = useState<string[]>([])
+  const [selectedSurveyId, setSelectedSurveyId] = useState<string>('')
 
   useEffect(() => {
-    supabase.from('departments').select('*').then(({ data }) => {
-      if (data) setDepartments(data)
+    Promise.all([
+      supabase.from('departments').select('*'),
+      supabase.from('pre_survey_templates').select('id, name, experience_type, questions').eq('is_active', true).order('created_at', { ascending: false }),
+    ]).then(([deptRes, surveyRes]) => {
+      if (deptRes.data) setDepartments(deptRes.data)
+      if (surveyRes.data) setSurveyTemplates(surveyRes.data as any)
     })
   }, [])
 
@@ -94,6 +100,7 @@ export default function RecruitmentJobNew() {
         team_intro: p.team_intro ?? '',
       })
       setAiQuestions((p.ai_questions as string[]) || [])
+      if ((p as any).survey_template_id) setSelectedSurveyId((p as any).survey_template_id)
       setIsClone(true)
       toast('기존 공고가 복제되었습니다. 수정 후 저장하세요.', 'info')
     }
@@ -174,6 +181,7 @@ export default function RecruitmentJobNew() {
       company_intro: form.company_intro || null,
       team_intro: form.team_intro || null,
       ai_questions: aiQuestions as any,
+      survey_template_id: selectedSurveyId || null,
       status,
       created_by: profile?.id,
     })
@@ -393,11 +401,59 @@ export default function RecruitmentJobNew() {
         </CardContent>
       </Card>
 
+      {/* 사전질의서 선택 */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-gray-400" />
+            <CardTitle>사전질의서 연결</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-gray-500">
+            이력서 검토 후 지원자에게 발송할 사전질의서를 선택하세요. 질의서 관리 페이지에서 새 템플릿을 만들 수 있습니다.
+          </p>
+          <select
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+            value={selectedSurveyId}
+            onChange={(e) => setSelectedSurveyId(e.target.value)}
+          >
+            <option value="">선택 안 함 (경력 수준 기반 자동 매칭)</option>
+            {surveyTemplates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.experience_type === 'entry' ? '신입' : t.experience_type === 'experienced' ? '경력' : '공통'} · {t.questions?.length || 0}문항)
+              </option>
+            ))}
+          </select>
+
+          {/* 선택된 질의서 미리보기 */}
+          {selectedSurveyId && (() => {
+            const selected = surveyTemplates.find((t) => t.id === selectedSurveyId)
+            if (!selected) return null
+            return (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <p className="text-xs text-gray-500 font-medium">질문 미리보기 ({selected.questions?.length || 0}문항)</p>
+                {(selected.questions || []).slice(0, 5).map((q: any, i: number) => (
+                  <div key={q.id || i} className="flex gap-2 text-sm text-gray-700">
+                    <span className="text-gray-400 shrink-0">{i + 1}.</span>
+                    <span>{q.question}</span>
+                    {q.required && <span className="text-red-400 text-xs">필수</span>}
+                  </div>
+                ))}
+                {(selected.questions?.length || 0) > 5 && (
+                  <p className="text-xs text-gray-400">외 {selected.questions.length - 5}문항...</p>
+                )}
+              </div>
+            )
+          })()}
+        </CardContent>
+      </Card>
+
       {/* AI 면접 질문 */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>AI 면접 질문</CardTitle>
+            <CardTitle>AI 면접 질문 (참고용)</CardTitle>
             <Button
               variant="outline"
               size="sm"
@@ -416,7 +472,7 @@ export default function RecruitmentJobNew() {
         <CardContent>
           {aiQuestions.length === 0 ? (
             <p className="text-gray-400 text-sm">
-              공고 정보를 입력하고 "AI 질문 생성"을 누르면 면접 질문이 자동으로 생성됩니다.
+              공고 정보를 입력하고 "AI 질문 생성"을 누르면 면접 시 참고할 질문이 자동으로 생성됩니다.
             </p>
           ) : (
             <div className="space-y-3">

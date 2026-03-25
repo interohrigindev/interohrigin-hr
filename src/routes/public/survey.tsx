@@ -52,22 +52,39 @@ export default function PublicSurvey() {
       if (cand.job_posting_id) {
         const { data: posting } = await supabase
           .from('job_postings')
-          .select('experience_level')
+          .select('experience_level, survey_template_id')
           .eq('id', cand.job_posting_id)
           .single()
 
-        const expType = posting?.experience_level === 'entry' ? 'entry' : 'experienced'
+        let loaded = false
 
-        const { data: templates } = await supabase
-          .from('pre_survey_templates')
-          .select('*')
-          .eq('is_active', true)
-          .or(`experience_type.eq.${expType},experience_type.eq.any`)
-          .order('created_at', { ascending: false })
-          .limit(1)
+        // 1) 공고에 명시적으로 연결된 질의서 우선
+        if (posting?.survey_template_id) {
+          const { data: linked } = await supabase
+            .from('pre_survey_templates')
+            .select('questions')
+            .eq('id', posting.survey_template_id)
+            .single()
+          if (linked?.questions) {
+            setQuestions(linked.questions as SurveyQuestion[])
+            loaded = true
+          }
+        }
 
-        if (templates && templates.length > 0) {
-          setQuestions(templates[0].questions as SurveyQuestion[])
+        // 2) fallback: 경력 수준 기반 자동 매칭
+        if (!loaded) {
+          const expType = posting?.experience_level === 'entry' ? 'entry' : 'experienced'
+          const { data: templates } = await supabase
+            .from('pre_survey_templates')
+            .select('*')
+            .eq('is_active', true)
+            .or(`experience_type.eq.${expType},experience_type.eq.any`)
+            .order('created_at', { ascending: false })
+            .limit(1)
+
+          if (templates && templates.length > 0) {
+            setQuestions(templates[0].questions as SurveyQuestion[])
+          }
         }
       }
 
