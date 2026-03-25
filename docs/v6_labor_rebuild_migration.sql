@@ -514,27 +514,27 @@ INSERT INTO approval_templates (doc_type, name, steps) VALUES
 
 -- 직원 인사정보 초기 생성
 INSERT INTO employee_hr_details (employee_id, employment_type, annual_leave_basis, annual_leave_total, annual_leave_remaining)
-SELECT id, 'regular', 'hire_date',
+SELECT e.id, 'regular', 'hire_date',
   CASE
-    WHEN hire_date IS NULL THEN 15
-    WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, hire_date)) < 1 THEN LEAST(GREATEST(EXTRACT(MONTH FROM age(CURRENT_DATE, hire_date))::int, 0), 11)
-    WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, hire_date)) < 3 THEN 15
-    ELSE LEAST(15 + FLOOR((EXTRACT(YEAR FROM age(CURRENT_DATE, hire_date))::int - 1) / 2), 25)
+    WHEN e.hire_date IS NULL THEN 15
+    WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.hire_date)) < 1 THEN LEAST(GREATEST(EXTRACT(MONTH FROM age(CURRENT_DATE, e.hire_date))::int, 0), 11)
+    WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.hire_date)) < 3 THEN 15
+    ELSE LEAST(15 + FLOOR((EXTRACT(YEAR FROM age(CURRENT_DATE, e.hire_date))::int - 1) / 2), 25)
   END,
   CASE
-    WHEN hire_date IS NULL THEN 15
-    WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, hire_date)) < 1 THEN LEAST(GREATEST(EXTRACT(MONTH FROM age(CURRENT_DATE, hire_date))::int, 0), 11)
-    WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, hire_date)) < 3 THEN 15
-    ELSE LEAST(15 + FLOOR((EXTRACT(YEAR FROM age(CURRENT_DATE, hire_date))::int - 1) / 2), 25)
+    WHEN e.hire_date IS NULL THEN 15
+    WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.hire_date)) < 1 THEN LEAST(GREATEST(EXTRACT(MONTH FROM age(CURRENT_DATE, e.hire_date))::int, 0), 11)
+    WHEN EXTRACT(YEAR FROM age(CURRENT_DATE, e.hire_date)) < 3 THEN 15
+    ELSE LEAST(15 + FLOOR((EXTRACT(YEAR FROM age(CURRENT_DATE, e.hire_date))::int - 1) / 2), 25)
   END
-FROM employees WHERE is_active = true
+FROM employees e WHERE e.is_active = true
 ON CONFLICT (employee_id) DO NOTHING;
 
 -- 교육 이수 초기 데이터 (2026년)
 INSERT INTO training_records (employee_id, training_type, training_name, year, completed)
-SELECT id, 'mandatory', name, 2026, false
-FROM employees, (VALUES ('성희롱 예방교육'),('개인정보보호교육'),('산업안전보건교육'),('장애인인식개선교육')) AS t(name)
-WHERE is_active = true
+SELECT e.id, 'mandatory', t.name, 2026, false
+FROM employees e, (VALUES ('성희롱 예방교육'),('개인정보보호교육'),('산업안전보건교육'),('장애인인식개선교육')) AS t(name)
+WHERE e.is_active = true
 ON CONFLICT (employee_id, training_name, year) DO NOTHING;
 
 -- Realtime 활성화
