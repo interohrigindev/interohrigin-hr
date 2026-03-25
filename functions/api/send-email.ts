@@ -63,20 +63,37 @@ async function getGmailAccessToken(
   return data.access_token as string
 }
 
+// ─── UTF-8 안전 Base64 인코딩 ───────────────────────────────────
+function utf8ToBase64(str: string): string {
+  return btoa(unescape(encodeURIComponent(str)))
+}
+
+function utf8ToBase64url(str: string): string {
+  return utf8ToBase64(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+// RFC 2047 인코딩 (헤더의 한글 지원)
+function encodeHeader(value: string): string {
+  // ASCII만 포함되면 그대로 반환
+  if (/^[\x20-\x7E]*$/.test(value)) return value
+  return `=?UTF-8?B?${utf8ToBase64(value)}?=`
+}
+
 // ─── RFC 2822 MIME 메시지 생성 ──────────────────────────────────
 function createMimeMessage(
-  from: string,
+  fromName: string,
+  fromEmail: string,
   to: string,
   subject: string,
   html: string,
 ): string {
-  // Subject을 Base64로 인코딩 (한글 지원)
-  const encodedSubject = `=?UTF-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`
+  const encodedName = encodeHeader(fromName)
+  const encodedSubject = encodeHeader(subject)
 
   const boundary = `boundary_${crypto.randomUUID().replace(/-/g, '')}`
 
   const message = [
-    `From: ${from}`,
+    `From: ${encodedName} <${fromEmail}>`,
     `To: ${to}`,
     `Subject: ${encodedSubject}`,
     `MIME-Version: 1.0`,
@@ -86,17 +103,12 @@ function createMimeMessage(
     `Content-Type: text/html; charset=UTF-8`,
     `Content-Transfer-Encoding: base64`,
     ``,
-    btoa(unescape(encodeURIComponent(html))),
+    utf8ToBase64(html),
     ``,
     `--${boundary}--`,
   ].join('\r\n')
 
   return message
-}
-
-// ─── Base64url 인코딩 (Gmail API 요구) ──────────────────────────
-function base64url(str: string): string {
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 // ─── 핸들러 ────────────────────────────────────────────────────
@@ -131,9 +143,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     )
 
     // MIME 메시지 생성
-    const fromHeader = `${senderName} <${senderEmail}>`
-    const mimeMessage = createMimeMessage(fromHeader, to, subject, html)
-    const encodedMessage = base64url(mimeMessage)
+    const mimeMessage = createMimeMessage(senderName, senderEmail, to, subject, html)
+    const encodedMessage = utf8ToBase64url(mimeMessage)
 
     // Gmail API로 발송
     const res = await fetch(
