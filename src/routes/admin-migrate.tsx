@@ -2,17 +2,15 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 
-// 마이그레이션 SQL 조각들 (service_role로 실행)
-// ⚠️ Service Role Key는 절대 코드에 하드코딩하지 마세요
-const SERVICE_URL = import.meta.env.VITE_SUPABASE_URL
-const SERVICE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || ''
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
-// Supabase REST로 테이블 존재 여부 확인하는 헬퍼
+// Supabase REST로 테이블 존재 여부 확인하는 헬퍼 (anon key 사용)
 async function tableExists(tableName: string): Promise<boolean> {
-  const res = await fetch(`${SERVICE_URL}/rest/v1/${tableName}?select=id&limit=1`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${tableName}?select=id&limit=1`, {
     headers: {
-      'apikey': SERVICE_KEY,
-      'Authorization': `Bearer ${SERVICE_KEY}`,
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
     },
   })
   return res.ok

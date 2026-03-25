@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import DOMPurify from 'dompurify'
 import {
   Bot, X, Send, Plus, Loader2, Bookmark, Archive,
   Trash2, ArrowLeft, Search, Sparkles, MessageSquare,
@@ -306,10 +307,12 @@ export default function FloatingAIAgent() {
                       <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">AI 회의록</p>
                       <div className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto"
                         dangerouslySetInnerHTML={{
-                          __html: meeting.result.summary
-                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                            .replace(/## (.*)/g, '<p class="font-bold text-gray-900 mt-2 mb-1">$1</p>')
-                            .replace(/\n/g, '<br/>')
+                          __html: DOMPurify.sanitize(
+                            meeting.result.summary
+                              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                              .replace(/## (.*)/g, '<p class="font-bold text-gray-900 mt-2 mb-1">$1</p>')
+                              .replace(/\n/g, '<br/>')
+                          )
                         }}
                       />
                     </div>
@@ -393,9 +396,11 @@ export default function FloatingAIAgent() {
                     }`}>
                       {msg.role === 'assistant' ? (
                         <div className="whitespace-pre-wrap" dangerouslySetInnerHTML={{
-                          __html: msg.content
-                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                            .replace(/\n/g, '<br/>')
+                          __html: DOMPurify.sanitize(
+                            msg.content
+                              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                              .replace(/\n/g, '<br/>')
+                          )
                         }} />
                       ) : (
                         <span className="whitespace-pre-wrap">{msg.content}</span>

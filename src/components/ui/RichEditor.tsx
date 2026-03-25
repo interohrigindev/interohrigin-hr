@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect } from 'react'
+import DOMPurify from 'dompurify'
 import {
   Bold, Italic, Underline, List, ListOrdered,
   Link2, Image, Paperclip, AtSign, Heading2,
@@ -12,6 +13,10 @@ interface RichEditorProps {
   placeholder?: string
   minHeight?: string
   onFileUpload?: (files: { url: string; name: string; size: number; type: string }[]) => void
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 export function RichEditor({ value, onChange, placeholder = '내용을 입력하세요...', minHeight = '120px', onFileUpload }: RichEditorProps) {
@@ -82,7 +87,7 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
     for (const file of Array.from(files)) {
       const url = await uploadFile(file)
       if (url) {
-        execCommand('insertHTML', `<img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:8px;margin:8px 0" />`)
+        execCommand('insertHTML', `<img src="${url}" alt="${escapeHtml(file.name)}" style="max-width:100%;border-radius:8px;margin:8px 0" />`)
       }
     }
     e.target.value = ''
@@ -97,7 +102,7 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
       const url = await uploadFile(file)
       if (url) {
         uploaded.push({ url, name: file.name, size: file.size, type: file.type })
-        execCommand('insertHTML', `<a href="${url}" target="_blank" style="color:#2563eb;text-decoration:underline">📎 ${file.name}</a>&nbsp;`)
+        execCommand('insertHTML', `<a href="${url}" target="_blank" style="color:#2563eb;text-decoration:underline">📎 ${escapeHtml(file.name)}</a>&nbsp;`)
       }
     }
     if (uploaded.length > 0 && onFileUpload) {
@@ -122,9 +127,9 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
       const url = await uploadFile(file)
       if (!url) continue
       if (file.type.startsWith('image/')) {
-        execCommand('insertHTML', `<img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:8px;margin:8px 0" />`)
+        execCommand('insertHTML', `<img src="${url}" alt="${escapeHtml(file.name)}" style="max-width:100%;border-radius:8px;margin:8px 0" />`)
       } else {
-        execCommand('insertHTML', `<a href="${url}" target="_blank" style="color:#2563eb;text-decoration:underline">📎 ${file.name}</a>&nbsp;`)
+        execCommand('insertHTML', `<a href="${url}" target="_blank" style="color:#2563eb;text-decoration:underline">📎 ${escapeHtml(file.name)}</a>&nbsp;`)
         onFileUpload?.([{ url, name: file.name, size: file.size, type: file.type }])
       }
     }

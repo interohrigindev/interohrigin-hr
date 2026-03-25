@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import DOMPurify from 'dompurify'
 import {
   ArrowLeft, Plus, Send, FileText, Bell,
   BarChart3, CheckCircle, Loader2, AlertTriangle, ListChecks,
@@ -554,7 +555,7 @@ export default function ProjectDetailPage() {
                           {new Date(u.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <div className="text-sm text-gray-700 prose prose-sm max-w-none [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: u.content }} />
+                      <div className="text-sm text-gray-700 prose prose-sm max-w-none [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(u.content || '') }} />
                     </div>
                   </div>
                 )

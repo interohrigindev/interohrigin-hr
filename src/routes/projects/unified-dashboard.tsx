@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import DOMPurify from 'dompurify'
 import {
   AlertTriangle, CheckCircle, Users, GripVertical,
   Target, Clock, Activity, Layers, ChevronDown,
@@ -411,7 +412,7 @@ function SlidePanel({
                         ) : (
                           <div
                             className="text-sm text-gray-700 prose prose-sm max-w-none [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-blue-600 [&_a]:underline"
-                            dangerouslySetInnerHTML={{ __html: update.content }}
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(update.content || '') }}
                           />
                         )}
                         {(update.attachments || []).length > 0 && (
@@ -537,7 +538,7 @@ function SlidePanel({
                             {item.actionType === 'status' ? (
                               item.actionDescription
                             ) : (
-                              <span dangerouslySetInnerHTML={{ __html: item.actionDescription }} />
+                              <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.actionDescription || '') }} />
                             )}
                           </p>
                         </div>

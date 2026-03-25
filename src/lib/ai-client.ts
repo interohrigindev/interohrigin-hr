@@ -1,5 +1,6 @@
 /**
- * Unified AI Client for Gemini and OpenAI API calls
+ * Unified AI Client — Edge Function 프록시 경유
+ * 브라우저에서 직접 AI API 호출하지 않고 /api/ai 프록시를 통해 호출
  */
 
 export interface AIConfig {
@@ -14,115 +15,38 @@ export interface AIResponse {
   model: string
 }
 
-// ─── Gemini API ──────────────────────────────────────────────────
+// ─── Proxy helper ────────────────────────────────────────────────
 
-async function callGemini(config: AIConfig, prompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 4096,
-      },
-    }),
-  })
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `Gemini API error: ${res.status}`)
-  }
-
-  const data = await res.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-}
-
-// ─── OpenAI API ─────────────────────────────────────────────────
-
-async function callOpenAI(config: AIConfig, prompt: string): Promise<string> {
-  const url = 'https://api.openai.com/v1/chat/completions'
-
-  const res = await fetch(url, {
+async function callAIProxy(apiKey: string, body: Record<string, unknown>): Promise<string> {
+  const res = await fetch('/api/ai', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
+      'X-AI-Key': apiKey,
     },
-    body: JSON.stringify({
-      model: config.model,
-      messages: [
-        {
-          role: 'system',
-          content: '당신은 인사평가 전문 분석가입니다. 한국어로 응답하며, 구조화된 마크다운 형식으로 분석 리포트를 작성합니다.',
-        },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 4096,
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `OpenAI API error: ${res.status}`)
+    throw new Error((err as any)?.error || `AI proxy error: ${res.status}`)
   }
 
   const data = await res.json()
-  return data.choices?.[0]?.message?.content ?? ''
-}
-
-// ─── Claude (Anthropic) API ──────────────────────────────────────
-
-async function callClaude(config: AIConfig, prompt: string): Promise<string> {
-  const url = 'https://api.anthropic.com/v1/messages'
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': config.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: config.model,
-      max_tokens: 4096,
-      system: '당신은 인사평가 전문 분석가입니다. 한국어로 응답하며, 구조화된 마크다운 형식으로 분석 리포트를 작성합니다.',
-      messages: [
-        { role: 'user', content: prompt },
-      ],
-    }),
-  })
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `Claude API error: ${res.status}`)
-  }
-
-  const data = await res.json()
-  return data.content?.[0]?.text ?? ''
+  return (data as any).content ?? ''
 }
 
 // ─── Unified call ────────────────────────────────────────────────
 
 export async function generateAIContent(config: AIConfig, prompt: string): Promise<AIResponse> {
-  let content: string
-  if (config.provider === 'gemini') {
-    content = await callGemini(config, prompt)
-  } else if (config.provider === 'claude') {
-    content = await callClaude(config, prompt)
-  } else {
-    content = await callOpenAI(config, prompt)
-  }
-
-  return {
-    content,
+  const content = await callAIProxy(config.apiKey, {
     provider: config.provider,
     model: config.model,
-  }
+    action: 'generate',
+    prompt,
+  })
+
+  return { content, provider: config.provider, model: config.model }
 }
 
 // ─── Multi-turn chat (AI Agent용) ────────────────────────────────
@@ -132,79 +56,13 @@ export async function generateAIChat(
   systemPrompt: string,
   messages: { role: 'user' | 'assistant'; content: string }[]
 ): Promise<AIResponse> {
-  let content: string
-
-  if (config.provider === 'gemini') {
-    // Gemini: system instruction + contents 배열
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`
-    const contents = messages.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }))
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
-      }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err?.error?.message || `Gemini API error: ${res.status}`)
-    }
-    const data = await res.json()
-    content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-
-  } else if (config.provider === 'claude') {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': config.apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: config.model,
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-      }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err?.error?.message || `Claude API error: ${res.status}`)
-    }
-    const data = await res.json()
-    content = data.content?.[0]?.text ?? ''
-
-  } else {
-    // OpenAI
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...messages.map((m) => ({ role: m.role, content: m.content })),
-        ],
-        temperature: 0.7,
-        max_tokens: 4096,
-      }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err?.error?.message || `OpenAI API error: ${res.status}`)
-    }
-    const data = await res.json()
-    content = data.choices?.[0]?.message?.content ?? ''
-  }
+  const content = await callAIProxy(config.apiKey, {
+    provider: config.provider,
+    model: config.model,
+    action: 'chat',
+    systemPrompt,
+    messages,
+  })
 
   return { content, provider: config.provider, model: config.model }
 }
@@ -249,14 +107,7 @@ export async function transcribeAudio(
 
 export async function validateApiKey(config: AIConfig): Promise<{ valid: boolean; error?: string }> {
   try {
-    const testPrompt = 'Say "OK" in one word.'
-    if (config.provider === 'gemini') {
-      await callGemini({ ...config }, testPrompt)
-    } else if (config.provider === 'claude') {
-      await callClaude({ ...config }, testPrompt)
-    } else {
-      await callOpenAI({ ...config }, testPrompt)
-    }
+    await generateAIContent(config, 'Say "OK" in one word.')
     return { valid: true }
   } catch (err: any) {
     return { valid: false, error: err.message }
