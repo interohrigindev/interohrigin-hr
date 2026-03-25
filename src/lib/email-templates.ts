@@ -73,9 +73,15 @@ export function interviewInviteEmail(
   locationInfo?: string | null,
   jobTitle?: string
 ): { subject: string; html: string } {
-  const date = new Date(scheduledAt)
-  const dateStr = `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`
-  const timeStr = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  // scheduled_at이 "2026-03-25T14:15" 형태(시간대 없음)일 수 있으므로
+  // KST로 명시 변환하여 올바른 시간 표시
+  const raw = scheduledAt.includes('+') || scheduledAt.endsWith('Z')
+    ? scheduledAt  // 이미 시간대 포함
+    : scheduledAt + '+09:00'  // 시간대 없으면 KST로 간주
+  const date = new Date(raw)
+  const kst = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+  const dateStr = `${kst.getFullYear()}년 ${kst.getMonth() + 1}월 ${kst.getDate()}일`
+  const timeStr = `${String(kst.getHours()).padStart(2, '0')}:${String(kst.getMinutes()).padStart(2, '0')}`
   const typeLabel = interviewType === 'video' ? 'Google Meet 화상면접' : '대면면접'
 
   return {

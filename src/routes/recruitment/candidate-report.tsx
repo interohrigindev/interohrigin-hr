@@ -13,6 +13,7 @@ import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS
 import type { Candidate, CandidateStatus, SourceChannel, ResumeAnalysis, RecruitmentReport } from '@/types/recruitment'
 import { formatDate } from '@/lib/utils'
 import { surveyInviteEmail } from '@/lib/email-templates'
+import InterviewAnalysis from '@/components/recruitment/InterviewAnalysis'
 
 export default function CandidateReport() {
   const { id } = useParams()
@@ -414,6 +415,9 @@ ${postingInfo || '정보 없음'}
               )}
             </CardContent>
           </Card>
+
+          {/* 면접 분석 */}
+          <InterviewAnalysis candidateId={id!} candidateName={candidate.name} />
 
           {/* 종합 AI 분석 리포트 */}
           <Card>

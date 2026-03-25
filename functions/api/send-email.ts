@@ -17,6 +17,7 @@ interface Env {
   GMAIL_REFRESH_TOKEN: string
   GMAIL_SENDER_EMAIL: string
   GMAIL_SENDER_NAME?: string
+  GMAIL_BCC_EMAIL?: string  // 발송 내역 수신용 BCC (예: hr@interohrigin.com)
 }
 
 interface EmailRequestBody {
@@ -86,18 +87,28 @@ function createMimeMessage(
   to: string,
   subject: string,
   html: string,
+  bcc?: string,
 ): string {
   const encodedName = encodeHeader(fromName)
   const encodedSubject = encodeHeader(subject)
 
   const boundary = `boundary_${crypto.randomUUID().replace(/-/g, '')}`
 
-  const message = [
+  const headers = [
     `From: ${encodedName} <${fromEmail}>`,
     `To: ${to}`,
+  ]
+  if (bcc) {
+    headers.push(`Bcc: ${bcc}`)
+  }
+  headers.push(
     `Subject: ${encodedSubject}`,
     `MIME-Version: 1.0`,
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
+  )
+
+  const message = [
+    ...headers,
     ``,
     `--${boundary}`,
     `Content-Type: text/html; charset=UTF-8`,
@@ -142,8 +153,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       env.GMAIL_REFRESH_TOKEN,
     )
 
-    // MIME 메시지 생성
-    const mimeMessage = createMimeMessage(senderName, senderEmail, to, subject, html)
+    // MIME 메시지 생성 (BCC로 발송 내역 공유)
+    const bccEmail = env.GMAIL_BCC_EMAIL || undefined
+    const mimeMessage = createMimeMessage(senderName, senderEmail, to, subject, html, bccEmail)
     const encodedMessage = utf8ToBase64url(mimeMessage)
 
     // Gmail API로 발송

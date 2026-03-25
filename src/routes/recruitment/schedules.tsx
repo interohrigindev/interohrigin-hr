@@ -60,6 +60,8 @@ export default function InterviewSchedules() {
     candidate_id: '',
     interview_type: 'video',
     scheduled_at: '',
+    scheduled_date: '',
+    scheduled_time: '',
     duration_minutes: '30',
     priority: 'normal',
     meeting_link: '',
@@ -564,12 +566,79 @@ ${candidateList}
               { value: 'face_to_face', label: '대면면접' },
             ]}
           />
-          <Input
-            label="면접 일시 *"
-            type="datetime-local"
-            value={form.scheduled_at}
-            onChange={(e) => setForm((p) => ({ ...p, scheduled_at: e.target.value }))}
-          />
+          {/* 면접 일시 — 날짜 + 시간 분리 */}
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700">면접 일시 *</label>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="날짜"
+                type="date"
+                value={form.scheduled_date}
+                onChange={(e) => {
+                  const date = e.target.value
+                  setForm((p) => ({
+                    ...p,
+                    scheduled_date: date,
+                    scheduled_at: date && p.scheduled_time ? `${date}T${p.scheduled_time}` : '',
+                  }))
+                }}
+              />
+              <Input
+                label="시간"
+                type="time"
+                value={form.scheduled_time}
+                onChange={(e) => {
+                  const time = e.target.value
+                  setForm((p) => ({
+                    ...p,
+                    scheduled_time: time,
+                    scheduled_at: p.scheduled_date && time ? `${p.scheduled_date}T${time}` : '',
+                  }))
+                }}
+              />
+            </div>
+            {/* 빠른 시간 선택 */}
+            <div>
+              <p className="text-xs text-gray-400 mb-1.5">빠른 시간 선택</p>
+              <div className="flex flex-wrap gap-1.5">
+                {['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'].map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                      form.scheduled_time === t
+                        ? 'bg-brand-600 text-white border-brand-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300 hover:text-brand-600'
+                    }`}
+                    onClick={() => {
+                      setForm((p) => ({
+                        ...p,
+                        scheduled_time: t,
+                        scheduled_at: p.scheduled_date ? `${p.scheduled_date}T${t}` : '',
+                      }))
+                    }}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* 선택 확인 요약 */}
+            {form.scheduled_date && form.scheduled_time && (
+              <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                <Calendar className="h-4 w-4 text-blue-500 shrink-0" />
+                <span className="text-sm text-blue-700 font-medium">
+                  {new Date(form.scheduled_at).toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    weekday: 'long',
+                  })}{' '}
+                  {form.scheduled_time} ({form.duration_minutes}분)
+                </span>
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="소요시간 (분)"
