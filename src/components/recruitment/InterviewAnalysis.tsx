@@ -12,6 +12,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Video, Mic, Upload, Loader2, Sparkles, ChevronDown, ChevronUp,
   Clock, MessageSquare, CheckCircle, Trash2, AlertTriangle, FileVideo, FileAudio,
+  Cloud, Download,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -33,6 +34,15 @@ interface ScheduleRow {
   duration_minutes: number
   status: string
   meeting_link: string | null
+  google_event_id: string | null
+}
+
+interface DriveFile {
+  id: string
+  name: string
+  size: string
+  mimeType: string
+  createdTime: string
 }
 
 interface RecordingRow {
@@ -89,6 +99,9 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmingGroup, setConfirmingGroup] = useState<InterviewGroup | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [driveFetching, setDriveFetching] = useState<string | null>(null)
+  const [driveFiles, setDriveFiles] = useState<Record<string, DriveFile[]>>({})
+  const [driveDownloading, setDriveDownloading] = useState<string | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -98,7 +111,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
     const [schedRes, recRes, anaRes] = await Promise.all([
       supabase
         .from('interview_schedules')
-        .select('id, interview_type, scheduled_at, duration_minutes, status, meeting_link')
+        .select('id, interview_type, scheduled_at, duration_minutes, status, meeting_link, google_event_id')
         .eq('candidate_id', candidateId)
         .order('scheduled_at', { ascending: true }),
       supabase
@@ -146,6 +159,95 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
 
     setGroups(grouped)
     setLoading(false)
+  }
+
+  /* ─── Google Drive에서 녹화 파일 가져오기 ────────── */
+
+  async function handleSearchDrive(group: InterviewGroup) {
+    const key = group.schedule?.id || 'new'
+    setDriveFetching(key)
+
+    try {
+      const params = new URLSearchParams()
+      params.set('meetingTitle', `[인터오리진 면접] ${candidateName}`)
+
+      const res = await fetch(`/api/drive-recordings?${params}`)
+      const result = await res.json()
+
+      if (res.ok && result.files?.length > 0) {
+        setDriveFiles((prev) => ({ ...prev, [key]: result.files }))
+        toast(`${result.files.length}개의 녹화 파일을 찾았습니다.`, 'success')
+      } else if (res.ok && result.files?.length === 0) {
+        toast('Google Drive에서 녹화 파일을 찾을 수 없습니다. 회의 종료 후 2~5분 뒤에 다시 시도하세요.', 'error')
+      } else {
+        toast(`Drive 검색 실패: ${result.error || '알 수 없는 오류'}`, 'error')
+      }
+    } catch (err: any) {
+      toast('Drive 검색 오류: ' + err.message, 'error')
+    }
+    setDriveFetching(null)
+  }
+
+  async function handleFetchFromDrive(
+    group: InterviewGroup,
+    driveFile: DriveFile,
+  ) {
+    const key = group.schedule?.id || 'new'
+    setDriveDownloading(key)
+
+    try {
+      // 1. Drive에서 파일 다운로드 (프록시 경유)
+      const res = await fetch('/api/drive-recordings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driveFileId: driveFile.id }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: '다운로드 실패' }))
+        throw new Error(err.error || '다운로드 실패')
+      }
+
+      const blob = await res.blob()
+      const ext = driveFile.name.split('.').pop() || 'mp4'
+      const filePath = `${candidateId}/${Date.now()}_video.${ext}`
+
+      // 2. Supabase Storage에 업로드
+      const { error: uploadError } = await supabase.storage
+        .from('interview-recordings')
+        .upload(filePath, blob)
+
+      if (uploadError) throw uploadError
+
+      const { data: urlData } = supabase.storage
+        .from('interview-recordings')
+        .getPublicUrl(filePath)
+
+      // 3. interview_recordings 레코드 생성
+      const { error: insertError } = await supabase.from('interview_recordings').insert({
+        candidate_id: candidateId,
+        recording_url: urlData.publicUrl,
+        recording_type: 'video',
+        file_size_bytes: parseInt(driveFile.size) || blob.size,
+        status: 'uploaded',
+        ...(group.schedule?.id ? { schedule_id: group.schedule.id } : {}),
+      })
+
+      if (insertError) throw insertError
+
+      // 검색 결과 초기화
+      setDriveFiles((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+
+      toast('Google Drive 녹화 파일을 성공적으로 가져왔습니다.', 'success')
+      fetchData()
+    } catch (err: any) {
+      toast('파일 가져오기 실패: ' + err.message, 'error')
+    }
+    setDriveDownloading(null)
   }
 
   /* ─── 파일 업로드 (화상/대면 공통) ─────────────── */
@@ -531,47 +633,111 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
 
                   {/* ── Step 1: 파일 업로드 ────── */}
                   {step === 'empty' && (
-                    <div className="flex items-center gap-3 p-3 border-2 border-dashed border-gray-200 rounded-lg hover:border-brand-300 transition-colors">
-                      {isVideo ? (
-                        <FileVideo className="h-8 w-8 text-blue-300" />
-                      ) : (
-                        <FileAudio className="h-8 w-8 text-amber-300" />
-                      )}
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-700">
-                          {isVideo
-                            ? 'Google Meet 녹화 파일을 업로드하세요'
-                            : '대면면접 녹음 파일을 업로드하세요'}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {isVideo
-                            ? 'MP4, WebM, AVI, MOV (최대 100MB)'
-                            : 'MP3, WAV, M4A, OGG, WebM (최대 100MB)'}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const ref = isVideo ? videoInputRef : audioInputRef
-                          if (ref.current) {
-                            ref.current.onchange = (ev: any) =>
-                              handleFileUpload(ev, group.type, group.schedule?.id)
-                            ref.current.click()
-                          }
-                        }}
-                        disabled={!!uploading}
-                      >
-                        {isUploading ? (
-                          <>
-                            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 업로드 중...
-                          </>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3 p-3 border-2 border-dashed border-gray-200 rounded-lg hover:border-brand-300 transition-colors">
+                        {isVideo ? (
+                          <FileVideo className="h-8 w-8 text-blue-300" />
                         ) : (
-                          <>
-                            <Upload className="h-3.5 w-3.5 mr-1" /> 파일 업로드
-                          </>
+                          <FileAudio className="h-8 w-8 text-amber-300" />
                         )}
-                      </Button>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-700">
+                            {isVideo
+                              ? 'Google Meet 녹화 파일을 업로드하세요'
+                              : '대면면접 녹음 파일을 업로드하세요'}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {isVideo
+                              ? 'MP4, WebM, AVI, MOV (최대 100MB)'
+                              : 'MP3, WAV, M4A, OGG, WebM (최대 100MB)'}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          {isVideo && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSearchDrive(group)}
+                              disabled={!!driveFetching || !!driveDownloading}
+                              className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                            >
+                              {driveFetching === key ? (
+                                <>
+                                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 검색 중...
+                                </>
+                              ) : (
+                                <>
+                                  <Cloud className="h-3.5 w-3.5 mr-1" /> Drive에서 가져오기
+                                </>
+                              )}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const ref = isVideo ? videoInputRef : audioInputRef
+                              if (ref.current) {
+                                ref.current.onchange = (ev: any) =>
+                                  handleFileUpload(ev, group.type, group.schedule?.id)
+                                ref.current.click()
+                              }
+                            }}
+                            disabled={!!uploading}
+                          >
+                            {isUploading ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 업로드 중...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="h-3.5 w-3.5 mr-1" /> 파일 업로드
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Google Drive 검색 결과 */}
+                      {driveFiles[key]?.length > 0 && (
+                        <div className="p-3 bg-blue-50 rounded-lg space-y-2">
+                          <p className="text-xs font-medium text-blue-700">
+                            Google Drive 녹화 파일 ({driveFiles[key].length}개)
+                          </p>
+                          <p className="text-[10px] text-blue-500">
+                            녹화 파일은 회의 종료 후 2~5분 뒤에 Google Drive에 저장됩니다.
+                          </p>
+                          {driveFiles[key].map((file) => (
+                            <div
+                              key={file.id}
+                              className="flex items-center justify-between p-2 bg-white rounded border border-blue-100"
+                            >
+                              <div className="flex items-center gap-2 text-sm min-w-0">
+                                <FileVideo className="h-4 w-4 text-blue-500 shrink-0" />
+                                <span className="truncate">{file.name}</span>
+                                <span className="text-xs text-gray-400 shrink-0">
+                                  ({Math.round(parseInt(file.size) / 1024 / 1024)}MB)
+                                </span>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => handleFetchFromDrive(group, file)}
+                                disabled={!!driveDownloading}
+                              >
+                                {driveDownloading === key ? (
+                                  <>
+                                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 가져오는 중...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download className="h-3.5 w-3.5 mr-1" /> 가져오기
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 

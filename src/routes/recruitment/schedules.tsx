@@ -70,6 +70,7 @@ export default function InterviewSchedules() {
     duration_minutes: '30',
     priority: 'normal',
     meeting_link: '',
+    google_event_id: '',
     location_info: '',
   })
 
@@ -185,7 +186,7 @@ export default function InterviewSchedules() {
       if (!res.ok) {
         toast(`Meet 생성 실패: ${result.error}`, 'error')
       } else if (result.meetLink) {
-        setForm((p) => ({ ...p, meeting_link: result.meetLink }))
+        setForm((p) => ({ ...p, meeting_link: result.meetLink, google_event_id: result.eventId || '' }))
         toast('Google Meet 링크가 생성되었습니다.', 'success')
       } else {
         toast('Meet 링크를 가져올 수 없습니다.', 'error')
@@ -205,6 +206,7 @@ export default function InterviewSchedules() {
     setSaving(true)
 
     let meetLink = form.meeting_link || null
+    let googleEventId = form.google_event_id || null
     const kstTime =
       form.scheduled_at.includes('+') || form.scheduled_at.endsWith('Z')
         ? form.scheduled_at
@@ -226,6 +228,7 @@ export default function InterviewSchedules() {
         const result = await res.json()
         if (res.ok && result.meetLink) {
           meetLink = result.meetLink
+          googleEventId = result.eventId || null
         }
       } catch {
         // Meet 생성 실패해도 일정 등록은 진행
@@ -244,6 +247,7 @@ export default function InterviewSchedules() {
       duration_minutes: parseInt(form.duration_minutes),
       priority: form.priority as any,
       meeting_link: meetLink,
+      google_event_id: googleEventId,
       location_info: form.location_info || null,
       status: 'scheduled',
     })
@@ -271,6 +275,7 @@ export default function InterviewSchedules() {
         duration_minutes: '30',
         priority: 'normal',
         meeting_link: '',
+        google_event_id: '',
         location_info: '',
       })
       refetch()

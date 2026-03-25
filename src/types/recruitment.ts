@@ -138,6 +138,7 @@ export interface InterviewSchedule {
   pre_materials_sent: boolean
   pre_materials_sent_at: string | null
   meeting_link: string | null
+  google_event_id: string | null
   location_info: string | null
   status: ScheduleStatus
   created_at: string
