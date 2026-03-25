@@ -435,7 +435,16 @@ ${postingInfo || '정보 없음'}
             </CardHeader>
             <CardContent>
               {!report ? (
-                <p className="text-gray-400 text-sm">이력서 분석, 사전 질의서, 면접 결과를 모두 종합한 AI 분석을 실행합니다.</p>
+                <div className="space-y-2">
+                  <p className="text-gray-400 text-sm">이력서 분석, 사전 질의서, 면접 결과를 모두 종합한 AI 분석을 실행합니다.</p>
+                  <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <span className="text-amber-500 mt-0.5 shrink-0">⚠️</span>
+                    <p className="text-sm text-amber-700">
+                      종합 분석은 <strong>화상면접 또는 대면면접이 모두 완료된 후</strong>에 실행해주세요.
+                      면접 데이터가 포함되어야 정확한 분석 결과를 얻을 수 있습니다.
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {/* 종합 점수 + 추천 */}

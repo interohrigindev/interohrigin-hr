@@ -344,6 +344,15 @@ ${candidateList}
                           <Clock className="h-3 w-3" />
                           <span>{formatDateTime(s.scheduled_at)}</span>
                           <span>({s.duration_minutes}분)</span>
+                          {s.meeting_link && (
+                            <a href={s.meeting_link} target="_blank" rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline">
+                              Google Meet 입장
+                            </a>
+                          )}
+                          {s.location_info && (
+                            <span className="text-amber-600">📍 {s.location_info}</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -403,7 +412,7 @@ ${candidateList}
             value={form.interview_type}
             onChange={(e) => setForm((p) => ({ ...p, interview_type: e.target.value }))}
             options={[
-              { value: 'video', label: '화상면접' },
+              { value: 'video', label: 'Google Meet 화상면접' },
               { value: 'face_to_face', label: '대면면접' },
             ]}
           />
@@ -433,10 +442,10 @@ ${candidateList}
           </div>
           {form.interview_type === 'video' && (
             <Input
-              label="화상회의 링크"
+              label="Google Meet 링크"
               value={form.meeting_link}
               onChange={(e) => setForm((p) => ({ ...p, meeting_link: e.target.value }))}
-              placeholder="https://meet.google.com/..."
+              placeholder="https://meet.google.com/xxx-xxxx-xxx"
             />
           )}
           {form.interview_type === 'face_to_face' && (
