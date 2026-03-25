@@ -54,6 +54,7 @@ export default function InterviewSchedules() {
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [saving, setSaving] = useState(false)
   const [autoGenerating, setAutoGenerating] = useState(false)
+  const [generatingMeet, setGeneratingMeet] = useState(false)
 
   const [form, setForm] = useState({
     candidate_id: '',
@@ -87,6 +88,42 @@ export default function InterviewSchedules() {
       })
   }, [])
 
+  async function handleGenerateMeet() {
+    if (!form.candidate_id || !form.scheduled_at) {
+      toast('지원자와 일정을 먼저 입력하세요.', 'error')
+      return
+    }
+
+    setGeneratingMeet(true)
+    try {
+      const cand = candidates.find((c) => c.id === form.candidate_id)
+      const res = await fetch('/api/google-meet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          summary: `[인터오리진 면접] ${cand?.name || '지원자'}`,
+          description: `인터오리진 채용 면접\n지원자: ${cand?.name || ''}\n이메일: ${cand?.email || ''}`,
+          startTime: new Date(form.scheduled_at).toISOString(),
+          durationMinutes: parseInt(form.duration_minutes),
+          attendees: cand?.email ? [cand.email] : [],
+        }),
+      })
+      const result = await res.json()
+
+      if (!res.ok) {
+        toast(`Meet 생성 실패: ${result.error}`, 'error')
+      } else if (result.meetLink) {
+        setForm((p) => ({ ...p, meeting_link: result.meetLink }))
+        toast('Google Meet 링크가 생성되었습니다.', 'success')
+      } else {
+        toast('Meet 링크를 가져올 수 없습니다.', 'error')
+      }
+    } catch (err: any) {
+      toast('Meet 생성 오류: ' + err.message, 'error')
+    }
+    setGeneratingMeet(false)
+  }
+
   async function handleCreateSchedule() {
     if (!form.candidate_id || !form.scheduled_at) {
       toast('지원자와 일정을 선택하세요.', 'error')
@@ -94,13 +131,39 @@ export default function InterviewSchedules() {
     }
 
     setSaving(true)
+
+    // 화상면접인데 Meet 링크가 없으면 자동 생성 시도
+    let meetLink = form.meeting_link || null
+    if (form.interview_type === 'video' && !meetLink) {
+      try {
+        const cand = candidates.find((c) => c.id === form.candidate_id)
+        const res = await fetch('/api/google-meet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            summary: `[인터오리진 면접] ${cand?.name || '지원자'}`,
+            description: `인터오리진 채용 면접`,
+            startTime: new Date(form.scheduled_at).toISOString(),
+            durationMinutes: parseInt(form.duration_minutes),
+            attendees: cand?.email ? [cand.email] : [],
+          }),
+        })
+        const result = await res.json()
+        if (res.ok && result.meetLink) {
+          meetLink = result.meetLink
+        }
+      } catch {
+        // Meet 생성 실패해도 일정 등록은 진행
+      }
+    }
+
     const { error } = await createSchedule({
       candidate_id: form.candidate_id,
       interview_type: form.interview_type as any,
       scheduled_at: form.scheduled_at,
       duration_minutes: parseInt(form.duration_minutes),
       priority: form.priority as any,
-      meeting_link: form.meeting_link || null,
+      meeting_link: meetLink,
       location_info: form.location_info || null,
       status: 'scheduled',
     })
@@ -526,12 +589,35 @@ ${candidateList}
             />
           </div>
           {form.interview_type === 'video' && (
-            <Input
-              label="Google Meet 링크"
-              value={form.meeting_link}
-              onChange={(e) => setForm((p) => ({ ...p, meeting_link: e.target.value }))}
-              placeholder="https://meet.google.com/xxx-xxxx-xxx"
-            />
+            <div>
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Input
+                    label="Google Meet 링크"
+                    value={form.meeting_link}
+                    onChange={(e) => setForm((p) => ({ ...p, meeting_link: e.target.value }))}
+                    placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateMeet}
+                  disabled={generatingMeet || !form.candidate_id || !form.scheduled_at}
+                  className="shrink-0 mb-0.5"
+                >
+                  {generatingMeet ? (
+                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 생성중</>
+                  ) : (
+                    <><Video className="h-4 w-4 mr-1" /> 자동 생성</>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                지원자와 일시를 입력 후 '자동 생성'을 클릭하면 Google Meet 링크가 자동으로 만들어집니다.
+              </p>
+            </div>
           )}
           {form.interview_type === 'face_to_face' && (
             <Input
