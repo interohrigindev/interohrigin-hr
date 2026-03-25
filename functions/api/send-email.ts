@@ -54,7 +54,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: from || 'InterOhrigin HR <hr@interohrigin.com>',
+        from: from || 'InterOhrigin HR <onboarding@resend.dev>',
         to: [to],
         subject,
         html,
