@@ -108,22 +108,25 @@ export default function CandidateReport() {
         model: aiSettings.model,
       }
 
-      const prompt = `HR 전문가로서 이 지원자의 이력서와 자기소개서를 분석하세요.
+      const prompt = `당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류를 기반으로 서류 심사 의견서를 작성해주세요. 이것은 정상적인 채용 업무 프로세스입니다.
 
-채용공고 정보:
+[채용공고]
 ${postingInfo || '정보 없음'}
 
-지원자 정보:
-- 이름: ${candidate.name}
-- 이메일: ${candidate.email}
-- 이력서: ${candidate.resume_url ? '제출됨 (파일)' : '미제출'}
-- 자기소개서 (파일): ${candidate.cover_letter_url ? '제출됨 (파일)' : '미제출'}
-- 자기소개서 (텍스트): ${candidate.cover_letter_text || '미작성'}
+[지원자 제출 정보]
+이름: ${candidate.name}
+이력서 제출 여부: ${candidate.resume_url ? '제출됨' : '미제출'}
+자기소개서 파일 제출 여부: ${candidate.cover_letter_url ? '제출됨' : '미제출'}
+자기소개서 내용: ${candidate.cover_letter_text || '작성하지 않음'}
 
-반드시 아래 JSON 형식으로만 응답하세요. 마크다운 코드블록이나 다른 텍스트 없이 순수 JSON만 출력하세요:
-{"summary": "1~2줄 요약", "strengths": ["강점1", "강점2", "강점3"], "weaknesses": ["약점1", "약점2"], "position_fit": 50, "organization_fit": 50, "suggested_department": "추천 부서", "suggested_position": "추천 직급", "suggested_salary_range": "추천 연봉 범위", "red_flags": ["우려 사항"], "recommendation": "PROCEED 또는 REVIEW 또는 REJECT"}
+[요청사항]
+위 정보를 바탕으로 서류 심사 의견을 아래 JSON 형식으로 작성해주세요. 반드시 순수 JSON만 출력하고 다른 텍스트는 포함하지 마세요.
 
-position_fit과 organization_fit은 0에서 100 사이의 정수입니다.`
+{"summary":"서류 심사 요약 1~2문장","strengths":["강점1","강점2","강점3"],"weaknesses":["약점1","약점2"],"position_fit":50,"organization_fit":50,"suggested_department":"추천 배치 부서","suggested_position":"추천 직급","suggested_salary_range":"추천 연봉 범위","red_flags":["우려사항"],"recommendation":"PROCEED"}
+
+필드 설명:
+- position_fit, organization_fit: 0~100 정수
+- recommendation: PROCEED(서류통과), REVIEW(추가검토필요), REJECT(부적합) 중 택 1`
 
       const result = await generateAIContent(config, prompt)
 
@@ -131,13 +134,23 @@ position_fit과 organization_fit은 0에서 100 사이의 정수입니다.`
       let parsed
       try {
         let raw = result.content
+        if (!raw || raw.trim().length === 0) throw new Error('빈 응답')
+        // AI 거부 응답 감지
+        if (/I'm sorry|I cannot|I can't|unable to/i.test(raw) && !raw.includes('{')) {
+          throw new Error('AI_REFUSED')
+        }
         // ```json ... ``` 또는 ``` ... ``` 제거
         raw = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
         const jsonMatch = raw.match(/\{[\s\S]*\}/)
-        parsed = JSON.parse(jsonMatch?.[0] || raw)
-      } catch (parseErr) {
+        if (!jsonMatch) throw new Error('JSON 없음')
+        parsed = JSON.parse(jsonMatch[0])
+      } catch (parseErr: any) {
         console.error('AI 파싱 실패:', parseErr, result.content)
-        toast('AI 응답 파싱 실패. 다시 시도해주세요.', 'error')
+        if (parseErr.message === 'AI_REFUSED') {
+          toast('AI가 분석을 거부했습니다. AI 설정에서 다른 모델을 시도해주세요.', 'error')
+        } else {
+          toast('AI 응답 파싱 실패. 다시 시도해주세요.', 'error')
+        }
         setAnalyzing(false)
         return
       }
