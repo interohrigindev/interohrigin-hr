@@ -16,6 +16,8 @@ export default function RecruitmentDashboard() {
   const { stats, loading: statsLoading } = useRecruitmentStats()
   const { candidates, loading: candLoading } = useCandidates()
   const { postings, loading: postLoading } = useJobPostings()
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [initialized, setInitialized] = useState(false)
 
   if (statsLoading || candLoading || postLoading) return <PageSpinner />
 
@@ -56,16 +58,16 @@ export default function RecruitmentDashboard() {
     return diff < 48 * 60 * 60 * 1000
   }
 
-  // 풀다운 상태 관리
-  const [expanded, setExpanded] = useState<Set<string>>(() => {
+  // 최초 로드 시 지원자가 있는 공고 자동 펼침
+  if (!initialized) {
     const initial = new Set<string>()
-    // 지원자가 있는 공고는 기본 펼침
     candidatesByPosting.forEach((group, id) => {
       if (group.candidates.length > 0) initial.add(id)
     })
     if (unassigned.length > 0) initial.add('__unassigned__')
-    return initial
-  })
+    setExpanded(initial)
+    setInitialized(true)
+  }
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
