@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase'
 import { generateAIContent, type AIConfig } from '@/lib/ai-client'
 import { useAllSchedules, useInterviewScheduleMutations } from '@/hooks/useInterviewSchedules'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS } from '@/lib/recruitment-constants'
+import { interviewInviteEmail } from '@/lib/email-templates'
 import { formatDateTime, formatDate } from '@/lib/utils'
 import type { Candidate, CandidateStatus } from '@/types/recruitment'
 
@@ -252,12 +253,58 @@ ${candidateList}
   }
 
   async function handleSendMaterials(scheduleId: string) {
-    const { error } = await sendPreMaterials(scheduleId)
-    if (error) {
-      toast('발송 처리 실패', 'error')
-    } else {
-      toast('사전 자료 발송이 완료되었습니다.', 'success')
-      refetch()
+    // 스케줄 정보에서 지원자 이메일, 면접 상세 조회
+    const schedule = schedules.find((s: any) => s.id === scheduleId)
+    if (!schedule) {
+      toast('일정 정보를 찾을 수 없습니다.', 'error')
+      return
+    }
+
+    // 지원자 정보 조회
+    const { data: candidate } = await supabase
+      .from('candidates')
+      .select('name, email')
+      .eq('id', schedule.candidate_id)
+      .single()
+
+    if (!candidate?.email) {
+      toast('지원자 이메일을 찾을 수 없습니다.', 'error')
+      return
+    }
+
+    // 이메일 발송
+    const { subject, html } = interviewInviteEmail(
+      candidate.name,
+      schedule.scheduled_at,
+      schedule.duration_minutes,
+      schedule.interview_type,
+      schedule.meeting_link,
+      schedule.location_info,
+    )
+
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: candidate.email, subject, html }),
+      })
+      const result = await res.json()
+
+      if (!res.ok) {
+        toast(`이메일 발송 실패: ${result.error}`, 'error')
+        return
+      }
+
+      // 이메일 성공 후 DB 플래그 업데이트
+      const { error } = await sendPreMaterials(scheduleId)
+      if (error) {
+        toast('DB 업데이트 실패 (이메일은 발송됨)', 'error')
+      } else {
+        toast(`${candidate.name}님에게 면접 안내 이메일을 발송했습니다.`, 'success')
+        refetch()
+      }
+    } catch (err: any) {
+      toast('이메일 발송 실패: ' + err.message, 'error')
     }
   }
 

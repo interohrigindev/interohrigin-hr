@@ -63,3 +63,90 @@ export function surveyInviteEmail(
     `.trim(),
   }
 }
+
+export function interviewInviteEmail(
+  candidateName: string,
+  scheduledAt: string,
+  durationMinutes: number,
+  interviewType: string,
+  meetingLink?: string | null,
+  locationInfo?: string | null,
+  jobTitle?: string
+): { subject: string; html: string } {
+  const date = new Date(scheduledAt)
+  const dateStr = `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`
+  const timeStr = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  const typeLabel = interviewType === 'video' ? 'Google Meet 화상면접' : '대면면접'
+
+  return {
+    subject: `[인터오리진] ${candidateName}님, 면접 일정 안내`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">INTEROHRIGIN</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${candidateName}</strong>님, 안녕하세요.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
+        인터오리진 채용 면접 일정을 안내드립니다.${jobTitle ? ` (${jobTitle} 포지션)` : ''}
+      </p>
+
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin:0 0 24px;">
+        <table style="width:100%;font-size:14px;color:#374151;">
+          <tr>
+            <td style="padding:6px 0;font-weight:bold;width:80px;vertical-align:top;">일시</td>
+            <td style="padding:6px 0;">${dateStr} ${timeStr}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;font-weight:bold;vertical-align:top;">소요시간</td>
+            <td style="padding:6px 0;">약 ${durationMinutes}분</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;font-weight:bold;vertical-align:top;">형태</td>
+            <td style="padding:6px 0;">${typeLabel}</td>
+          </tr>
+          ${meetingLink ? `
+          <tr>
+            <td style="padding:6px 0;font-weight:bold;vertical-align:top;">접속링크</td>
+            <td style="padding:6px 0;"><a href="${meetingLink}" style="color:#6B3FA0;">${meetingLink}</a></td>
+          </tr>` : ''}
+          ${locationInfo ? `
+          <tr>
+            <td style="padding:6px 0;font-weight:bold;vertical-align:top;">장소</td>
+            <td style="padding:6px 0;">${locationInfo}</td>
+          </tr>` : ''}
+        </table>
+      </div>
+
+      ${meetingLink ? `
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${meetingLink}"
+           style="display:inline-block;background:#6B3FA0;color:#ffffff;padding:14px 36px;
+                  border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">
+          면접 입장하기
+        </a>
+      </div>` : ''}
+
+      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:16px 0 0;">
+        면접 관련 문의사항이 있으시면 hr@interohrigin.com으로 연락 부탁드립니다.
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
+        문의: hr@interohrigin.com
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim(),
+  }
+}
