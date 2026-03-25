@@ -99,13 +99,15 @@ export default function InterviewSchedules() {
     setGeneratingMeet(true)
     try {
       const cand = candidates.find((c) => c.id === form.candidate_id)
+      const meetKst = form.scheduled_at.includes('+') || form.scheduled_at.endsWith('Z')
+        ? form.scheduled_at : form.scheduled_at + '+09:00'
       const res = await fetch('/api/google-meet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           summary: `[인터오리진 면접] ${cand?.name || '지원자'}`,
           description: `인터오리진 채용 면접\n지원자: ${cand?.name || ''}\n이메일: ${cand?.email || ''}`,
-          startTime: new Date(form.scheduled_at).toISOString(),
+          startTime: new Date(meetKst).toISOString(),
           durationMinutes: parseInt(form.duration_minutes),
           attendees: cand?.email ? [cand.email] : [],
         }),
@@ -136,6 +138,9 @@ export default function InterviewSchedules() {
 
     // 화상면접인데 Meet 링크가 없으면 자동 생성 시도
     let meetLink = form.meeting_link || null
+    const kstTime = form.scheduled_at.includes('+') || form.scheduled_at.endsWith('Z')
+      ? form.scheduled_at
+      : form.scheduled_at + '+09:00'
     if (form.interview_type === 'video' && !meetLink) {
       try {
         const cand = candidates.find((c) => c.id === form.candidate_id)
@@ -145,7 +150,7 @@ export default function InterviewSchedules() {
           body: JSON.stringify({
             summary: `[인터오리진 면접] ${cand?.name || '지원자'}`,
             description: `인터오리진 채용 면접`,
-            startTime: new Date(form.scheduled_at).toISOString(),
+            startTime: new Date(kstTime).toISOString(),
             durationMinutes: parseInt(form.duration_minutes),
             attendees: cand?.email ? [cand.email] : [],
           }),
@@ -159,10 +164,15 @@ export default function InterviewSchedules() {
       }
     }
 
+    // KST 시간대를 명시하여 DB에 올바르게 저장
+    const scheduledAtKST = form.scheduled_at.includes('+') || form.scheduled_at.endsWith('Z')
+      ? form.scheduled_at
+      : form.scheduled_at + '+09:00'
+
     const { error } = await createSchedule({
       candidate_id: form.candidate_id,
       interview_type: form.interview_type as any,
-      scheduled_at: form.scheduled_at,
+      scheduled_at: scheduledAtKST,
       duration_minutes: parseInt(form.duration_minutes),
       priority: form.priority as any,
       meeting_link: meetLink,
@@ -293,7 +303,7 @@ ${candidateList}
         const { error } = await createSchedule({
           candidate_id: candId,
           interview_type: 'video',
-          scheduled_at: slotTime,
+          scheduled_at: slotTime + '+09:00',
           duration_minutes: slotMin,
           priority: i === 0 ? 'urgent' : 'normal',
           status: 'scheduled',
