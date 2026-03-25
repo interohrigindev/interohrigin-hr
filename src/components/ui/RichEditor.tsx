@@ -1,5 +1,4 @@
 import { useRef, useCallback, useEffect } from 'react'
-import DOMPurify from 'dompurify'
 import {
   Bold, Italic, Underline, List, ListOrdered,
   Link2, Image, Paperclip, AtSign, Heading2,
