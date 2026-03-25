@@ -82,7 +82,7 @@ export default function RecruitmentJobs() {
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/recruitment/jobs/new?clone=${p.id}`)} title="공고 복제">
                       <Copy className="h-4 w-4 text-brand-600" />
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/recruitment/jobs/${p.id}`)} title="수정">
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/recruitment/jobs/new?edit=${p.id}`)} title="수정">
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => handleDelete(p.id, p.title)} title="삭제">

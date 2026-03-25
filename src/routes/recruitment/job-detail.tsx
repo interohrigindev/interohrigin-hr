@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Link2, Copy, MapPin, Clock, Users, Banknote, CalendarDays, Building2, Phone, Mail, User, Briefcase, ListChecks, Gift, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Link2, Copy, MapPin, Clock, Users, Banknote, CalendarDays, Building2, Phone, Mail, User, Briefcase, ListChecks, Gift, ChevronRight, Pencil } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -107,7 +107,10 @@ export default function RecruitmentJobDetail() {
               </span>
             </div>
           </div>
-          <div className="shrink-0">
+          <div className="shrink-0 flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate(`/admin/recruitment/jobs/new?edit=${id}`)}>
+              <Pencil className="h-4 w-4 mr-1" /> 수정
+            </Button>
             <Select
               value={posting.status}
               onChange={(e) => handleStatusChange(e.target.value)}

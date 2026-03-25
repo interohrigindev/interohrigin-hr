@@ -42,15 +42,18 @@ export default function RecruitmentJobNew() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const cloneId = searchParams.get('clone')
+  const editId = searchParams.get('edit')
   const { profile } = useAuth()
   const { toast } = useToast()
-  const { createPosting } = useJobPostingMutations()
+  const { createPosting, updatePosting } = useJobPostingMutations()
 
   const [departments, setDepartments] = useState<Department[]>([])
   const [surveyTemplates, setSurveyTemplates] = useState<{ id: string; name: string; experience_type: string; questions: any[] }[]>([])
   const [saving, setSaving] = useState(false)
   const [generatingAI, setGeneratingAI] = useState(false)
   const [isClone, setIsClone] = useState(false)
+  const [isEdit, setIsEdit] = useState(false)
+  const [editStatus, setEditStatus] = useState<string>('draft')
 
   const [form, setForm] = useState({ ...INITIAL_FORM })
   const [aiQuestions, setAiQuestions] = useState<string[]>([])
@@ -100,12 +103,53 @@ export default function RecruitmentJobNew() {
         team_intro: p.team_intro ?? '',
       })
       setAiQuestions((p.ai_questions as string[]) || [])
-      if ((p as any).survey_template_id) setSelectedSurveyId((p as any).survey_template_id)
+      if (p.survey_template_id) setSelectedSurveyId(p.survey_template_id)
       setIsClone(true)
       toast('기존 공고가 복제되었습니다. 수정 후 저장하세요.', 'info')
     }
     loadClone()
   }, [cloneId, toast])
+
+  // 편집 모드: 기존 공고 데이터 불러오기
+  useEffect(() => {
+    if (!editId) return
+    async function loadEdit() {
+      const { data } = await supabase
+        .from('job_postings')
+        .select('*')
+        .eq('id', editId)
+        .single()
+      if (!data) return
+      const p = data as JobPosting
+      setForm({
+        title: p.title,
+        department_id: p.department_id ?? '',
+        position: p.position ?? '',
+        employment_type: p.employment_type ?? 'full_time',
+        experience_level: p.experience_level ?? 'any',
+        description: p.description ?? '',
+        requirements: p.requirements ?? '',
+        preferred: p.preferred ?? '',
+        salary_range: p.salary_range ?? '',
+        deadline: p.deadline ?? '',
+        location: p.location ?? '',
+        work_hours: p.work_hours ?? '',
+        headcount: String(p.headcount ?? 1),
+        benefits: p.benefits ?? '',
+        hiring_process: p.hiring_process ?? '',
+        contact_name: p.contact_name ?? '',
+        contact_email: p.contact_email ?? '',
+        contact_phone: p.contact_phone ?? '',
+        company_intro: p.company_intro ?? '',
+        team_intro: p.team_intro ?? '',
+      })
+      setAiQuestions((p.ai_questions as string[]) || [])
+      if (p.survey_template_id) setSelectedSurveyId(p.survey_template_id)
+      setIsEdit(true)
+      setEditStatus(p.status)
+    }
+    loadEdit()
+  }, [editId])
 
   function updateForm(key: string, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -159,7 +203,7 @@ export default function RecruitmentJobNew() {
     }
 
     setSaving(true)
-    const { error } = await createPosting({
+    const postingData = {
       title: form.title,
       department_id: form.department_id || null,
       position: form.position || null,
@@ -183,14 +227,26 @@ export default function RecruitmentJobNew() {
       ai_questions: aiQuestions as any,
       survey_template_id: selectedSurveyId || null,
       status,
-      created_by: profile?.id,
-    })
+    }
+
+    let error
+    if (isEdit && editId) {
+      const res = await updatePosting(editId, postingData)
+      error = res.error
+    } else {
+      const res = await createPosting({ ...postingData, created_by: profile?.id })
+      error = res.error
+    }
 
     if (error) {
       toast('저장 실패: ' + error.message, 'error')
     } else {
-      toast(status === 'open' ? '채용공고가 게시되었습니다.' : '임시저장되었습니다.', 'success')
-      navigate('/admin/recruitment/jobs')
+      toast(
+        isEdit ? '채용공고가 수정되었습니다.' :
+        status === 'open' ? '채용공고가 게시되었습니다.' : '임시저장되었습니다.',
+        'success'
+      )
+      navigate(isEdit && editId ? `/admin/recruitment/jobs/${editId}` : '/admin/recruitment/jobs')
     }
     setSaving(false)
   }
@@ -203,7 +259,7 @@ export default function RecruitmentJobNew() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {isClone ? '공고 복제' : '새 채용공고'}
+            {isEdit ? '채용공고 수정' : isClone ? '공고 복제' : '새 채용공고'}
           </h1>
           {isClone && (
             <p className="text-sm text-brand-600 flex items-center gap-1 mt-0.5">
@@ -510,12 +566,25 @@ export default function RecruitmentJobNew() {
       </Card>
 
       <div className="flex justify-end gap-3">
-        <Button variant="outline" onClick={() => handleSubmit('draft')} disabled={saving}>
-          임시저장
-        </Button>
-        <Button onClick={() => handleSubmit('open')} disabled={saving}>
-          {saving ? '저장 중...' : '게시하기'}
-        </Button>
+        {isEdit ? (
+          <>
+            <Button variant="outline" onClick={() => navigate(-1)} disabled={saving}>
+              취소
+            </Button>
+            <Button onClick={() => handleSubmit(editStatus as any)} disabled={saving}>
+              {saving ? '저장 중...' : '수정 완료'}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="outline" onClick={() => handleSubmit('draft')} disabled={saving}>
+              임시저장
+            </Button>
+            <Button onClick={() => handleSubmit('open')} disabled={saving}>
+              {saving ? '저장 중...' : '게시하기'}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   )
