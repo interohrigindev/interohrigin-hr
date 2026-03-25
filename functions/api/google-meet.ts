@@ -2,16 +2,19 @@
  * Cloudflare Pages Function — Google Calendar + Meet 자동 생성
  * POST /api/google-meet
  *
- * 환경변수 (Cloudflare Pages Settings):
- *   GOOGLE_SERVICE_ACCOUNT_EMAIL  — 서비스 계정 이메일
- *   GOOGLE_PRIVATE_KEY            — 서비스 계정 비공개 키 (PEM)
- *   GOOGLE_CALENDAR_ID            — 캘린더 ID (보통 회사 이메일 주소)
+ * Gmail과 동일한 OAuth2 Refresh Token 방식 사용
+ * 환경변수 (Gmail과 공유):
+ *   GMAIL_CLIENT_ID
+ *   GMAIL_CLIENT_SECRET
+ *   GMAIL_REFRESH_TOKEN    — gmail.send + calendar 권한 포함
+ *   GMAIL_SENDER_EMAIL     — 캘린더 소유자 이메일
  */
 
 interface Env {
-  GOOGLE_SERVICE_ACCOUNT_EMAIL: string
-  GOOGLE_PRIVATE_KEY: string
-  GOOGLE_CALENDAR_ID: string
+  GMAIL_CLIENT_ID: string
+  GMAIL_CLIENT_SECRET: string
+  GMAIL_REFRESH_TOKEN: string
+  GMAIL_SENDER_EMAIL: string
 }
 
 interface MeetRequestBody {
@@ -36,71 +39,26 @@ function jsonResponse(data: unknown, status = 200) {
   })
 }
 
-// ─── JWT 서명 (서비스 계정 인증) ───────────────────────────────
-function base64url(input: string | ArrayBuffer): string {
-  const bytes = typeof input === 'string'
-    ? new TextEncoder().encode(input)
-    : new Uint8Array(input)
-  let binary = ''
-  for (const b of bytes) binary += String.fromCharCode(b)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-async function importPrivateKey(pem: string): Promise<CryptoKey> {
-  const pemBody = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
-    .replace(/-----END PRIVATE KEY-----/g, '')
-    .replace(/\s/g, '')
-  const binaryDer = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0))
-  return crypto.subtle.importKey(
-    'pkcs8',
-    binaryDer.buffer,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-}
-
-async function createJWT(email: string, privateKeyPem: string, scopes: string[]): Promise<string> {
-  const now = Math.floor(Date.now() / 1000)
-  const header = { alg: 'RS256', typ: 'JWT' }
-  const payload = {
-    iss: email,
-    scope: scopes.join(' '),
-    aud: 'https://oauth2.googleapis.com/token',
-    iat: now,
-    exp: now + 3600,
-  }
-
-  const headerB64 = base64url(JSON.stringify(header))
-  const payloadB64 = base64url(JSON.stringify(payload))
-  const signingInput = `${headerB64}.${payloadB64}`
-
-  const key = await importPrivateKey(privateKeyPem)
-  const signature = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    key,
-    new TextEncoder().encode(signingInput),
-  )
-
-  return `${signingInput}.${base64url(signature)}`
-}
-
-async function getAccessToken(email: string, privateKey: string): Promise<string> {
-  const jwt = await createJWT(email, privateKey, [
-    'https://www.googleapis.com/auth/calendar',
-    'https://www.googleapis.com/auth/calendar.events',
-  ])
-
+// ─── OAuth2 Access Token 발급 ───────────────────────────────────
+async function getAccessToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<string> {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
   })
 
   const data = await res.json() as Record<string, unknown>
   if (!res.ok) {
-    throw new Error(`Google OAuth 실패: ${JSON.stringify(data)}`)
+    throw new Error(`Google OAuth 토큰 발급 실패: ${JSON.stringify(data)}`)
   }
   return data.access_token as string
 }
@@ -111,9 +69,9 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_PRIVATE_KEY) {
+  if (!env.GMAIL_CLIENT_ID || !env.GMAIL_CLIENT_SECRET || !env.GMAIL_REFRESH_TOKEN) {
     return jsonResponse({
-      error: 'Google 서비스 계정이 설정되지 않았습니다. Cloudflare Pages 환경변수를 확인하세요.',
+      error: 'Google OAuth 설정이 완료되지 않았습니다. GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN 환경변수를 확인하세요.',
     }, 500)
   }
 
@@ -130,13 +88,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
     const tz = timeZone || 'Asia/Seoul'
 
-    // Google 액세스 토큰 발급
+    // OAuth2 Access Token 발급 (Gmail과 동일한 토큰)
     const accessToken = await getAccessToken(
-      env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      env.GMAIL_CLIENT_ID,
+      env.GMAIL_CLIENT_SECRET,
+      env.GMAIL_REFRESH_TOKEN,
     )
-
-    const calendarId = env.GOOGLE_CALENDAR_ID || 'primary'
 
     // Google Calendar 이벤트 생성 (Meet 자동 포함)
     const event = {
@@ -161,7 +118,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
 
     const calRes = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`,
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all`,
       {
         method: 'POST',
         headers: {
