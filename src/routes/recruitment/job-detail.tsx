@@ -214,22 +214,7 @@ export default function RecruitmentJobDetail() {
             </Card>
           )}
 
-          {/* AI 면접 질문 */}
-          {posting.ai_questions && (posting.ai_questions as string[]).length > 0 && (
-            <Card>
-              <CardHeader><CardTitle>AI 면접 질문</CardTitle></CardHeader>
-              <CardContent>
-                <ol className="space-y-2">
-                  {(posting.ai_questions as string[]).map((q, i) => (
-                    <li key={i} className="flex gap-3 text-sm">
-                      <span className="text-brand-600 font-semibold shrink-0">{i + 1}.</span>
-                      <span className="text-gray-700">{q}</span>
-                    </li>
-                  ))}
-                </ol>
-              </CardContent>
-            </Card>
-          )}
+          {/* AI 면접 질문 — 숨김 처리 */}
 
           {/* 지원자 목록 */}
           <Card>
