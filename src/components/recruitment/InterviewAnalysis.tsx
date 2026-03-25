@@ -124,7 +124,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         .from('interview_analyses')
         .select('*')
         .eq('candidate_id', candidateId)
-        .order('created_at', { ascending: true }),
+        .order('created_at', { ascending: false }),
     ])
 
     const schedules = (schedRes.data || []) as ScheduleRow[]
@@ -329,6 +329,14 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         toast('AI 설정이 필요합니다. (설정 > AI 설정)', 'error')
         setAnalyzingId(null)
         return
+      }
+
+      // 이전 에러 레코드 삭제
+      if (group.analysis?.status === 'error') {
+        await supabase
+          .from('interview_analyses')
+          .delete()
+          .eq('id', group.analysis.id)
       }
 
       // Signed URL 생성
