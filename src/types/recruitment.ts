@@ -31,6 +31,7 @@ export interface JobPosting {
   contact_phone: string | null
   company_intro: string | null
   team_intro: string | null
+  survey_template_id: string | null
   created_by: string | null
   created_at: string
   updated_at: string
