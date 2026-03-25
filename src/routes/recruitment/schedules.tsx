@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Calendar, Clock, Video, MapPin, Send, CheckCircle, XCircle, Loader2, Sparkles } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/Card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -12,9 +12,9 @@ import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { generateAIContent, type AIConfig } from '@/lib/ai-client'
 import { useAllSchedules, useInterviewScheduleMutations } from '@/hooks/useInterviewSchedules'
-import { CANDIDATE_STATUS_LABELS } from '@/lib/recruitment-constants'
+import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS } from '@/lib/recruitment-constants'
 import { formatDateTime, formatDate } from '@/lib/utils'
-import type { Candidate } from '@/types/recruitment'
+import type { Candidate, CandidateStatus } from '@/types/recruitment'
 
 const SCHEDULE_STATUS_LABELS: Record<string, string> = {
   scheduled: '예정',
@@ -74,13 +74,14 @@ export default function InterviewSchedules() {
   })
 
   useEffect(() => {
-    // 면접 배정 가능한 지원자 목록 (이력서 검토 이후 ~ 면접 완료 전)
+    // 면접 배정 가능한 지원자 (합격/불합격 제외 전체)
     supabase
       .from('candidates')
       .select('*')
-      .in('status', ['resume_reviewed', 'survey_sent', 'survey_done', 'interview_scheduled', 'video_done', 'face_to_face_done'])
+      .not('status', 'in', '("rejected","hired","decided")')
       .order('created_at', { ascending: true })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        console.log('[면접일정] 지원자 조회:', { count: data?.length, error, statuses: data?.map(c => c.status) })
         if (data) setCandidates(data as Candidate[])
       })
   }, [])
@@ -310,6 +311,43 @@ ${candidateList}
           </CardContent>
         </Card>
       </div>
+
+      {/* 면접 대기 지원자 */}
+      {candidates.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">면접 대기 지원자 ({candidates.length}명)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {candidates.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between p-2.5 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                  onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-gray-900">{c.name}</span>
+                    <span className="text-xs text-gray-400">{c.email}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className={CANDIDATE_STATUS_COLORS[c.status as CandidateStatus] || ''}>
+                      {CANDIDATE_STATUS_LABELS[c.status as CandidateStatus] || c.status}
+                    </Badge>
+                    <Button size="sm" variant="outline" onClick={(e) => {
+                      e.stopPropagation()
+                      setForm((p) => ({ ...p, candidate_id: c.id }))
+                      setDialogOpen(true)
+                    }}>
+                      일정 배정
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 일정 목록 */}
       {schedules.length === 0 ? (
