@@ -6,6 +6,12 @@
 
 interface Env {}
 
+interface FileAttachment {
+  mimeType: string  // e.g. 'application/pdf', 'image/jpeg'
+  base64: string    // base64-encoded file data
+  name?: string     // optional file name
+}
+
 interface AIRequestBody {
   provider: 'gemini' | 'openai' | 'claude'
   model: string
@@ -13,6 +19,7 @@ interface AIRequestBody {
   prompt?: string
   systemPrompt?: string
   messages?: { role: string; content: string }[]
+  files?: FileAttachment[]  // 첨부 파일 (멀티모달)
 }
 
 const CORS_HEADERS = {
@@ -85,9 +92,21 @@ async function callGemini(apiKey: string, model: string, body: AIRequestBody): P
       generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
     }
   } else {
+    // 텍스트 + 파일 첨부 (멀티모달)
+    const parts: any[] = [{ text: body.prompt || '' }]
+    if (body.files && body.files.length > 0) {
+      for (const file of body.files) {
+        parts.push({
+          inline_data: {
+            mime_type: file.mimeType,
+            data: file.base64,
+          },
+        })
+      }
+    }
     requestBody = {
-      contents: [{ parts: [{ text: body.prompt || '' }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+      contents: [{ parts }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
     }
   }
 

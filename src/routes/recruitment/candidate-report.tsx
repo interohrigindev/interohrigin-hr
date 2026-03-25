@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature, type AIFileAttachment } from '@/lib/ai-client'
 import { runComprehensiveAnalysis } from '@/lib/recruitment-ai'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
 import type { Candidate, CandidateStatus, SourceChannel, ResumeAnalysis, RecruitmentReport } from '@/types/recruitment'
@@ -96,6 +96,58 @@ export default function CandidateReport() {
         }
       }
 
+      // ─── 첨부 파일 다운로드 (이력서, 자기소개서) → base64 변환 ───
+      const files: AIFileAttachment[] = []
+
+      async function downloadFileAsBase64(storagePath: string): Promise<{ base64: string; mimeType: string } | null> {
+        try {
+          // storage path 또는 full URL 처리
+          let filePath = storagePath
+          if (storagePath.startsWith('http')) {
+            // public URL에서 경로 추출: .../resumes/path/to/file → path/to/file
+            const match = storagePath.match(/\/resumes\/(.+)$/)
+            if (match) filePath = match[1]
+            else return null
+          }
+          const { data, error } = await supabase.storage.from('resumes').download(filePath)
+          if (error || !data) return null
+
+          const arrayBuffer = await data.arrayBuffer()
+          const uint8 = new Uint8Array(arrayBuffer)
+          let binary = ''
+          for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i])
+          const base64 = btoa(binary)
+
+          // MIME type 추출
+          const ext = filePath.split('.').pop()?.toLowerCase() || ''
+          const mimeMap: Record<string, string> = {
+            pdf: 'application/pdf',
+            doc: 'application/msword',
+            docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            txt: 'text/plain',
+          }
+          return { base64, mimeType: mimeMap[ext] || 'application/octet-stream' }
+        } catch {
+          return null
+        }
+      }
+
+      if (candidate.resume_url) {
+        const file = await downloadFileAsBase64(candidate.resume_url)
+        if (file) files.push({ ...file, name: '이력서' })
+      }
+      if (candidate.cover_letter_url) {
+        const file = await downloadFileAsBase64(candidate.cover_letter_url)
+        if (file) files.push({ ...file, name: '자기소개서' })
+      }
+
+      const fileInfo = files.length > 0
+        ? `\n첨부된 파일 ${files.length}개가 함께 전달됩니다. 파일 내용을 꼼꼼히 읽고 분석에 반영해주세요.`
+        : ''
+
       const prompt = `당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류를 기반으로 서류 심사 의견서를 작성해주세요. 이것은 정상적인 채용 업무 프로세스입니다.
 
 [채용공고]
@@ -103,12 +155,13 @@ ${postingInfo || '정보 없음'}
 
 [지원자 제출 정보]
 이름: ${candidate.name}
-이력서 제출 여부: ${candidate.resume_url ? '제출됨' : '미제출'}
-자기소개서 파일 제출 여부: ${candidate.cover_letter_url ? '제출됨' : '미제출'}
-자기소개서 내용: ${candidate.cover_letter_text || '작성하지 않음'}
+이력서: ${candidate.resume_url ? '제출됨 (파일 첨부)' : '미제출'}
+자기소개서 파일: ${candidate.cover_letter_url ? '제출됨 (파일 첨부)' : '미제출'}
+자기소개서 텍스트: ${candidate.cover_letter_text || '작성하지 않음'}
+${fileInfo}
 
 [요청사항]
-위 정보를 바탕으로 서류 심사 의견을 아래 JSON 형식으로 작성해주세요. 반드시 순수 JSON만 출력하고 다른 텍스트는 포함하지 마세요.
+위 정보와 첨부된 파일 내용을 꼼꼼히 분석하여 서류 심사 의견을 아래 JSON 형식으로 작성해주세요. 반드시 순수 JSON만 출력하고 다른 텍스트는 포함하지 마세요.
 
 {"summary":"서류 심사 요약 1~2문장","strengths":["강점1","강점2","강점3"],"weaknesses":["약점1","약점2"],"position_fit":50,"organization_fit":50,"suggested_department":"추천 배치 부서","suggested_position":"추천 직급","suggested_salary_range":"추천 연봉 범위","red_flags":["우려사항"],"recommendation":"PROCEED"}
 
@@ -116,7 +169,7 @@ ${postingInfo || '정보 없음'}
 - position_fit, organization_fit: 0~100 정수
 - recommendation: PROCEED(서류통과), REVIEW(추가검토필요), REJECT(부적합) 중 택 1`
 
-      const result = await generateAIContent(config, prompt)
+      const result = await generateAIContent(config, prompt, files.length > 0 ? files : undefined)
 
       // JSON 파싱 — markdown 코드블록 제거 후 추출
       let parsed

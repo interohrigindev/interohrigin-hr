@@ -72,14 +72,23 @@ async function callAIProxy(apiKey: string, body: Record<string, unknown>): Promi
   return (data as any).content ?? ''
 }
 
+// ─── File attachment type ────────────────────────────────────────
+
+export interface AIFileAttachment {
+  mimeType: string
+  base64: string
+  name?: string
+}
+
 // ─── Unified call ────────────────────────────────────────────────
 
-export async function generateAIContent(config: AIConfig, prompt: string): Promise<AIResponse> {
+export async function generateAIContent(config: AIConfig, prompt: string, files?: AIFileAttachment[]): Promise<AIResponse> {
   const content = await callAIProxy(config.apiKey, {
     provider: config.provider,
     model: config.model,
     action: 'generate',
     prompt,
+    ...(files && files.length > 0 ? { files } : {}),
   })
 
   return { content, provider: config.provider, model: config.model }
