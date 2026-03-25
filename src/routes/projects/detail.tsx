@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify'
 import {
   ArrowLeft, Plus, Send, FileText, Bell,
   BarChart3, CheckCircle, Loader2, AlertTriangle, ListChecks,
-  Pencil, X, ChevronUp, ChevronDown, Trash2,
+  Pencil, X, ChevronUp, ChevronDown, Trash2, ChevronRight, Download,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -52,6 +52,7 @@ export default function ProjectDetailPage() {
   const [taskPriority, setTaskPriority] = useState<TaskPriority>('normal')
   const [taskDueDate, setTaskDueDate] = useState('')
   const [taskDescription, setTaskDescription] = useState('')
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
 
   // Update form
   const [showUpdateForm, setShowUpdateForm] = useState(false)
@@ -113,6 +114,7 @@ export default function ProjectDetailPage() {
     const { error } = await supabase.from('tasks').insert({
       linked_board_id: id,
       title: taskTitle,
+      description: taskDescription || null,
       assignee_id: taskAssignee || null,
       priority: taskPriority,
       status: 'todo',
@@ -131,6 +133,21 @@ export default function ProjectDetailPage() {
     const next: Record<TaskStatus, TaskStatus> = { todo: 'in_progress', in_progress: 'done', done: 'todo', cancelled: 'todo' }
     await supabase.from('tasks').update({ status: next[task.status] }).eq('id', task.id)
     loadTasks()
+  }
+
+  function toggleExpandTask(taskId: string) {
+    setExpandedTasks((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes}B`
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)}KB`
+    return `${(bytes / 1048576).toFixed(1)}MB`
   }
 
   function openEditDialog() {
@@ -556,6 +573,24 @@ export default function ProjectDetailPage() {
                         </span>
                       </div>
                       <div className="text-sm text-gray-700 prose prose-sm max-w-none [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(u.content || '') }} />
+                      {u.attachments && u.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {u.attachments.map((att: { url: string; name: string; size: number; type: string }, ai: number) => (
+                            <a
+                              key={ai}
+                              href={att.url}
+                              download={att.name}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-sm transition-colors"
+                            >
+                              <Download className="h-3.5 w-3.5 text-gray-400" />
+                              <span className="text-gray-700 truncate max-w-[200px]">{att.name}</span>
+                              <span className="text-xs text-gray-400">({formatFileSize(att.size)})</span>
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -617,23 +652,45 @@ export default function ProjectDetailPage() {
               const statusIcon = task.status === 'done' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜'
               const isOverdue = task.status !== 'done' && task.due_date && new Date(task.due_date) < new Date()
               const assigneeName = employees.find((e) => e.id === task.assignee_id)?.name
+              const isExpanded = expandedTasks.has(task.id)
 
               return (
-                <div key={task.id} className={`flex items-center gap-3 p-3 border rounded-lg ${isOverdue ? 'border-red-300 bg-red-50' : 'border-gray-200'} ${task.status === 'done' ? 'opacity-60' : ''}`}>
-                  <button onClick={() => toggleTaskStatus(task)} className="text-lg shrink-0" title="상태 변경">
-                    {statusIcon}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <span className={`text-sm ${task.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                      {task.title}
-                    </span>
+                <div key={task.id} className={`border rounded-lg overflow-hidden ${isOverdue ? 'border-red-300 bg-red-50' : 'border-gray-200'} ${task.status === 'done' ? 'opacity-60' : ''}`}>
+                  <div className="flex items-center gap-3 p-3">
+                    <button onClick={(e) => { e.stopPropagation(); toggleTaskStatus(task) }} className="text-lg shrink-0" title="상태 변경">
+                      {statusIcon}
+                    </button>
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => toggleExpandTask(task.id)}>
+                      <span className={`text-sm ${task.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                        {task.title}
+                      </span>
+                    </div>
+                    <Badge className={`text-[10px] ${priorityColor}`}>{task.priority}</Badge>
+                    {assigneeName && <span className="text-xs text-gray-500">{assigneeName}</span>}
+                    {task.due_date && (
+                      <span className={`text-[10px] ${isOverdue ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
+                        {task.due_date.slice(5)}
+                      </span>
+                    )}
+                    <button onClick={() => toggleExpandTask(task.id)} className="p-1 rounded hover:bg-gray-100 shrink-0 transition-colors">
+                      {isExpanded
+                        ? <ChevronDown className="h-4 w-4 text-gray-400" />
+                        : <ChevronRight className="h-4 w-4 text-gray-400" />
+                      }
+                    </button>
                   </div>
-                  <Badge className={`text-[10px] ${priorityColor}`}>{task.priority}</Badge>
-                  {assigneeName && <span className="text-xs text-gray-500">{assigneeName}</span>}
-                  {task.due_date && (
-                    <span className={`text-[10px] ${isOverdue ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
-                      {task.due_date.slice(5)}
-                    </span>
+                  {isExpanded && (
+                    <div className="px-4 pb-3 pt-0 ml-10 border-t border-gray-100">
+                      {task.description ? (
+                        <div className="text-sm text-gray-700 prose prose-sm max-w-none mt-2 [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(task.description) }} />
+                      ) : (
+                        <p className="text-sm text-gray-400 mt-2">상세 내용 없음</p>
+                      )}
+                      <p className="text-[10px] text-gray-400 mt-2">
+                        작성일: {new Date(task.created_at).toLocaleDateString('ko-KR')}
+                        {task.updated_at !== task.created_at && ` · 수정일: ${new Date(task.updated_at).toLocaleDateString('ko-KR')}`}
+                      </p>
+                    </div>
                   )}
                 </div>
               )

@@ -12,6 +12,67 @@ import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import type { DailyReport, DailyReportTask, Task } from '@/types/work'
 
+/* ─── TaskSection: 컴포넌트 외부 정의 (re-render 시 unmount 방지) ─── */
+function TaskSection({
+  title,
+  tasks: sectionTasks,
+  onAdd,
+  onUpdate,
+  onRemove,
+  highlight,
+}: {
+  title: string
+  tasks: DailyReportTask[]
+  onAdd: () => void
+  onUpdate: (idx: number, field: keyof DailyReportTask, value: string) => void
+  onRemove: (idx: number) => void
+  highlight?: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className={`text-base ${highlight ? 'text-red-700' : ''}`}>{title}</CardTitle>
+          <Button size="sm" variant="outline" onClick={onAdd}>+ 추가</Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {sectionTasks.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-2">항목이 없습니다.</p>
+        ) : (
+          <div className="space-y-2">
+            {sectionTasks.map((task, idx) => (
+              <div
+                key={task.id}
+                className={`flex gap-2 items-start ${highlight ? 'bg-red-50 p-2 rounded-lg' : ''}`}
+              >
+                <Input
+                  value={task.title}
+                  onChange={(e) => onUpdate(idx, 'title', e.target.value)}
+                  placeholder="작업 제목"
+                  className="flex-1"
+                />
+                <Input
+                  value={task.note || ''}
+                  onChange={(e) => onUpdate(idx, 'note', e.target.value)}
+                  placeholder="메모"
+                  className="w-40"
+                />
+                <button
+                  onClick={() => onRemove(idx)}
+                  className="text-red-400 hover:text-red-600 text-sm mt-2"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
@@ -249,21 +310,80 @@ export default function DailyReportPage() {
         return
       }
 
-      const carryoverText = carryover.map((t) => `- ${t.title}`).join('\n')
+      // ─── 실제 업무 데이터 수집 ───────────────────────────
+      // 1) 담당 프로젝트 + 파이프라인 단계
+      const { data: myProjects } = await supabase
+        .from('project_boards')
+        .select('id, project_name, status, priority, launch_date')
+        .contains('assignee_ids', [employeeId])
+        .in('status', ['active', 'planning'])
+        .order('priority')
+
+      let projectContext = ''
+      if (myProjects && myProjects.length > 0) {
+        const projectIds = myProjects.map((p) => p.id)
+        const { data: stages } = await supabase
+          .from('pipeline_stages')
+          .select('project_id, stage_name, status, deadline')
+          .in('project_id', projectIds)
+          .neq('status', '완료')
+          .order('stage_order')
+
+        const today = new Date(selectedDate)
+        const stagesByProject = new Map<string, string[]>()
+        for (const s of (stages || [])) {
+          const lines = stagesByProject.get(s.project_id) || []
+          const deadline = s.deadline ? new Date(s.deadline) : null
+          const isOverdue = deadline && deadline < today
+          const daysLeft = deadline ? Math.ceil((deadline.getTime() - today.getTime()) / 86400000) : null
+          let deadlineInfo = ''
+          if (isOverdue) deadlineInfo = ` ⚠️ D+${Math.abs(daysLeft!)}일 지연`
+          else if (daysLeft !== null && daysLeft <= 3) deadlineInfo = ` (D-${daysLeft}일)`
+          else if (s.deadline) deadlineInfo = ` (마감: ${s.deadline})`
+          lines.push(`  - [${s.status}] ${s.stage_name}${deadlineInfo}`)
+          stagesByProject.set(s.project_id, lines)
+        }
+
+        projectContext = myProjects.map((p) => {
+          const stageLines = stagesByProject.get(p.id)?.join('\n') || '  - (진행중 단계 없음)'
+          return `📁 ${p.project_name} (우선순위: ${p.priority}, 출시: ${p.launch_date || '미정'})\n${stageLines}`
+        }).join('\n\n')
+      }
+
+      // 2) 할당된 작업
       const myTasksText = myTasks
         .filter((t) => t.status !== 'done' && t.status !== 'cancelled')
-        .map((t) => `- [${t.priority}] ${t.title} (마감: ${t.due_date || '없음'})`)
+        .map((t) => `- [${t.priority}] ${t.title} (마감: ${t.due_date || '없음'}, 상태: ${t.status})`)
         .join('\n')
 
+      // 3) 이월 작업
+      const carryoverText = carryover.map((t) => `- ${t.title}`).join('\n')
+
+      // 4) 오늘 이미 완료한 항목
+      const completedText = completed.map((t) => `- ${t.title}`).join('\n')
+
+      // ─── 프롬프트 구성 ──────────────────────────────────
       const prompt = `오늘(${selectedDate}) 업무 우선순위를 제안해주세요.
 
-어제 미완료 작업:
-${carryoverText || '없음'}
+## 담당 프로젝트 및 파이프라인 현황
+${projectContext || '담당 프로젝트 없음'}
 
-현재 할당된 작업:
+## 할당된 작업
 ${myTasksText || '없음'}
 
-3줄 이내로 "오늘 이것부터 하세요" 형식으로 우선순위를 제안해주세요.`
+## 어제 이월(미완료) 작업
+${carryoverText || '없음'}
+
+## 오늘 이미 완료한 항목
+${completedText || '아직 없음'}
+
+---
+위 데이터를 분석하여 다음 형식으로 우선순위를 제안해주세요:
+1. 지연된 단계나 마감 임박 작업을 최우선으로 배치
+2. 각 항목에 프로젝트명/작업명을 구체적으로 명시
+3. 이미 완료한 항목은 제외
+4. 5줄 이내로 간결하게 작성
+5. 데이터가 없는 경우 "등록된 프로젝트/작업이 없습니다. 프로젝트 보드에서 작업을 추가해주세요."라고 안내`
 
       const result = await generateAIContent(config, prompt)
       setAiSuggestion(result.content)
@@ -306,62 +426,6 @@ ${myTasksText || '없음'}
   }
 
   if (loading) return <PageSpinner />
-
-  function TaskSection({
-    title,
-    tasks: sectionTasks,
-    setter,
-    highlight,
-  }: {
-    title: string
-    tasks: DailyReportTask[]
-    setter: React.Dispatch<React.SetStateAction<DailyReportTask[]>>
-    highlight?: boolean
-  }) {
-    return (
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className={`text-base ${highlight ? 'text-red-700' : ''}`}>{title}</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => addTask(setter)}>+ 추가</Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {sectionTasks.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-2">항목이 없습니다.</p>
-          ) : (
-            <div className="space-y-2">
-              {sectionTasks.map((task, idx) => (
-                <div
-                  key={task.id}
-                  className={`flex gap-2 items-start ${highlight ? 'bg-red-50 p-2 rounded-lg' : ''}`}
-                >
-                  <Input
-                    value={task.title}
-                    onChange={(e) => updateTask(setter, idx, 'title', e.target.value)}
-                    placeholder="작업 제목"
-                    className="flex-1"
-                  />
-                  <Input
-                    value={task.note || ''}
-                    onChange={(e) => updateTask(setter, idx, 'note', e.target.value)}
-                    placeholder="메모"
-                    className="w-40"
-                  />
-                  <button
-                    onClick={() => removeTask(setter, idx)}
-                    className="text-red-400 hover:text-red-600 text-sm mt-2"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    )
-  }
 
   return (
     <div className="space-y-6">
@@ -426,18 +490,38 @@ ${myTasksText || '없음'}
       <TaskSection
         title="미완료 이월 작업"
         tasks={carryover}
-        setter={setCarryover}
+        onAdd={() => addTask(setCarryover)}
+        onUpdate={(idx, field, value) => updateTask(setCarryover, idx, field, value)}
+        onRemove={(idx) => removeTask(setCarryover, idx)}
         highlight
       />
 
       {/* Completed */}
-      <TaskSection title="완료한 작업" tasks={completed} setter={setCompleted} />
+      <TaskSection
+        title="완료한 작업"
+        tasks={completed}
+        onAdd={() => addTask(setCompleted)}
+        onUpdate={(idx, field, value) => updateTask(setCompleted, idx, field, value)}
+        onRemove={(idx) => removeTask(setCompleted, idx)}
+      />
 
       {/* In Progress */}
-      <TaskSection title="진행 중 작업" tasks={inProgress} setter={setInProgress} />
+      <TaskSection
+        title="진행 중 작업"
+        tasks={inProgress}
+        onAdd={() => addTask(setInProgress)}
+        onUpdate={(idx, field, value) => updateTask(setInProgress, idx, field, value)}
+        onRemove={(idx) => removeTask(setInProgress, idx)}
+      />
 
       {/* Planned for Tomorrow */}
-      <TaskSection title="내일 계획" tasks={planned} setter={setPlanned} />
+      <TaskSection
+        title="내일 계획"
+        tasks={planned}
+        onAdd={() => addTask(setPlanned)}
+        onUpdate={(idx, field, value) => updateTask(setPlanned, idx, field, value)}
+        onRemove={(idx) => removeTask(setPlanned, idx)}
+      />
 
       {/* Satisfaction + Blockers */}
       <Card>
