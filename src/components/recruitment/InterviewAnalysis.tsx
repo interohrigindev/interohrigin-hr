@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { getAIConfigForFeature } from '@/lib/ai-client'
 import { formatDateTime } from '@/lib/utils'
 
 interface InterviewAnalysisProps {
@@ -322,14 +323,9 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
     setAnalyzingId(groupKey)
 
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings')
-        .select('*')
-        .eq('is_active', true)
-        .limit(1)
-        .single()
+      const aiConfig = await getAIConfigForFeature('interview_transcription')
 
-      if (!aiSettings) {
+      if (!aiConfig) {
         toast('AI 설정이 필요합니다. (설정 > AI 설정)', 'error')
         setAnalyzingId(null)
         return
@@ -356,8 +352,8 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
           recording_id: recording.id,
           interview_type: group.type,
           status: 'transcribing',
-          ai_provider: aiSettings.provider,
-          ai_model: aiSettings.model,
+          ai_provider: aiConfig.provider,
+          ai_model: aiConfig.model,
         })
         .select()
         .single()
@@ -370,8 +366,8 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recordingUrl: signedData.signedUrl,
-          apiKey: aiSettings.api_key,
-          model: aiSettings.model,
+          apiKey: aiConfig.apiKey,
+          model: aiConfig.model,
           candidateName,
           interviewType: group.type,
         }),
