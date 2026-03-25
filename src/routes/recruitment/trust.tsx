@@ -121,8 +121,10 @@ export default function AITrustDashboard() {
   if (loading) return <PageSpinner />
 
   const accuracyRate = metrics?.accuracy_rate ?? 0
-  const totalPredictions = metrics?.total_predictions ?? 0
-  const correctPredictions = metrics?.correct_predictions ?? 0
+  const totalPredictions = metrics?.total_predictions ?? logs.length
+  const correctPredictions = metrics?.correct_predictions ?? logs.filter((l) => l.match_result === 'match').length
+  const partialCount = logs.filter((l) => l.match_result === 'partial').length
+  const mismatchCount = logs.filter((l) => l.match_result === 'mismatch').length
 
   return (
     <div className="space-y-6">
@@ -193,8 +195,8 @@ export default function AITrustDashboard() {
                 <div
                   className="h-full rounded-full bg-emerald-500 transition-all"
                   style={{
-                    width: totalPredictions > 0
-                      ? `${(correctPredictions / totalPredictions) * 100}%`
+                    width: logs.length > 0
+                      ? `${(correctPredictions / logs.length) * 100}%`
                       : '0%',
                   }}
                 />
@@ -203,16 +205,14 @@ export default function AITrustDashboard() {
             <div>
               <div className="mb-1 flex items-center justify-between text-sm">
                 <span className="text-gray-600">부분 일치 (Partial)</span>
-                <span className="font-medium">
-                  {logs.filter((l) => l.match_result === 'partial').length}건
-                </span>
+                <span className="font-medium">{partialCount}건</span>
               </div>
               <div className="h-6 w-full overflow-hidden rounded-full bg-gray-100">
                 <div
                   className="h-full rounded-full bg-amber-500 transition-all"
                   style={{
-                    width: totalPredictions > 0
-                      ? `${(logs.filter((l) => l.match_result === 'partial').length / totalPredictions) * 100}%`
+                    width: logs.length > 0
+                      ? `${(partialCount / logs.length) * 100}%`
                       : '0%',
                   }}
                 />
@@ -221,16 +221,14 @@ export default function AITrustDashboard() {
             <div>
               <div className="mb-1 flex items-center justify-between text-sm">
                 <span className="text-gray-600">불일치 (Mismatch)</span>
-                <span className="font-medium">
-                  {logs.filter((l) => l.match_result === 'mismatch').length}건
-                </span>
+                <span className="font-medium">{mismatchCount}건</span>
               </div>
               <div className="h-6 w-full overflow-hidden rounded-full bg-gray-100">
                 <div
                   className="h-full rounded-full bg-red-500 transition-all"
                   style={{
-                    width: totalPredictions > 0
-                      ? `${(logs.filter((l) => l.match_result === 'mismatch').length / totalPredictions) * 100}%`
+                    width: logs.length > 0
+                      ? `${(mismatchCount / logs.length) * 100}%`
                       : '0%',
                   }}
                 />

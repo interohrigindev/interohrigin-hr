@@ -323,6 +323,95 @@ ${fileInfo}
     }
   }
 
+  // 최종 합격/불합격 결정 + AI 신뢰도 자동 기록
+  async function handleHiringDecision(decision: 'hired' | 'rejected') {
+    if (!id || !candidate || !report) return
+
+    try {
+      // 1. hiring_decisions 기록
+      await supabase.from('hiring_decisions').insert({
+        candidate_id: id,
+        decision,
+        decided_by: null,
+        ai_recommendation: report.ai_recommendation,
+        ai_score: report.overall_score,
+      })
+
+      // 2. 지원자 상태 변경
+      await supabase.from('candidates').update({ status: decision }).eq('id', id)
+
+      // 3. AI 신뢰도 자동 기록 — ai_accuracy_log
+      const aiRec = report.ai_recommendation // 'STRONG_HIRE', 'HIRE', 'REVIEW', 'NO_HIRE'
+      const aiSaysHire = aiRec === 'STRONG_HIRE' || aiRec === 'HIRE'
+      const actualHire = decision === 'hired'
+      const matchResult = aiSaysHire === actualHire
+        ? 'match'
+        : (aiRec === 'REVIEW' ? 'partial' : 'mismatch')
+
+      await supabase.from('ai_accuracy_log').insert({
+        candidate_id: id,
+        context_type: 'hiring',
+        ai_recommendation: aiRec,
+        ai_score: report.overall_score,
+        actual_decision: decision === 'hired' ? '합격' : '불합격',
+        match_result: matchResult,
+        notes: `AI: ${aiRec} (${report.overall_score}점) → 실제: ${decision === 'hired' ? '합격' : '불합격'}`,
+      })
+
+      // 4. ai_trust_metrics 자동 집계 업데이트
+      await updateTrustMetrics()
+
+      setCandidate((p) => p ? { ...p, status: decision as CandidateStatus } : p)
+      toast(decision === 'hired' ? '합격 처리되었습니다.' : '불합격 처리되었습니다.', 'success')
+    } catch (err: any) {
+      toast('결정 처리 실패: ' + err.message, 'error')
+    }
+  }
+
+  // ai_trust_metrics 자동 집계
+  async function updateTrustMetrics() {
+    // ai_accuracy_log에서 전체 통계 집계
+    const { data: allLogs } = await supabase
+      .from('ai_accuracy_log')
+      .select('match_result')
+
+    if (!allLogs || allLogs.length === 0) return
+
+    const total = allLogs.length
+    const correct = allLogs.filter((l: any) => l.match_result === 'match').length
+    const partial = allLogs.filter((l: any) => l.match_result === 'partial').length
+    const accuracyRate = (correct + partial * 0.5) / total // partial은 0.5점
+
+    // 기존 metrics 레코드 확인
+    const { data: existingMetrics } = await supabase
+      .from('ai_trust_metrics')
+      .select('id')
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (existingMetrics && existingMetrics.length > 0) {
+      await supabase
+        .from('ai_trust_metrics')
+        .update({
+          total_predictions: total,
+          correct_predictions: correct,
+          accuracy_rate: Math.round(accuracyRate * 1000) / 1000,
+          period_end: new Date().toISOString().slice(0, 10),
+        })
+        .eq('id', existingMetrics[0].id)
+    } else {
+      await supabase.from('ai_trust_metrics').insert({
+        period_start: new Date().toISOString().slice(0, 10),
+        period_end: new Date().toISOString().slice(0, 10),
+        total_predictions: total,
+        correct_predictions: correct,
+        accuracy_rate: Math.round(accuracyRate * 1000) / 1000,
+        current_phase: 'A',
+        details: {},
+      })
+    }
+  }
+
   // 사전질의서 재발송 (상태를 survey_sent로 리셋 + 이메일 재발송)
   async function handleResendSurvey() {
     if (!candidate) return
@@ -1138,32 +1227,10 @@ ${surveyText || '응답 없음'}
               ) : /* Step 5: 분석 완료 → 합격/불합격 결정 */
               candidate.status === 'analyzed' && report ? (
                 <>
-                  <Button className="w-full" onClick={async () => {
-                    await supabase.from('hiring_decisions').insert({
-                      candidate_id: id,
-                      decision: 'hired',
-                      decided_by: null,
-                      ai_recommendation: report.ai_recommendation,
-                      ai_score: report.overall_score,
-                    })
-                    await supabase.from('candidates').update({ status: 'hired' }).eq('id', id)
-                    setCandidate((p) => p ? { ...p, status: 'hired' } : p)
-                    toast('합격 처리되었습니다.', 'success')
-                  }}>
+                  <Button className="w-full" onClick={() => handleHiringDecision('hired')}>
                     <CheckCircle className="h-4 w-4 mr-1" /> 합격
                   </Button>
-                  <Button variant="danger" className="w-full" onClick={async () => {
-                    await supabase.from('hiring_decisions').insert({
-                      candidate_id: id,
-                      decision: 'rejected',
-                      decided_by: null,
-                      ai_recommendation: report.ai_recommendation,
-                      ai_score: report.overall_score,
-                    })
-                    await supabase.from('candidates').update({ status: 'rejected' }).eq('id', id)
-                    setCandidate((p) => p ? { ...p, status: 'rejected' } : p)
-                    toast('불합격 처리되었습니다.', 'success')
-                  }}>
+                  <Button variant="danger" className="w-full" onClick={() => handleHiringDecision('rejected')}>
                     <XCircle className="h-4 w-4 mr-1" /> 불합격
                   </Button>
                 </>

@@ -121,18 +121,20 @@ export default function AIVerification() {
   async function handleFeedback() {
     setSaving(true)
     try {
-      const entries = data.filter((d) => d.accuracy !== null).map((d) => ({
-        context_type: 'performance',
-        predicted_value: d.ai_score,
-        actual_value: d.work_completion_rate ?? d.eval_score,
-        accuracy_score: d.accuracy,
-        metadata: {
+      const entries = data.filter((d) => d.accuracy !== null).map((d) => {
+        const actual = d.work_completion_rate ?? d.eval_score ?? 0
+        const diff = Math.abs((d.ai_score ?? 0) - actual)
+        const matchResult = diff <= 15 ? 'match' : diff <= 30 ? 'partial' : 'mismatch'
+        return {
           employee_id: d.employee.id,
-          employee_name: d.employee.name,
+          context_type: 'performance' as const,
           ai_recommendation: d.ai_recommendation,
-        },
-        created_at: new Date().toISOString(),
-      }))
+          ai_score: d.ai_score,
+          actual_decision: `성과 ${actual}점`,
+          match_result: matchResult,
+          notes: `AI ${d.ai_score}점 → 실제 ${actual}점 (정확도 ${d.accuracy}%)`,
+        }
+      })
 
       if (entries.length === 0) {
         toast('피드백할 데이터가 없습니다.', 'info')
