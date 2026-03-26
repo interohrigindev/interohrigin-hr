@@ -74,6 +74,7 @@ export interface Candidate {
   talent_match_score: number | null
   similar_employees: Record<string, unknown>[] | null
   processing_step: string | null
+  interviewer_comments: { author_id: string; author_name: string; content: string; created_at: string }[] | null
   created_at: string
   updated_at: string
 }

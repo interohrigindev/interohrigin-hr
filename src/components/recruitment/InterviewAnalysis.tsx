@@ -389,14 +389,25 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         }),
       })
 
-      const result = await res.json()
-
-      if (!res.ok || !result.success) {
+      let result: any
+      try {
+        const text = await res.text()
+        result = text ? JSON.parse(text) : {}
+      } catch {
         await supabase
           .from('interview_analyses')
-          .update({ status: 'error', error_message: result.error })
+          .update({ status: 'error', error_message: `서버 응답 파싱 실패 (HTTP ${res.status})` })
           .eq('id', analysisRecord.id)
-        throw new Error(result.error || '분석 실패')
+        throw new Error(`서버 응답 파싱 실패 (HTTP ${res.status}). 파일 크기가 20MB 이하인지 확인하세요.`)
+      }
+
+      if (!res.ok || !result.success) {
+        const errMsg = result.error || `분석 실패 (HTTP ${res.status})`
+        await supabase
+          .from('interview_analyses')
+          .update({ status: 'error', error_message: errMsg })
+          .eq('id', analysisRecord.id)
+        throw new Error(errMsg)
       }
 
       const a = result.analysis

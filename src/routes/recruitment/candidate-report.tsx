@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
+import { Textarea } from '@/components/ui/Textarea'
 import { useToast } from '@/components/ui/Toast'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature, type AIFileAttachment } from '@/lib/ai-client'
 import { runComprehensiveAnalysis } from '@/lib/recruitment-ai'
@@ -20,6 +22,7 @@ export default function CandidateReport() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { profile } = useAuth()
 
   const [candidate, setCandidate] = useState<Candidate | null>(null)
   const [analysis, setAnalysis] = useState<ResumeAnalysis | null>(null)
@@ -37,6 +40,9 @@ export default function CandidateReport() {
   const [decisionDialog, setDecisionDialog] = useState<{ open: boolean; decision: 'hired' | 'rejected' | null }>({ open: false, decision: null })
   const [sendEmail, setSendEmail] = useState(true)
   const [decidingInProgress, setDecidingInProgress] = useState(false)
+  const [aiQuestions, setAiQuestions] = useState<string[]>([])
+  const [comments, setComments] = useState<{ author_id: string; author_name: string; content: string; created_at: string }[]>([])
+  const [newComment, setNewComment] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -79,6 +85,21 @@ export default function CandidateReport() {
             .single()
           if (tmpl?.questions) setSurveyQuestions(tmpl.questions as typeof surveyQuestions)
         }
+      }
+
+      // AI 면접 질문 로딩
+      if (cand?.job_posting_id) {
+        const { data: jp } = await supabase
+          .from('job_postings')
+          .select('ai_questions')
+          .eq('id', cand.job_posting_id)
+          .single()
+        if (jp?.ai_questions) setAiQuestions((jp.ai_questions as string[]) || [])
+      }
+
+      // 면접관 코멘트 로딩
+      if (cand?.interviewer_comments) {
+        setComments((cand.interviewer_comments as typeof comments) || [])
       }
 
       // 종합 리포트
@@ -287,7 +308,7 @@ ${fileInfo}
     if (decision === 'proceed') {
       // 이메일 발송
       const baseUrl = window.location.origin
-      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}`
+      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}?t=${Date.now()}`
       const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl)
 
       try {
@@ -459,7 +480,7 @@ ${fileInfo}
     setResendingSurvey(true)
     try {
       const baseUrl = window.location.origin
-      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}`
+      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}?t=${Date.now()}`
       const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl)
 
       const emailRes = await fetch('/api/send-email', {
@@ -1011,6 +1032,98 @@ ${surveyText || '응답 없음'}
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* AI 추천 면접 질문 */}
+          {aiQuestions.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-brand-600" />
+                  AI 추천 면접 질문 ({aiQuestions.length}개)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-gray-400 mb-3">면접 시 활용할 수 있는 AI 추천 질문입니다.</p>
+                <ol className="space-y-2">
+                  {aiQuestions.map((q, i) => (
+                    <li key={i} className="flex gap-3 text-sm">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
+                      <span className="text-gray-700 pt-0.5">{q}</span>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 면접관 코멘트 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4" />
+                면접관 코멘트 ({comments.length}개)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {comments.length > 0 && (
+                <div className="space-y-3 mb-4">
+                  {comments.map((c, i) => (
+                    <div key={i} className="p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-gray-800">{c.author_name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400">{formatDate(c.created_at)}</span>
+                          {c.author_id === profile?.id && (
+                            <button
+                              onClick={async () => {
+                                const updated = comments.filter((_, idx) => idx !== i)
+                                await supabase.from('candidates').update({ interviewer_comments: updated }).eq('id', id)
+                                setComments(updated)
+                                toast('코멘트가 삭제되었습니다.')
+                              }}
+                              className="text-gray-400 hover:text-red-500"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.content}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="면접 평가, 인상, 특이사항 등을 기록하세요..."
+                  rows={2}
+                  className="text-sm"
+                />
+                <Button
+                  className="shrink-0 self-end"
+                  disabled={!newComment.trim()}
+                  onClick={async () => {
+                    if (!profile || !newComment.trim()) return
+                    const entry = {
+                      author_id: profile.id,
+                      author_name: profile.name,
+                      content: newComment.trim(),
+                      created_at: new Date().toISOString(),
+                    }
+                    const updated = [...comments, entry]
+                    await supabase.from('candidates').update({ interviewer_comments: updated }).eq('id', id)
+                    setComments(updated)
+                    setNewComment('')
+                    toast('코멘트가 등록되었습니다.')
+                  }}
+                >
+                  <Send className="h-4 w-4 mr-1" />등록
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

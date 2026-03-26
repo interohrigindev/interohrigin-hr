@@ -135,11 +135,33 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
       }, geminiRes.status)
     }
 
-    const geminiData = await geminiRes.json() as any
+    let geminiData: any
+    try {
+      const geminiText = await geminiRes.text()
+      geminiData = geminiText ? JSON.parse(geminiText) : {}
+    } catch {
+      return jsonResponse({ error: 'Gemini 응답 파싱 실패. 파일 형식이나 크기를 확인하세요.' }, 500)
+    }
+
+    // 차단된 응답 체크
+    const finishReason = geminiData.candidates?.[0]?.finishReason
+    if (finishReason === 'SAFETY' || finishReason === 'RECITATION') {
+      return jsonResponse({ error: `Gemini 안전 필터에 의해 차단되었습니다 (${finishReason}). 다른 파일로 시도해주세요.` }, 400)
+    }
+
     const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 
-    // 4. JSON 파싱
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+    if (!rawText.trim()) {
+      return jsonResponse({ error: 'Gemini가 빈 응답을 반환했습니다. 파일이 올바른 오디오/비디오 형식인지 확인하세요.' }, 500)
+    }
+
+    // 4. JSON 파싱 (마크다운 코드블록 제거 + 정리)
+    let cleaned = rawText
+      .replace(/```(?:json)?\s*/gi, '')
+      .replace(/```/g, '')
+      .trim()
+
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       return jsonResponse({
         error: '분석 결과 파싱 실패',
@@ -147,7 +169,27 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
       }, 500)
     }
 
-    const parsed = JSON.parse(jsonMatch[0])
+    let jsonStr = jsonMatch[0]
+
+    // trailing comma 제거 (JSON 파싱 오류의 주요 원인)
+    jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1')
+    // 제어 문자 제거
+    jsonStr = jsonStr.replace(/[\x00-\x1f\x7f]/g, (ch) => ch === '\n' || ch === '\r' || ch === '\t' ? ch : '')
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(jsonStr)
+    } catch {
+      // 2차 시도: 줄바꿈을 이스케이프 처리
+      try {
+        jsonStr = jsonStr.replace(/(?<!\\)\n/g, '\\n')
+        parsed = JSON.parse(jsonStr)
+      } catch (e2: unknown) {
+        const msg = e2 instanceof Error ? e2.message : 'JSON parse failed'
+        return jsonResponse({ error: `분석 결과 JSON 파싱 실패: ${msg}`, raw: rawText.slice(0, 500) }, 500)
+      }
+    }
+
     return jsonResponse({ success: true, analysis: parsed })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'

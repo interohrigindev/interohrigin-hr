@@ -34,7 +34,6 @@ import {
   ShieldCheck,
   AlertTriangle,
   Zap,
-  Database,
   LayoutGrid,
   Columns3,
   Plus,
@@ -104,6 +103,12 @@ const standaloneItems: NavItem[] = [
     label: '메신저',
     icon: <MessageSquare className="h-5 w-5" />,
   },
+  {
+    to: '/bulletin',
+    label: '게시판',
+    icon: <FileText className="h-5 w-5" />,
+  },
+  // { to: '/calendar', label: '캘린더', icon: <CalendarDays className="h-5 w-5" /> }, // 일시 숨김
 ]
 
 // 그룹 메뉴
@@ -116,7 +121,6 @@ const navGroups: NavGroup[] = [
       { to: '/admin/urgent', label: 'CEO 긴급 대시보드', icon: <Zap className="h-4 w-4" />, end: true },
       { to: '/admin/urgent/simple-eval', label: '간편 인사평가', icon: <ClipboardCheck className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
       { to: '/admin/urgent/penalties', label: '감점 현황', icon: <AlertTriangle className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
-      { to: '/admin/urgent/migration', label: '데이터 마이그레이션', icon: <Database className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
     ],
   },
   {

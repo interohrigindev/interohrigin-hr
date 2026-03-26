@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { Card, CardContent } from '@/components/ui/Card'
 import {
   Briefcase,
   Users,
@@ -17,6 +18,10 @@ import {
   ClipboardList,
   AlertTriangle,
   ChevronRight,
+  TrendingUp,
+  UserPlus,
+  FolderKanban,
+  Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -98,17 +103,28 @@ export default function Home() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* 인사말 */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          안녕하세요, {profile?.name}님
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">인터오리진 HR Platform에 오신 것을 환영합니다.</p>
+    <div className="space-y-6">
+      {/* 인사말 + 날짜 */}
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            안녕하세요, {profile?.name}님
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">인터오리진 HR Platform에 오신 것을 환영합니다.</p>
+        </div>
+        <p className="text-sm text-gray-400 hidden sm:block">
+          {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+        </p>
       </div>
+
+      {/* KPI 위젯 카드 */}
+      <KPIWidgets />
 
       {/* CEO 긴급 업무 배너 */}
       <UrgentTasksBanner navigate={navigate} />
+
+      {/* 오늘의 일정 */}
+      <TodayScheduleWidget navigate={navigate} />
 
       {/* 메인 블록 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -234,6 +250,110 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
         ))}
       </div>
     </div>
+  )
+}
+
+// ─── KPI 위젯 카드 ───────────────────────────────────────────────
+function KPIWidgets() {
+  const [kpis, setKpis] = useState({ urgentCount: 0, projectCount: 0, candidateCount: 0, pendingApprovals: 0 })
+
+  useEffect(() => {
+    async function fetch() {
+      const [urgentRes, projRes, candRes, approvalRes] = await Promise.all([
+        supabase.from('urgent_tasks').select('id', { count: 'exact', head: true }).in('status', ['pending', 'in_progress', 'overdue']),
+        supabase.from('projects').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('candidates').select('id', { count: 'exact', head: true }).eq('status', 'applied'),
+        supabase.from('approval_documents').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      ])
+      setKpis({
+        urgentCount: urgentRes.count || 0,
+        projectCount: projRes.count || 0,
+        candidateCount: candRes.count || 0,
+        pendingApprovals: approvalRes.count || 0,
+      })
+    }
+    fetch()
+  }, [])
+
+  const cards = [
+    { label: '긴급 업무', value: kpis.urgentCount, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: '진행 프로젝트', value: kpis.projectCount, icon: FolderKanban, color: 'text-brand-600', bg: 'bg-brand-50' },
+    { label: '신규 지원자', value: kpis.candidateCount, icon: UserPlus, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: '미처리 결재', value: kpis.pendingApprovals, icon: TrendingUp, color: 'text-amber-600', bg: 'bg-amber-50' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {cards.map(c => (
+        <Card key={c.label}>
+          <CardContent className="py-4 flex items-center gap-3">
+            <div className={cn('rounded-lg p-2', c.bg)}>
+              <c.icon className={cn('h-5 w-5', c.color)} />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{c.value}</p>
+              <p className="text-xs text-gray-500">{c.label}</p>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+// ─── 오늘의 일정 위젯 ────────────────────────────────────────────
+function TodayScheduleWidget({ navigate }: { navigate: ReturnType<typeof useNavigate> }) {
+  const [todayEvents, setTodayEvents] = useState<{ id: string; title: string; event_type: string; start_datetime: string; all_day: boolean }[]>([])
+
+  useEffect(() => {
+    async function fetch() {
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      const todayEnd = new Date()
+      todayEnd.setHours(23, 59, 59, 999)
+
+      const { data } = await supabase
+        .from('company_events')
+        .select('id, title, event_type, start_datetime, all_day')
+        .gte('start_datetime', todayStart.toISOString())
+        .lte('start_datetime', todayEnd.toISOString())
+        .order('start_datetime')
+        .limit(5)
+
+      if (data) setTodayEvents(data)
+    }
+    fetch()
+  }, [])
+
+  if (todayEvents.length === 0) return null
+
+  return (
+    <Card>
+      <CardContent className="py-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Clock className="h-4 w-4 text-brand-600" />
+            오늘의 일정
+          </h3>
+          <button
+            onClick={() => navigate('/calendar')}
+            className="text-sm text-brand-600 hover:text-brand-700 flex items-center gap-0.5"
+          >
+            전체 <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="space-y-2">
+          {todayEvents.map(evt => (
+            <div key={evt.id} className="flex items-center gap-3 text-sm">
+              <span className="text-xs text-gray-400 w-12 shrink-0">
+                {evt.all_day ? '종일' : new Date(evt.start_datetime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+              </span>
+              <span className="text-gray-700">{evt.title}</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

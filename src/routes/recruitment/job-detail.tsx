@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Link2, Copy, MapPin, Clock, Users, Banknote, CalendarDays, Building2, Phone, Mail, User, Briefcase, ListChecks, Gift, ChevronRight, Pencil } from 'lucide-react'
+import { ArrowLeft, Link2, Copy, MapPin, Clock, Users, Banknote, CalendarDays, Building2, Phone, Mail, User, Briefcase, ListChecks, Gift, ChevronRight, Pencil, Sparkles } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -214,7 +214,28 @@ export default function RecruitmentJobDetail() {
             </Card>
           )}
 
-          {/* AI 면접 질문 — 숨김 처리 */}
+          {/* AI 면접 질문 */}
+          {posting.ai_questions && (posting.ai_questions as string[]).length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-brand-600" />
+                  AI 추천 면접 질문 ({(posting.ai_questions as string[]).length}개)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-gray-400 mb-3">면접 시 활용할 수 있는 AI 추천 질문입니다.</p>
+                <ol className="space-y-2">
+                  {(posting.ai_questions as string[]).map((q, i) => (
+                    <li key={i} className="flex gap-3 text-sm">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
+                      <span className="text-gray-700 pt-0.5">{q}</span>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
 
           {/* 지원자 목록 */}
           <Card>

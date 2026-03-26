@@ -83,6 +83,13 @@ import SimpleEvaluation from '@/routes/urgent/simple-evaluation'
 import PenaltiesDashboard from '@/routes/urgent/penalties'
 import DataMigration from '@/routes/urgent/migration'
 
+// 게시판
+import BulletinIndex from '@/routes/bulletin/index'
+// 전사 캘린더
+import CalendarPage from '@/routes/calendar/index'
+import BulletinDetail from '@/routes/bulletin/detail'
+import BulletinWrite from '@/routes/bulletin/write'
+
 // 외부 페이지 (로그인 불필요)
 import PublicApply from '@/routes/public/apply'
 import PublicSurvey from '@/routes/public/survey'
@@ -181,6 +188,14 @@ function App() {
               <Route path="messenger" element={<MessengerPage />} />
               <Route path="messenger/:roomId" element={<MessengerPage />} />
 
+              {/* 전사 캘린더 */}
+              <Route path="calendar" element={<CalendarPage />} />
+
+              {/* 게시판 */}
+              <Route path="bulletin" element={<BulletinIndex />} />
+              <Route path="bulletin/write" element={<BulletinWrite />} />
+              <Route path="bulletin/:id" element={<BulletinDetail />} />
+
               {/* 프로젝트 & 업무 (통합) */}
               <Route path="admin/projects" element={<UnifiedDashboard />} />
               <Route path="admin/projects/board" element={<ProjectBoardPage />} />
@@ -209,7 +224,9 @@ function App() {
               <Route path="urgent" element={<UrgentDashboard />} />
               <Route path="admin/urgent/simple-eval" element={<AdminRoute><SimpleEvaluation /></AdminRoute>} />
               <Route path="admin/urgent/penalties" element={<AdminRoute><PenaltiesDashboard /></AdminRoute>} />
+              {/* 데이터 마이그레이션 → 일반설정으로 이동 (기존 경로 유지 + 새 경로 추가) */}
               <Route path="admin/urgent/migration" element={<AdminRoute><DataMigration /></AdminRoute>} />
+              <Route path="settings/integration" element={<AdminRoute><DataMigration /></AdminRoute>} />
 
               {/* 작업관리 (통합 메뉴에서 접근) */}
               <Route path="admin/work/tasks" element={<TaskManage />} />
