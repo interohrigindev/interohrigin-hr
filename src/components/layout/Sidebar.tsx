@@ -221,7 +221,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         .from('menu_permissions')
         .select('allowed_menus')
         .eq('employee_id', profile!.id)
-        .single()
+        .maybeSingle()
 
       if (data?.allowed_menus) {
         setAllowedMenus(data.allowed_menus as string[])
