@@ -39,6 +39,13 @@ export default function CandidateReport() {
   const [surveyReanalyzing, setSurveyReanalyzing] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState('')
   const [decisionDialog, setDecisionDialog] = useState<{ open: boolean; decision: 'hired' | 'rejected' | null }>({ open: false, decision: null })
+  const [offerConditions, setOfferConditions] = useState({
+    salary: '',
+    probation_salary: '',
+    regular_salary: '',
+    job_title: '',
+    start_date: '',
+  })
   const [sendEmail, setSendEmail] = useState(true)
   const [decidingInProgress, setDecidingInProgress] = useState(false)
   const [aiQuestions, setAiQuestions] = useState<string[]>([])
@@ -369,6 +376,9 @@ ${fileInfo}
         decided_by: null,
         ai_recommendation: report.ai_recommendation,
         ai_score: report.overall_score,
+        offered_salary: decision === 'hired' && offerConditions.salary ? parseInt(offerConditions.salary) : null,
+        offered_position: decision === 'hired' ? offerConditions.job_title || null : null,
+        start_date: decision === 'hired' && offerConditions.start_date ? offerConditions.start_date : null,
       })
 
       // 2. 지원자 상태 변경
@@ -400,7 +410,13 @@ ${fileInfo}
         try {
           const jobTitle = getJobTitle()
           const template = decision === 'hired'
-            ? hiringAcceptEmail(candidate.name, jobTitle)
+            ? hiringAcceptEmail(candidate.name, jobTitle, {
+                salary: offerConditions.salary,
+                probation_salary: offerConditions.probation_salary,
+                regular_salary: offerConditions.regular_salary,
+                job_title: offerConditions.job_title,
+                start_date: offerConditions.start_date,
+              })
             : hiringRejectEmail(candidate.name, jobTitle)
 
           const emailRes = await fetch('/api/send-email', {
@@ -1482,6 +1498,45 @@ ${surveyText || '응답 없음'}
                 {candidate.name}님을 {decisionDialog.decision === 'hired' ? '합격' : '불합격'} 처리합니다.
               </p>
             </div>
+
+            {/* 합격 조건 입력 (합격일 때만) */}
+            {decisionDialog.decision === 'hired' && (
+              <div className="border rounded-lg p-4 space-y-3">
+                <p className="text-sm font-semibold text-gray-700">합격 조건</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500">연봉 (만원)</label>
+                    <input type="number" placeholder="예: 4000" value={offerConditions.salary}
+                      onChange={(e) => setOfferConditions(p => ({ ...p, salary: e.target.value }))}
+                      className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">수습 급여 (만원)</label>
+                    <input type="number" placeholder="예: 3600" value={offerConditions.probation_salary}
+                      onChange={(e) => setOfferConditions(p => ({ ...p, probation_salary: e.target.value }))}
+                      className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">정규직 전환 급여 (만원)</label>
+                    <input type="number" placeholder="예: 4000" value={offerConditions.regular_salary}
+                      onChange={(e) => setOfferConditions(p => ({ ...p, regular_salary: e.target.value }))}
+                      className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">직무명</label>
+                    <input type="text" placeholder="예: 마케팅 기획" value={offerConditions.job_title}
+                      onChange={(e) => setOfferConditions(p => ({ ...p, job_title: e.target.value }))}
+                      className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">입사 예정일</label>
+                  <input type="date" value={offerConditions.start_date}
+                    onChange={(e) => setOfferConditions(p => ({ ...p, start_date: e.target.value }))}
+                    className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
+                </div>
+              </div>
+            )}
 
             {/* 이메일 발송 옵션 */}
             <div className="border rounded-lg p-4 space-y-3">

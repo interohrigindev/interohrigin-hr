@@ -66,8 +66,34 @@ export function surveyInviteEmail(
 
 export function hiringAcceptEmail(
   candidateName: string,
-  jobTitle?: string
+  jobTitle?: string,
+  conditions?: {
+    salary?: string
+    probation_salary?: string
+    regular_salary?: string
+    job_title?: string
+    start_date?: string
+  }
 ): { subject: string; html: string } {
+  const conditionRows = []
+  if (conditions?.job_title) conditionRows.push({ label: '직무', value: conditions.job_title })
+  if (conditions?.salary) conditionRows.push({ label: '연봉', value: `${Number(conditions.salary).toLocaleString()}만원` })
+  if (conditions?.probation_salary) conditionRows.push({ label: '수습 기간 급여', value: `${Number(conditions.probation_salary).toLocaleString()}만원` })
+  if (conditions?.regular_salary) conditionRows.push({ label: '정규직 전환 급여', value: `${Number(conditions.regular_salary).toLocaleString()}만원` })
+  if (conditions?.start_date) conditionRows.push({ label: '입사 예정일', value: conditions.start_date })
+
+  const conditionHtml = conditionRows.length > 0 ? `
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin:20px 0;">
+        <p style="font-size:14px;font-weight:bold;color:#1f2937;margin:0 0 12px;">채용 조건</p>
+        <table style="width:100%;font-size:14px;color:#374151;">
+          ${conditionRows.map(r => `
+          <tr>
+            <td style="padding:6px 0;font-weight:bold;width:120px;vertical-align:top;">${r.label}</td>
+            <td style="padding:6px 0;">${r.value}</td>
+          </tr>`).join('')}
+        </table>
+      </div>` : ''
+
   return {
     subject: `[인터오리진] ${candidateName}님, 합격을 축하드립니다`,
     html: `
@@ -98,6 +124,7 @@ export function hiringAcceptEmail(
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
         심사숙고 끝에 ${candidateName}님을 인터오리진의 새로운 구성원으로 모시게 되었습니다.
       </p>
+      ${conditionHtml}
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
         입사 일정 및 필요 서류 등 세부 사항은 별도로 안내드릴 예정입니다.
       </p>
