@@ -250,6 +250,12 @@ export function interviewInviteEmail(
         </a>
       </div>` : ''}
 
+      <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin:20px 0 0;">
+        <p style="font-size:13px;color:#92400e;line-height:1.5;margin:0;">
+          <strong>📌 안내사항</strong><br>
+          채용 관련 모든 안내는 이메일로 발송됩니다. 수신함을 자주 확인해 주세요.
+        </p>
+      </div>
       <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:16px 0 0;">
         면접 관련 문의사항이 있으시면 hr@interohrigin.com으로 연락 부탁드립니다.
       </p>
