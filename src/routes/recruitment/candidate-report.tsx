@@ -370,7 +370,8 @@ ${fileInfo}
 
     try {
       // 1. hiring_decisions 기록
-      await supabase.from('hiring_decisions').insert({
+      const offerToken = crypto.randomUUID()
+      const { data: hdData } = await supabase.from('hiring_decisions').insert({
         candidate_id: id,
         decision,
         decided_by: null,
@@ -379,7 +380,12 @@ ${fileInfo}
         offered_salary: decision === 'hired' && offerConditions.salary ? parseInt(offerConditions.salary) : null,
         offered_position: decision === 'hired' ? offerConditions.job_title || null : null,
         start_date: decision === 'hired' && offerConditions.start_date ? offerConditions.start_date : null,
-      })
+        offer_token: decision === 'hired' ? offerToken : null,
+        offer_conditions: decision === 'hired' ? {
+          probation_salary: offerConditions.probation_salary || null,
+          regular_salary: offerConditions.regular_salary || null,
+        } : null,
+      }).select('offer_token').single()
 
       // 2. 지원자 상태 변경
       await supabase.from('candidates').update({ status: decision }).eq('id', id)
@@ -409,6 +415,9 @@ ${fileInfo}
       if (sendEmail) {
         try {
           const jobTitle = getJobTitle()
+          const acceptUrl = decision === 'hired' && hdData?.offer_token
+            ? `${window.location.origin}/accept/${hdData.offer_token}`
+            : undefined
           const template = decision === 'hired'
             ? hiringAcceptEmail(candidate.name, jobTitle, {
                 salary: offerConditions.salary,
@@ -416,7 +425,7 @@ ${fileInfo}
                 regular_salary: offerConditions.regular_salary,
                 job_title: offerConditions.job_title,
                 start_date: offerConditions.start_date,
-              })
+              }, acceptUrl)
             : hiringRejectEmail(candidate.name, jobTitle)
 
           const emailRes = await fetch('/api/send-email', {

@@ -73,7 +73,8 @@ export function hiringAcceptEmail(
     regular_salary?: string
     job_title?: string
     start_date?: string
-  }
+  },
+  acceptUrl?: string
 ): { subject: string; html: string } {
   const conditionRows = []
   if (conditions?.job_title) conditionRows.push({ label: '직무', value: conditions.job_title })
@@ -125,9 +126,20 @@ export function hiringAcceptEmail(
         심사숙고 끝에 ${candidateName}님을 인터오리진의 새로운 구성원으로 모시게 되었습니다.
       </p>
       ${conditionHtml}
+      ${acceptUrl ? `
+      <div style="text-align:center;margin:28px 0;">
+        <p style="font-size:14px;color:#374151;margin:0 0 16px;">
+          아래 버튼을 클릭하여 합격 조건을 확인하고 응답해주세요.
+        </p>
+        <a href="${acceptUrl}"
+           style="display:inline-block;background:#6B3FA0;color:#ffffff;padding:14px 36px;
+                  border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">
+          합격 조건 확인 및 응답
+        </a>
+      </div>` : `
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
         입사 일정 및 필요 서류 등 세부 사항은 별도로 안내드릴 예정입니다.
-      </p>
+      </p>`}
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 24px;">
         궁금하신 사항이 있으시면 언제든 아래 연락처로 문의해 주시기 바랍니다.
       </p>
