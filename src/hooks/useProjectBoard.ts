@@ -10,7 +10,7 @@ import type {
 interface EmployeeBasic { id: string; name: string; department_id: string | null }
 interface DepartmentBasic { id: string; name: string }
 
-export function useProjectBoard(statusFilter: string[] = ['active', 'holding']) {
+export function useProjectBoard() {
   const { profile } = useAuth()
   const [projects, setProjects] = useState<ProjectWithStages[]>([])
   const [templates, setTemplates] = useState<ProjectTemplate[]>([])
@@ -21,10 +21,9 @@ export function useProjectBoard(statusFilter: string[] = ['active', 'holding']) 
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-
-    // 1단계: 프로젝트 (서버 사이드 status 필터) + 참조 데이터
-    const [projRes, tmplRes, permRes, empRes, deptRes] = await Promise.all([
-      supabase.from('project_boards').select('*').in('status', statusFilter).order('priority').order('created_at', { ascending: false }),
+    const [projRes, stageRes, tmplRes, permRes, empRes, deptRes] = await Promise.all([
+      supabase.from('project_boards').select('*').order('priority').order('created_at', { ascending: false }),
+      supabase.from('pipeline_stages').select('*').order('stage_order'),
       supabase.from('project_templates').select('*').order('name'),
       supabase.from('board_permissions').select('*'),
       supabase.from('employees').select('id, name, department_id').eq('is_active', true).order('name'),
@@ -32,31 +31,16 @@ export function useProjectBoard(statusFilter: string[] = ['active', 'holding']) 
     ])
 
     const allProjects = (projRes.data || []) as ProjectBoard[]
+    const allStages = (stageRes.data || []) as PipelineStage[]
     const emps = (empRes.data || []) as EmployeeBasic[]
-
-    // 2단계: 해당 프로젝트의 stages만 로드 (전체 테이블 스캔 방지)
-    const projectIds = allProjects.map((p) => p.id)
-    const { data: stageData } = projectIds.length > 0
-      ? await supabase.from('pipeline_stages').select('*').in('project_id', projectIds).order('stage_order')
-      : { data: [] as any[] }
-
-    const allStages = (stageData || []) as PipelineStage[]
-
-    // O(n) 맵으로 변환하여 O(n²) 방지
-    const empMap = new Map(emps.map((e) => [e.id, e.name]))
-    const stageMap = new Map<string, PipelineStage[]>()
-    allStages.forEach((s) => {
-      if (!stageMap.has(s.project_id)) stageMap.set(s.project_id, [])
-      stageMap.get(s.project_id)!.push(s)
-    })
 
     const enriched: ProjectWithStages[] = allProjects.map((p) => ({
       ...p,
-      stages: stageMap.get(p.id) || [],
-      assignee_names: p.assignee_ids?.map((id) => empMap.get(id) || '?') || [],
-      manager_name: p.manager_id ? empMap.get(p.manager_id) : undefined,
-      leader_name: p.leader_id ? empMap.get(p.leader_id) : undefined,
-      executive_name: p.executive_id ? empMap.get(p.executive_id) : undefined,
+      stages: allStages.filter((s) => s.project_id === p.id),
+      assignee_names: p.assignee_ids?.map((id) => emps.find((e) => e.id === id)?.name || '?') || [],
+      manager_name: p.manager_id ? emps.find((e) => e.id === p.manager_id)?.name : undefined,
+      leader_name: p.leader_id ? emps.find((e) => e.id === p.leader_id)?.name : undefined,
+      executive_name: p.executive_id ? emps.find((e) => e.id === p.executive_id)?.name : undefined,
     }))
 
     setProjects(enriched)
@@ -65,7 +49,7 @@ export function useProjectBoard(statusFilter: string[] = ['active', 'holding']) 
     setEmployees(emps)
     setDepartments((deptRes.data || []) as DepartmentBasic[])
     setLoading(false)
-  }, [statusFilter.join(',')])
+  }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
 
