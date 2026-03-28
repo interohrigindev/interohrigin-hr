@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Plane, Users, Gift, Heart, Cake, BookOpen, Briefcase,
-  ChevronRight, MapPin, Clock, Calendar, ArrowRight, Loader2,
+  ChevronRight, MapPin, Calendar, ArrowRight, Loader2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
