@@ -2,7 +2,7 @@
  * Insert sample data for work management (projects, tasks, daily_reports)
  */
 
-const SUPABASE_URL = 'https://jlgdbofwlmhjayyjtyxv.supabase.co'
+const SUPABASE_URL = 'https://ckzbzumycmgkcpyhlclb.supabase.co'
 const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpsZ2Rib2Z3bG1oamF5eWp0eXh2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjE4MDk4MywiZXhwIjoyMDg3NzU2OTgzfQ.GUL2AqA0FzarDMTQzCSCZ6QlSmbYNvUie3Ja4hgG4Bg'
 
 const headers = {

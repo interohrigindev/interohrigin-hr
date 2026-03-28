@@ -1,12 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
-  'https://jlgdbofwlmhjayyjtyxv.supabase.co',
+  'https://ckzbzumycmgkcpyhlclb.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpsZ2Rib2Z3bG1oamF5eWp0eXh2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjE4MDk4MywiZXhwIjoyMDg3NzU2OTgzfQ.GUL2AqA0FzarDMTQzCSCZ6QlSmbYNvUie3Ja4hgG4Bg'
 )
 
 async function execSQL(sql) {
-  const res = await fetch('https://jlgdbofwlmhjayyjtyxv.supabase.co/rest/v1/rpc/exec_sql', {
+  const res = await fetch('https://ckzbzumycmgkcpyhlclb.supabase.co/rest/v1/rpc/exec_sql', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
