@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
 import { useToast } from '@/components/ui/Toast'
+import { FileRetentionBadge } from '@/components/ui/FileRetentionBadge'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature, type AIFileAttachment } from '@/lib/ai-client'
@@ -738,37 +739,55 @@ ${surveyText || '응답 없음'}
             </CardHeader>
             <CardContent className="space-y-3">
               {candidate.resume_url && (
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <span className="text-sm text-gray-700">이력서</span>
-                  {resumeSignedUrl ? (
-                    <a
-                      href={resumeSignedUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-brand-600 hover:underline"
-                    >
-                      다운로드
-                    </a>
-                  ) : (
-                    <span className="text-sm text-gray-400">URL 생성 중...</span>
-                  )}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-700">이력서</span>
+                    {resumeSignedUrl ? (
+                      <a
+                        href={resumeSignedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-brand-600 hover:underline"
+                      >
+                        다운로드
+                      </a>
+                    ) : (
+                      <span className="text-sm text-gray-400">URL 생성 중...</span>
+                    )}
+                  </div>
+                  <FileRetentionBadge
+                    createdAt={candidate.created_at}
+                    retentionDays={365}
+                    downloadUrl={resumeSignedUrl || undefined}
+                    fileName={`이력서_${candidate.name}.pdf`}
+                    compact
+                  />
                 </div>
               )}
               {candidate.cover_letter_url && (
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <span className="text-sm text-gray-700">자기소개서 (파일)</span>
-                  {coverLetterSignedUrl ? (
-                    <a
-                      href={coverLetterSignedUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-brand-600 hover:underline"
-                    >
-                      다운로드
-                    </a>
-                  ) : (
-                    <span className="text-sm text-gray-400">URL 생성 중...</span>
-                  )}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-700">자기소개서 (파일)</span>
+                    {coverLetterSignedUrl ? (
+                      <a
+                        href={coverLetterSignedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-brand-600 hover:underline"
+                      >
+                        다운로드
+                      </a>
+                    ) : (
+                      <span className="text-sm text-gray-400">URL 생성 중...</span>
+                    )}
+                  </div>
+                  <FileRetentionBadge
+                    createdAt={candidate.created_at}
+                    retentionDays={365}
+                    downloadUrl={coverLetterSignedUrl || undefined}
+                    fileName={`자기소개서_${candidate.name}.pdf`}
+                    compact
+                  />
                 </div>
               )}
               {candidate.cover_letter_text && (

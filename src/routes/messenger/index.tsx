@@ -11,6 +11,7 @@ import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
 import { Spinner, PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
+import { FileRetentionBadge, getRetentionMessage } from '@/components/ui/FileRetentionBadge'
 import { useAuth } from '@/hooks/useAuth'
 import { useRealtimeRooms } from '@/hooks/useRealtimeRooms'
 import { useRealtimeMessages } from '@/hooks/useRealtimeMessages'
@@ -355,6 +356,7 @@ ${recentMsgs}
         attachment_type: file.type,
       }
     )
+    toast(getRetentionMessage('chat-attachments'), 'info')
   }
 
   if (roomsLoading && rooms.length === 0) return <PageSpinner />
@@ -632,20 +634,29 @@ ${recentMsgs}
                                 />
                               )}
                               {msg.attachment_url && msg.message_type === 'file' && (
-                                <a
-                                  href={msg.attachment_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg mb-1 hover:bg-gray-100"
-                                >
-                                  <Paperclip className="h-4 w-4 text-gray-500" />
-                                  <div>
-                                    <p className="text-xs font-medium text-gray-700">{msg.attachment_name}</p>
-                                    {msg.attachment_size && (
-                                      <p className="text-[10px] text-gray-400">{(msg.attachment_size / 1024).toFixed(1)} KB</p>
-                                    )}
-                                  </div>
-                                </a>
+                                <div className="space-y-1 mb-1">
+                                  <a
+                                    href={msg.attachment_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100"
+                                  >
+                                    <Paperclip className="h-4 w-4 text-gray-500" />
+                                    <div>
+                                      <p className="text-xs font-medium text-gray-700">{msg.attachment_name}</p>
+                                      {msg.attachment_size && (
+                                        <p className="text-[10px] text-gray-400">{(msg.attachment_size / 1024).toFixed(1)} KB</p>
+                                      )}
+                                    </div>
+                                  </a>
+                                  <FileRetentionBadge
+                                    createdAt={msg.created_at}
+                                    retentionDays={180}
+                                    downloadUrl={msg.attachment_url}
+                                    fileName={msg.attachment_name || undefined}
+                                    compact
+                                  />
+                                </div>
                               )}
 
                               <div className="whitespace-pre-wrap break-words">{msg.content}</div>
