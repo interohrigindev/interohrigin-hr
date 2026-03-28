@@ -96,6 +96,7 @@ import PublicSurvey from '@/routes/public/survey'
 import PublicInterview from '@/routes/public/interview'
 import PublicExitSurvey from '@/routes/public/exit-survey'
 import AcceptOfferPage from '@/routes/public/accept-offer'
+import CareersPage from '@/routes/public/careers'
 
 function App() {
   return (
@@ -113,6 +114,7 @@ function App() {
             <Route path="/interview/:token" element={<PublicInterview />} />
             <Route path="/exit-survey/:token" element={<PublicExitSurvey />} />
             <Route path="/accept/:token" element={<AcceptOfferPage />} />
+            <Route path="/careers" element={<CareersPage />} />
 
             {/* 인증 필요 영역 */}
             <Route
