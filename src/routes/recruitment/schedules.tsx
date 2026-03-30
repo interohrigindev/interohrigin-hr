@@ -375,27 +375,31 @@ ${candidateList}
         const slotTime = availableSlots[i]
         const cand = candidates.find((c) => c.id === candId)
 
-        // Google Meet 링크 자동 생성
+        // Google Meet 링크 자동 생성 (Rate Limit 대비 재시도)
         let meetLink: string | null = null
         let googleEventId: string | null = null
-        try {
-          const meetRes = await fetch('/api/google-meet', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              summary: `[인터오리진 면접] ${cand?.name || '지원자'}`,
-              description: `인터오리진 채용 면접\n지원자: ${cand?.name || ''}\n이메일: ${cand?.email || ''}`,
-              startTime: slotTime + '+09:00',
-              durationMinutes: slotMin,
-              attendeeEmail: cand?.email || undefined,
-            }),
-          })
-          const meetResult = await meetRes.json()
-          if (meetRes.ok && meetResult.meetLink) {
-            meetLink = meetResult.meetLink
-            googleEventId = meetResult.eventId || null
-          }
-        } catch {}
+        for (let retry = 0; retry < 3; retry++) {
+          try {
+            if (retry > 0) await new Promise(r => setTimeout(r, 2000 * retry))
+            const meetRes = await fetch('/api/google-meet', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                summary: `[인터오리진 면접] ${cand?.name || '지원자'}`,
+                description: `인터오리진 채용 면접\n지원자: ${cand?.name || ''}\n이메일: ${cand?.email || ''}`,
+                startTime: slotTime + '+09:00',
+                durationMinutes: slotMin,
+                attendeeEmail: cand?.email || undefined,
+              }),
+            })
+            const meetResult = await meetRes.json()
+            if (meetRes.ok && meetResult.meetLink) {
+              meetLink = meetResult.meetLink
+              googleEventId = meetResult.eventId || null
+              break
+            }
+          } catch {}
+        }
 
         const { error } = await createSchedule({
           candidate_id: candId,
