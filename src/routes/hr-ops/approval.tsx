@@ -451,21 +451,43 @@ export default function ApprovalManagementPage() {
 
     const steps = stepsMap[docId] || []
     const currentStepData = steps.find((s) => s.step_order === doc.current_step)
-    if (!currentStepData || currentStepData.approver_id !== profile.id) {
-      toast('현재 결재 차례가 아닙니다', 'error')
-      setProcessing(false)
-      return
+
+    // C-2: 위임 결재 체크 — 현재 결재자가 본인이 아닌 경우 위임 확인
+    let isDelegated = false
+    let originalApproverId: string | null = null
+
+    if (currentStepData && currentStepData.approver_id !== profile.id) {
+      // 위임받은 결재인지 확인
+      const { data: delegation } = await supabase
+        .from('approval_delegations')
+        .select('*')
+        .eq('delegator_id', currentStepData.approver_id)
+        .eq('delegate_id', profile.id)
+        .eq('is_active', true)
+        .gte('end_date', new Date().toISOString().split('T')[0])
+        .lte('start_date', new Date().toISOString().split('T')[0])
+        .maybeSingle()
+
+      if (!delegation) {
+        toast('현재 결재 차례가 아닙니다', 'error')
+        setProcessing(false)
+        return
+      }
+      isDelegated = true
+      originalApproverId = currentStepData.approver_id
     }
 
-    // Update the approval step
+    // 현재 스텝 승인/반려
     const { error: stepErr } = await supabase
       .from('approval_steps')
       .update({
         action,
         comment: actionComment || null,
         acted_at: new Date().toISOString(),
+        is_delegated: isDelegated,
+        original_approver_id: isDelegated ? originalApproverId : null,
       })
-      .eq('id', currentStepData.id)
+      .eq('id', currentStepData!.id)
 
     if (stepErr) {
       toast('처리 실패: ' + stepErr.message, 'error')
@@ -473,7 +495,6 @@ export default function ApprovalManagementPage() {
       return
     }
 
-    // Update the document
     if (action === 'rejected') {
       await supabase
         .from('approval_documents')
@@ -483,28 +504,48 @@ export default function ApprovalManagementPage() {
         })
         .eq('id', docId)
       toast('반려 처리되었습니다', 'success')
-    } else if (doc.current_step >= doc.total_steps) {
-      // Last step approved -> final approval
-      await supabase
-        .from('approval_documents')
-        .update({
-          status: 'approved',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', docId)
-      toast('최종 승인 완료', 'success')
     } else {
-      // Move to next step
-      await supabase
-        .from('approval_documents')
-        .update({
-          status: 'in_review',
-          current_step: doc.current_step + 1,
-        })
-        .eq('id', docId)
-      const nextStep = steps.find((s) => s.step_order === doc.current_step + 1)
-      const nextName = nextStep ? getEmpName(nextStep.approver_id) : ''
-      toast(`승인 완료. 다음 결재자(${nextName})에게 전달되었습니다.`, 'success')
+      // C-2: 전결 처리 — 위임받은 임원이 자신의 스텝도 함께 승인
+      let nextStepToProcess = doc.current_step + 1
+      if (isDelegated && action === 'approved') {
+        // 위임자의 스텝을 승인했으니, 본인의 스텝이 다음에 있으면 자동 승인
+        const myStep = steps.find((s) => s.step_order === nextStepToProcess && s.approver_id === profile.id)
+        if (myStep) {
+          await supabase
+            .from('approval_steps')
+            .update({
+              action: 'approved',
+              comment: '전결 처리 (위임 결재와 동시 승인)',
+              acted_at: new Date().toISOString(),
+            })
+            .eq('id', myStep.id)
+          nextStepToProcess = nextStepToProcess + 1
+        }
+      }
+
+      if (nextStepToProcess > doc.total_steps) {
+        // 최종 승인
+        await supabase
+          .from('approval_documents')
+          .update({
+            status: 'approved',
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', docId)
+        toast(isDelegated ? '전결 처리로 최종 승인 완료' : '최종 승인 완료', 'success')
+      } else {
+        // 다음 결재자로 이동
+        await supabase
+          .from('approval_documents')
+          .update({
+            status: 'in_review',
+            current_step: nextStepToProcess,
+          })
+          .eq('id', docId)
+        const nextStep = steps.find((s) => s.step_order === nextStepToProcess)
+        const nextName = nextStep ? getEmpName(nextStep.approver_id) : ''
+        toast(`승인 완료. 다음 결재자(${nextName})에게 전달되었습니다.`, 'success')
+      }
     }
 
     setProcessing(false)
@@ -1272,29 +1313,48 @@ export default function ApprovalManagementPage() {
 
                 {/* Approver selects */}
                 {selectedTemplate ? (
-                  selectedTemplate.steps.map((step) => {
-                    const roleLabel = ROLE_LABELS[step.role] || step.label
-                    if (step.role === 'ceo' && ceo) {
-                      return (
-                        <div key={step.role} className="text-xs text-gray-500">
-                          최종 결재: <span className="font-medium text-gray-700">{ceo.name}</span> (대표)
-                        </div>
-                      )
-                    }
-                    const options = getApproverOptions(step.role)
-                    return (
-                      <Select
-                        key={step.role}
-                        label={`${roleLabel} 결재자 *`}
-                        value={newApprovers[step.role] || ''}
-                        onChange={(e) => setNewApprovers((prev) => ({ ...prev, [step.role]: e.target.value }))}
-                        options={[
-                          { value: '', label: `${roleLabel}를 선택하세요` },
-                          ...options,
-                        ]}
-                      />
-                    )
-                  })
+                  <>
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-semibold text-gray-600">결재라인 (자동 설정 · 변경 불가)</p>
+                      {selectedTemplate.steps.map((step, idx) => {
+                        const roleLabel = ROLE_LABELS[step.role] || step.label
+                        if (step.role === 'ceo' && ceo) {
+                          return (
+                            <div key={step.role} className="flex items-center gap-2 text-sm">
+                              <span className="w-5 h-5 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
+                              <span className="text-gray-700">{ceo.name}</span>
+                              <span className="text-xs text-gray-400">(대표 · 최종결재)</span>
+                            </div>
+                          )
+                        }
+                        const options = getApproverOptions(step.role)
+                        // 자동 배정: 첫 번째 해당 역할 직원
+                        if (!newApprovers[step.role] && options.length > 0) {
+                          setTimeout(() => setNewApprovers((prev) => ({ ...prev, [step.role]: options[0].value })), 0)
+                        }
+                        const selectedName = allEmployees.find((e) => e.id === newApprovers[step.role])?.name || roleLabel
+                        return (
+                          <div key={step.role} className="flex items-center gap-2 text-sm">
+                            <span className="w-5 h-5 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
+                            <span className="text-gray-700">{selectedName}</span>
+                            <span className="text-xs text-gray-400">({roleLabel})</span>
+                            {options.length > 1 && (
+                              <select
+                                value={newApprovers[step.role] || ''}
+                                onChange={(e) => setNewApprovers((prev) => ({ ...prev, [step.role]: e.target.value }))}
+                                className="ml-auto text-xs border rounded px-2 py-1"
+                              >
+                                {options.map((o) => (
+                                  <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-400">결재라인은 양식에 따라 자동 설정되며, 신청 후 변경할 수 없습니다.</p>
+                  </>
                 ) : (
                   <p className="text-xs text-gray-400">결재 유형을 선택하면 결재라인이 자동으로 설정됩니다.</p>
                 )}

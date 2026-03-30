@@ -10,7 +10,7 @@ import type {
 interface EmployeeBasic { id: string; name: string; department_id: string | null }
 interface DepartmentBasic { id: string; name: string }
 
-export function useProjectBoard() {
+export function useProjectBoard(statusFilter?: string) {
   const { profile } = useAuth()
   const [projects, setProjects] = useState<ProjectWithStages[]>([])
   const [templates, setTemplates] = useState<ProjectTemplate[]>([])
@@ -21,26 +21,48 @@ export function useProjectBoard() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [projRes, stageRes, tmplRes, permRes, empRes, deptRes] = await Promise.all([
-      supabase.from('project_boards').select('*').order('priority').order('created_at', { ascending: false }),
+
+    // 1단계: 프로젝트 + 스테이지 (핵심 데이터) 먼저 로드
+    let projQuery = supabase.from('project_boards').select('*').order('priority').order('created_at', { ascending: false })
+    if (statusFilter && statusFilter !== 'all') {
+      projQuery = projQuery.eq('status', statusFilter)
+    }
+
+    const [projRes, stageRes] = await Promise.all([
+      projQuery,
       supabase.from('pipeline_stages').select('*').order('stage_order'),
+    ])
+
+    const allProjects = (projRes.data || []) as ProjectBoard[]
+    const allStages = (stageRes.data || []) as PipelineStage[]
+
+    // O(n) Map으로 스테이지 그룹핑 (filter 반복 대신)
+    const stageMap = new Map<string, PipelineStage[]>()
+    for (const s of allStages) {
+      const arr = stageMap.get(s.project_id) || []
+      arr.push(s)
+      stageMap.set(s.project_id, arr)
+    }
+
+    // 2단계: 보조 데이터 병렬 로드 (직원, 부서, 템플릿, 권한)
+    const [tmplRes, permRes, empRes, deptRes] = await Promise.all([
       supabase.from('project_templates').select('*').order('name'),
       supabase.from('board_permissions').select('*'),
       supabase.from('employees').select('id, name, department_id').eq('is_active', true).order('name'),
       supabase.from('departments').select('id, name').order('name'),
     ])
 
-    const allProjects = (projRes.data || []) as ProjectBoard[]
-    const allStages = (stageRes.data || []) as PipelineStage[]
     const emps = (empRes.data || []) as EmployeeBasic[]
+    const empMap = new Map<string, string>()
+    for (const e of emps) empMap.set(e.id, e.name)
 
     const enriched: ProjectWithStages[] = allProjects.map((p) => ({
       ...p,
-      stages: allStages.filter((s) => s.project_id === p.id),
-      assignee_names: p.assignee_ids?.map((id) => emps.find((e) => e.id === id)?.name || '?') || [],
-      manager_name: p.manager_id ? emps.find((e) => e.id === p.manager_id)?.name : undefined,
-      leader_name: p.leader_id ? emps.find((e) => e.id === p.leader_id)?.name : undefined,
-      executive_name: p.executive_id ? emps.find((e) => e.id === p.executive_id)?.name : undefined,
+      stages: stageMap.get(p.id) || [],
+      assignee_names: p.assignee_ids?.map((id) => empMap.get(id) || '?') || [],
+      manager_name: p.manager_id ? empMap.get(p.manager_id) : undefined,
+      leader_name: p.leader_id ? empMap.get(p.leader_id) : undefined,
+      executive_name: p.executive_id ? empMap.get(p.executive_id) : undefined,
     }))
 
     setProjects(enriched)
@@ -49,7 +71,7 @@ export function useProjectBoard() {
     setEmployees(emps)
     setDepartments((deptRes.data || []) as DepartmentBasic[])
     setLoading(false)
-  }, [])
+  }, [statusFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 

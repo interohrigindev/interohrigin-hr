@@ -52,6 +52,8 @@ export interface GradeDistributionItem {
 
 // ─── Hook ───────────────────────────────────────────────────────
 
+const PAGE_SIZE = 50
+
 export function useDashboard(periodId: string | null) {
   const [progress, setProgress] = useState<EvaluationProgress | null>(null)
   const [summaryRows, setSummaryRows] = useState<EvaluationSummaryRow[]>([])
@@ -59,19 +61,24 @@ export function useDashboard(periodId: string | null) {
   const [allItemScores, setAllItemScores] = useState<ItemScoreComparison[]>([])
   const [gradeDistribution, setGradeDistribution] = useState<GradeDistributionItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
 
   useEffect(() => {
     if (!periodId) {
       setLoading(false)
       return
     }
-    fetchAll(periodId)
+    fetchAll(periodId, 0)
+    setPage(0)
   }, [periodId])
 
-  async function fetchAll(pid: string) {
+  async function fetchAll(pid: string, pageNum: number) {
     setLoading(true)
+    const from = pageNum * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
 
-    const [progressRes, summaryRes] = await Promise.all([
+    const [progressRes, summaryRes, countRes] = await Promise.all([
       supabase
         .from('v_evaluation_progress')
         .select('*')
@@ -81,28 +88,42 @@ export function useDashboard(periodId: string | null) {
         .from('v_evaluation_summary')
         .select('*')
         .eq('period_id', pid)
-        .order('employee_name'),
+        .order('employee_name')
+        .range(from, to),
+      supabase
+        .from('v_evaluation_summary')
+        .select('*', { count: 'exact', head: true })
+        .eq('period_id', pid),
     ])
 
     // progress
     setProgress(progressRes.data as EvaluationProgress | null)
+    setTotalCount(countRes.count || 0)
 
-    // summary
+    // summary (paginated)
     const rows = (summaryRes.data as EvaluationSummaryRow[] | null) ?? []
     setSummaryRows(rows)
 
-    // grade distribution from summary rows
-    const gradeMap: Record<string, number> = { S: 0, A: 0, B: 0, C: 0, D: 0 }
-    rows.forEach((r) => {
-      if (r.grade && gradeMap[r.grade] !== undefined) {
-        gradeMap[r.grade]++
-      }
-    })
-    setGradeDistribution(
-      Object.entries(gradeMap).map(([grade, count]) => ({ grade, count }))
-    )
+    // grade distribution — try RPC first, fallback to client-side
+    const { data: gradeData, error: gradeErr } = await supabase
+      .rpc('get_grade_distribution', { p_period_id: pid })
 
-    // item scores — fetch using target IDs from summary
+    if (!gradeErr && gradeData) {
+      setGradeDistribution(gradeData as GradeDistributionItem[])
+    } else {
+      // Fallback: compute from current page (approximate if paginated)
+      const gradeMap: Record<string, number> = { S: 0, A: 0, B: 0, C: 0, D: 0 }
+      rows.forEach((r) => {
+        if (r.grade && gradeMap[r.grade] !== undefined) {
+          gradeMap[r.grade]++
+        }
+      })
+      setGradeDistribution(
+        Object.entries(gradeMap).map(([grade, count]) => ({ grade, count }))
+      )
+    }
+
+    // item scores — fetch using target IDs from current page
     const targetIds = rows.map((r) => r.target_id)
     if (targetIds.length > 0) {
       const { data: itemData } = await supabase
@@ -121,6 +142,12 @@ export function useDashboard(periodId: string | null) {
     setLoading(false)
   }
 
+  function goToPage(pageNum: number) {
+    if (!periodId) return
+    setPage(pageNum)
+    fetchAll(periodId, pageNum)
+  }
+
   return {
     progress,
     summaryRows,
@@ -128,5 +155,10 @@ export function useDashboard(periodId: string | null) {
     allItemScores,
     gradeDistribution,
     loading,
+    page,
+    totalCount,
+    pageSize: PAGE_SIZE,
+    totalPages: Math.ceil(totalCount / PAGE_SIZE),
+    goToPage,
   }
 }
