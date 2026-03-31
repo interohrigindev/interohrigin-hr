@@ -175,12 +175,19 @@ export default function CandidateReport() {
       // ─── 첨부 파일 다운로드 (이력서, 자기소개서) → base64 변환 ───
       const files: AIFileAttachment[] = []
 
+      // Gemini 지원 MIME: pdf, image/*, text/plain
+      const GEMINI_SUPPORTED: Record<string, string> = {
+        pdf: 'application/pdf',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        txt: 'text/plain',
+      }
+
       async function downloadFileAsBase64(storagePath: string): Promise<{ base64: string; mimeType: string } | null> {
         try {
-          // storage path 또는 full URL 처리
           let filePath = storagePath
           if (storagePath.startsWith('http')) {
-            // public URL에서 경로 추출: .../resumes/path/to/file → path/to/file
             const match = storagePath.match(/\/resumes\/(.+)$/)
             if (match) filePath = match[1]
             else return null
@@ -188,26 +195,59 @@ export default function CandidateReport() {
           const { data, error } = await supabase.storage.from('resumes').download(filePath)
           if (error || !data) return null
 
+          const ext = filePath.split('.').pop()?.toLowerCase() || ''
+
+          // Word(.doc/.docx) → 텍스트 추출하여 text/plain으로 전달
+          if (ext === 'docx' || ext === 'doc') {
+            const text = await extractTextFromDocx(data)
+            if (text) {
+              const base64 = btoa(unescape(encodeURIComponent(text)))
+              return { base64, mimeType: 'text/plain' }
+            }
+            return null
+          }
+
+          // Gemini 미지원 MIME 타입은 건너뜀
+          const mimeType = GEMINI_SUPPORTED[ext]
+          if (!mimeType) return null
+
           const arrayBuffer = await data.arrayBuffer()
           const uint8 = new Uint8Array(arrayBuffer)
           let binary = ''
           for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i])
           const base64 = btoa(binary)
 
-          // MIME type 추출
-          const ext = filePath.split('.').pop()?.toLowerCase() || ''
-          const mimeMap: Record<string, string> = {
-            pdf: 'application/pdf',
-            doc: 'application/msword',
-            docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            png: 'image/png',
-            jpg: 'image/jpeg',
-            jpeg: 'image/jpeg',
-            txt: 'text/plain',
-          }
-          return { base64, mimeType: mimeMap[ext] || 'application/octet-stream' }
+          return { base64, mimeType }
         } catch {
           return null
+        }
+      }
+
+      // docx에서 텍스트 추출 (ZIP 내 word/document.xml 파싱)
+      async function extractTextFromDocx(blob: Blob): Promise<string | null> {
+        try {
+          const { BlobReader, ZipReader, TextWriter } = await import('@zip.js/zip.js')
+          const reader = new ZipReader(new BlobReader(blob))
+          const entries = await reader.getEntries()
+          const docEntry = entries.find((e) => e.filename === 'word/document.xml')
+          if (!docEntry?.getData) { await reader.close(); return null }
+          const xmlText = await docEntry.getData(new TextWriter())
+          await reader.close()
+          // XML 태그 제거하여 순수 텍스트 추출
+          return xmlText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+        } catch {
+          // zip.js 라이브러리가 없으면 기본 텍스트 추출 시도
+          try {
+            const text = await blob.text()
+            // XML 기반 docx에서 텍스트만 추출
+            const matches = text.match(/<w:t[^>]*>([^<]*)<\/w:t>/g)
+            if (matches) {
+              return matches.map((m) => m.replace(/<[^>]+>/g, '')).join(' ')
+            }
+            return null
+          } catch {
+            return null
+          }
         }
       }
 
@@ -583,9 +623,9 @@ ${fileInfo}
         }
       }
 
-      // 첨부 파일 다운로드
+      // 첨부 파일 다운로드 (Gemini 지원 형식만, docx→텍스트 변환)
       const files: AIFileAttachment[] = []
-      async function downloadFileAsBase64(storagePath: string): Promise<{ base64: string; mimeType: string } | null> {
+      async function downloadFileAsBase64ForSurvey(storagePath: string): Promise<{ base64: string; mimeType: string } | null> {
         try {
           let filePath = storagePath
           if (storagePath.startsWith('http')) {
@@ -595,23 +635,39 @@ ${fileInfo}
           }
           const { data, error } = await supabase.storage.from('resumes').download(filePath)
           if (error || !data) return null
+          const ext = filePath.split('.').pop()?.toLowerCase() || ''
+
+          // Word(.doc/.docx) → 텍스트 추출
+          if (ext === 'docx' || ext === 'doc') {
+            try {
+              const text = await data.text()
+              const matches = text.match(/<w:t[^>]*>([^<]*)<\/w:t>/g)
+              if (matches) {
+                const extracted = matches.map((m) => m.replace(/<[^>]+>/g, '')).join(' ')
+                return { base64: btoa(unescape(encodeURIComponent(extracted))), mimeType: 'text/plain' }
+              }
+            } catch {}
+            return null
+          }
+
+          const supported: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', txt: 'text/plain' }
+          const mimeType = supported[ext]
+          if (!mimeType) return null
+
           const arrayBuffer = await data.arrayBuffer()
           const uint8 = new Uint8Array(arrayBuffer)
           let binary = ''
           for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i])
-          const base64 = btoa(binary)
-          const ext = filePath.split('.').pop()?.toLowerCase() || ''
-          const mimeMap: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', txt: 'text/plain' }
-          return { base64, mimeType: mimeMap[ext] || 'application/octet-stream' }
+          return { base64: btoa(binary), mimeType }
         } catch { return null }
       }
       setAnalysisStatus('첨부 파일 다운로드 중...')
       if (candidate.resume_url) {
-        const file = await downloadFileAsBase64(candidate.resume_url)
+        const file = await downloadFileAsBase64ForSurvey(candidate.resume_url)
         if (file) files.push({ ...file, name: '이력서' })
       }
       if (candidate.cover_letter_url) {
-        const file = await downloadFileAsBase64(candidate.cover_letter_url)
+        const file = await downloadFileAsBase64ForSurvey(candidate.cover_letter_url)
         if (file) files.push({ ...file, name: '자기소개서' })
       }
 

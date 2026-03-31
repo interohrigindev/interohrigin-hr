@@ -173,13 +173,13 @@ export default function PublicApply() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">이력서 * (PDF, DOC, 이미지)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">이력서 * (PDF, 이미지)</label>
               <label className="flex items-center gap-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-6 cursor-pointer hover:border-brand-400 transition-colors">
                 <Upload className="h-6 w-6 text-gray-400" />
                 <span className="flex-1">
                   {resumeFile ? <span className="text-sm font-medium text-brand-600">{resumeFile.name}</span> : <span className="text-sm text-gray-500">파일을 선택하거나 드래그하세요</span>}
                 </span>
-                <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" className="hidden" onChange={(e) => setResumeFile(e.target.files?.[0] || null)} />
+                <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={(e) => setResumeFile(e.target.files?.[0] || null)} />
               </label>
             </div>
 
@@ -188,7 +188,7 @@ export default function PublicApply() {
               <label className="flex items-center gap-3 w-full rounded-lg border border-gray-300 px-4 py-3 cursor-pointer hover:border-brand-400 transition-colors mb-2">
                 <FileText className="h-5 w-5 text-gray-400" />
                 <span className="text-sm text-gray-500">{coverLetterFile ? coverLetterFile.name : '파일 선택 (선택사항)'}</span>
-                <input type="file" accept=".pdf,.doc,.docx,.txt" className="hidden" onChange={(e) => setCoverLetterFile(e.target.files?.[0] || null)} />
+                <input type="file" accept=".pdf,.png,.jpg,.jpeg,.txt" className="hidden" onChange={(e) => setCoverLetterFile(e.target.files?.[0] || null)} />
               </label>
               <textarea value={form.cover_letter_text} onChange={(e) => updateForm('cover_letter_text', e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none" rows={6}
