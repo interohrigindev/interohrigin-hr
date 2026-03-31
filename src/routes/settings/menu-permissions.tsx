@@ -326,21 +326,19 @@ export default function MenuPermissions() {
   const handleSave = useCallback(async () => {
     if (!selectedId) return
     setSaving(true)
-    const payload = {
+    // delete + insert 패턴 (UNIQUE 제약조건 없이도 동작)
+    await supabase.from('menu_permissions').delete().eq('employee_id', selectedId)
+    const { error } = await supabase.from('menu_permissions').insert({
       employee_id: selectedId,
       allowed_menus: Array.from(checkedPaths),
-      updated_at: new Date().toISOString(),
-    }
-    const { error } = await supabase
-      .from('menu_permissions')
-      .upsert(payload, { onConflict: 'employee_id' })
+    })
     setSaving(false)
     if (error) {
       toast('권한 저장에 실패했습니다: ' + error.message, 'error')
     } else {
       toast('메뉴 권한이 저장되었습니다')
     }
-  }, [selectedId, checkedPaths, user, toast])
+  }, [selectedId, checkedPaths, toast])
 
   // ─── Bulk apply ──────────────────────────────────────────────
 
@@ -348,15 +346,14 @@ export default function MenuPermissions() {
     if (bulkTargets.size === 0) return
     setBulkSaving(true)
     const menus = Array.from(checkedPaths)
-    const now = new Date().toISOString()
-    const rows = Array.from(bulkTargets).map((empId) => ({
+    const empIds = Array.from(bulkTargets)
+    // 기존 데이터 삭제 후 일괄 insert
+    await supabase.from('menu_permissions').delete().in('employee_id', empIds)
+    const rows = empIds.map((empId) => ({
       employee_id: empId,
       allowed_menus: menus,
-      updated_at: now,
     }))
-    const { error } = await supabase
-      .from('menu_permissions')
-      .upsert(rows, { onConflict: 'employee_id' })
+    const { error } = await supabase.from('menu_permissions').insert(rows)
     setBulkSaving(false)
     if (error) {
       toast('일괄 적용에 실패했습니다: ' + error.message, 'error')
@@ -365,7 +362,7 @@ export default function MenuPermissions() {
       setBulkOpen(false)
       setBulkTargets(new Set())
     }
-  }, [bulkTargets, checkedPaths, user, toast])
+  }, [bulkTargets, checkedPaths, toast])
 
   const toggleBulkTarget = useCallback((empId: string) => {
     setBulkTargets((prev) => {
