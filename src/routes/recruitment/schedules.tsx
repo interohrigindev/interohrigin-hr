@@ -375,35 +375,41 @@ ${candidateList}
         const slotTime = availableSlots[i]
         const cand = candidates.find((c) => c.id === candId)
 
-        // Google Meet 링크 자동 생성 (Rate Limit 대비 재시도)
+        // 지원자 상태에 따라 면접 유형 결정: video_done → 2차 대면, 그 외 → 1차 화상
+        const interviewType = cand?.status === 'video_done' ? 'face_to_face' : 'video'
+        const isVideo = interviewType === 'video'
+
+        // 화상면접만 Google Meet 링크 자동 생성
         let meetLink: string | null = null
         let googleEventId: string | null = null
-        for (let retry = 0; retry < 3; retry++) {
-          try {
-            if (retry > 0) await new Promise(r => setTimeout(r, 2000 * retry))
-            const meetRes = await fetch('/api/google-meet', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                summary: `[인터오리진 면접] ${cand?.name || '지원자'}`,
-                description: `인터오리진 채용 면접\n지원자: ${cand?.name || ''}\n이메일: ${cand?.email || ''}`,
-                startTime: slotTime + '+09:00',
-                durationMinutes: slotMin,
-                attendeeEmail: cand?.email || undefined,
-              }),
-            })
-            const meetResult = await meetRes.json()
-            if (meetRes.ok && meetResult.meetLink) {
-              meetLink = meetResult.meetLink
-              googleEventId = meetResult.eventId || null
-              break
-            }
-          } catch {}
+        if (isVideo) {
+          for (let retry = 0; retry < 3; retry++) {
+            try {
+              if (retry > 0) await new Promise(r => setTimeout(r, 2000 * retry))
+              const meetRes = await fetch('/api/google-meet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  summary: `[인터오리진 면접] ${cand?.name || '지원자'}`,
+                  description: `인터오리진 채용 면접\n지원자: ${cand?.name || ''}\n이메일: ${cand?.email || ''}`,
+                  startTime: slotTime + '+09:00',
+                  durationMinutes: slotMin,
+                  attendeeEmail: cand?.email || undefined,
+                }),
+              })
+              const meetResult = await meetRes.json()
+              if (meetRes.ok && meetResult.meetLink) {
+                meetLink = meetResult.meetLink
+                googleEventId = meetResult.eventId || null
+                break
+              }
+            } catch {}
+          }
         }
 
         const { error } = await createSchedule({
           candidate_id: candId,
-          interview_type: 'video',
+          interview_type: interviewType,
           scheduled_at: slotTime + '+09:00',
           duration_minutes: slotMin,
           priority: i === 0 ? 'urgent' : 'normal',
@@ -413,9 +419,10 @@ ${candidateList}
         })
 
         if (!error) {
+          const newStatus = interviewType === 'face_to_face' ? 'face_to_face_scheduled' : 'interview_scheduled'
           await supabase
             .from('candidates')
-            .update({ status: 'interview_scheduled' })
+            .update({ status: newStatus })
             .eq('id', candId)
           assigned++
         }
