@@ -103,6 +103,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
   const [driveFetching, setDriveFetching] = useState<string | null>(null)
   const [driveFiles, setDriveFiles] = useState<Record<string, DriveFile[]>>({})
   const [driveDownloading, setDriveDownloading] = useState<string | null>(null)
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
 
   useEffect(() => {
     fetchData()
@@ -168,6 +169,21 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
 
     setGroups(grouped)
     setLoading(false)
+
+    // Signed URL 생성 (private 버킷용)
+    const urlMap: Record<string, string> = {}
+    for (const r of recordings) {
+      if (r.recording_url && r.status !== 'deleted') {
+        const path = r.recording_url.split('/interview-recordings/').pop()
+        if (path) {
+          const { data } = await supabase.storage
+            .from('interview-recordings')
+            .createSignedUrl(decodeURIComponent(path), 3600) // 1시간
+          if (data?.signedUrl) urlMap[r.id] = data.signedUrl
+        }
+      }
+    }
+    setSignedUrls(urlMap)
   }
 
   /* ─── Google Drive에서 녹화 파일 가져오기 ────────── */
@@ -781,23 +797,25 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
                           </Badge>
                         )}
                       </div>
-                      <div className="flex gap-2">
-                        <a
-                          href={group.recording.recording_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded-md transition-colors"
-                        >
-                          <Play className="h-3.5 w-3.5" /> 바로보기
-                        </a>
-                        <a
-                          href={group.recording.recording_url}
-                          download
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-md transition-colors"
-                        >
-                          <Download className="h-3.5 w-3.5" /> 다운로드
-                        </a>
-                      </div>
+                      {signedUrls[group.recording.id] && (
+                        <div className="flex gap-2">
+                          <a
+                            href={signedUrls[group.recording.id]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded-md transition-colors"
+                          >
+                            <Play className="h-3.5 w-3.5" /> 바로보기
+                          </a>
+                          <a
+                            href={signedUrls[group.recording.id]}
+                            download
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-md transition-colors"
+                          >
+                            <Download className="h-3.5 w-3.5" /> 다운로드
+                          </a>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -808,23 +826,25 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
                         <CheckCircle className="h-4 w-4 text-green-500" />
                         <span>확인 완료 — 원본 파일 14일간 보관 중</span>
                       </div>
-                      <div className="flex gap-2">
-                        <a
-                          href={group.recording.recording_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 text-xs rounded-md transition-colors"
-                        >
-                          <Play className="h-3.5 w-3.5" /> 바로보기
-                        </a>
-                        <a
-                          href={group.recording.recording_url}
-                          download
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-md transition-colors"
-                        >
-                          <Download className="h-3.5 w-3.5" /> 다운로드
-                        </a>
-                      </div>
+                      {signedUrls[group.recording.id] && (
+                        <div className="flex gap-2">
+                          <a
+                            href={signedUrls[group.recording.id]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 text-xs rounded-md transition-colors"
+                          >
+                            <Play className="h-3.5 w-3.5" /> 바로보기
+                          </a>
+                          <a
+                            href={signedUrls[group.recording.id]}
+                            download
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-md transition-colors"
+                          >
+                            <Download className="h-3.5 w-3.5" /> 다운로드
+                          </a>
+                        </div>
+                      )}
                     </div>
                   )}
 
