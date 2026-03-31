@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Users, BarChart3, CheckCircle, ChevronDown, ChevronRight, EyeOff, Eye } from 'lucide-react'
+import { Briefcase, Users, BarChart3, CheckCircle, ChevronDown, ChevronRight, EyeOff, Eye, Trophy } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -47,6 +47,7 @@ export default function RecruitmentDashboard() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [initialized, setInitialized] = useState(false)
   const [showRejected, setShowRejected] = useState(false)
+  const [showHiredOnly, setShowHiredOnly] = useState(false)
 
   if (statsLoading || candLoading || postLoading) return <PageSpinner />
 
@@ -124,7 +125,12 @@ export default function RecruitmentDashboard() {
       {/* 통계 카드 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {statCards.map((s) => (
-          <Card key={s.label} className="border-l-4" style={{ borderLeftColor: 'var(--tw-border-opacity)' }}>
+          <Card
+            key={s.label}
+            className={`border-l-4 cursor-pointer transition-shadow ${s.label === '합격자' && showHiredOnly ? 'ring-2 ring-green-400 shadow-md' : 'hover:shadow-sm'}`}
+            style={{ borderLeftColor: 'var(--tw-border-opacity)' }}
+            onClick={s.label === '합격자' ? () => setShowHiredOnly(!showHiredOnly) : undefined}
+          >
             <CardContent className="py-3 px-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -137,6 +143,55 @@ export default function RecruitmentDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* 합격자 모아보기 */}
+      {showHiredOnly && (() => {
+        const hiredCandidates = candidates.filter((c) => c.status === 'hired')
+        return (
+          <Card className="border-green-200">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-green-700">
+                  <Trophy className="h-5 w-5" /> 합격자 목록 ({hiredCandidates.length}명)
+                </CardTitle>
+                <Button variant="outline" size="sm" onClick={() => setShowHiredOnly(false)}>닫기</Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {hiredCandidates.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-4">합격자가 없습니다.</p>
+              ) : (
+                <div className="divide-y">
+                  {hiredCandidates.map((c) => {
+                    const posting = postings.find((p) => p.id === c.job_posting_id)
+                    return (
+                      <div
+                        key={c.id}
+                        className="flex items-center justify-between py-3 px-2 hover:bg-green-50/50 cursor-pointer rounded-lg transition-colors"
+                        onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm text-gray-900">{c.name}</p>
+                            <p className="text-xs text-gray-500">{posting?.title || '공고 미배정'}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-gray-500">{c.email}</p>
+                          <p className="text-[10px] text-gray-400">{formatDate(c.created_at)}</p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* 공고별 지원자 현황 */}
       <Card>

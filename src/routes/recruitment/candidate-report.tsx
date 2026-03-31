@@ -51,6 +51,15 @@ export default function CandidateReport() {
   const [aiQuestions, setAiQuestions] = useState<string[]>([])
   const [comments, setComments] = useState<{ author_id: string; author_name: string; content: string; created_at: string }[]>([])
   const [newComment, setNewComment] = useState('')
+  const [hiringDecision, setHiringDecision] = useState<{
+    decision: string
+    offered_salary: number | null
+    offered_position: string | null
+    start_date: string | null
+    offer_conditions: Record<string, any> | null
+    candidate_response: Record<string, any> | null
+    created_at: string
+  } | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -109,6 +118,16 @@ export default function CandidateReport() {
       if (cand?.interviewer_comments) {
         setComments((cand.interviewer_comments as typeof comments) || [])
       }
+
+      // 합격 결정 + 지원자 응답 로드
+      const { data: hdData } = await supabase
+        .from('hiring_decisions')
+        .select('decision, offered_salary, offered_position, start_date, offer_conditions, candidate_response, created_at')
+        .eq('candidate_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (hdData) setHiringDecision(hdData)
 
       // 종합 리포트
       const reportRes = await supabase
@@ -1435,9 +1454,91 @@ ${surveyText || '응답 없음'}
               ) : candidate.status === 'applied' ? (
                 <p className="text-sm text-gray-500">AI 이력서 분석을 먼저 실행하세요.</p>
               ) : candidate.status === 'hired' ? (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
-                  <CheckCircle className="h-5 w-5 text-green-600 mx-auto mb-1" />
-                  <p className="text-sm text-green-700 font-semibold">합격</p>
+                <div className="space-y-3">
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                    <CheckCircle className="h-5 w-5 text-green-600 mx-auto mb-1" />
+                    <p className="text-sm text-green-700 font-semibold">합격</p>
+                  </div>
+
+                  {/* 제시 조건 */}
+                  {hiringDecision && (hiringDecision.offered_salary || hiringDecision.offered_position || hiringDecision.start_date) && (
+                    <div className="border rounded-lg p-3 space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-500">제시 조건</p>
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {hiringDecision.offered_position && (
+                            <tr><td className="py-1 text-gray-500 w-24">직무</td><td className="font-medium">{hiringDecision.offered_position}</td></tr>
+                          )}
+                          {hiringDecision.offered_salary && (
+                            <tr><td className="py-1 text-gray-500">연봉</td><td className="font-medium">{hiringDecision.offered_salary.toLocaleString()}만원</td></tr>
+                          )}
+                          {hiringDecision.offer_conditions?.probation_salary && (
+                            <tr><td className="py-1 text-gray-500">수습 급여</td><td className="font-medium">{Number(hiringDecision.offer_conditions.probation_salary).toLocaleString()}만원</td></tr>
+                          )}
+                          {hiringDecision.offer_conditions?.regular_salary && (
+                            <tr><td className="py-1 text-gray-500">정규직 급여</td><td className="font-medium">{Number(hiringDecision.offer_conditions.regular_salary).toLocaleString()}만원</td></tr>
+                          )}
+                          {hiringDecision.start_date && (
+                            <tr><td className="py-1 text-gray-500">입사 예정일</td><td className="font-medium">{hiringDecision.start_date}</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* 지원자 응답 */}
+                  {hiringDecision?.candidate_response ? (
+                    <div className="border rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-semibold text-purple-600">지원자 응답</p>
+                      <table className="w-full text-sm">
+                        <tbody>
+                          <tr>
+                            <td className="py-1 text-gray-500 w-24">동의 여부</td>
+                            <td className="font-medium">
+                              {hiringDecision.candidate_response.agreed ? (
+                                <span className="text-green-600">동의</span>
+                              ) : (
+                                <span className="text-red-600">비동의</span>
+                              )}
+                            </td>
+                          </tr>
+                          {hiringDecision.candidate_response.salary_negotiation?.desired && (
+                            <tr>
+                              <td className="py-1 text-gray-500">연봉 협상</td>
+                              <td className="font-medium text-amber-600">
+                                협상 희망
+                                {hiringDecision.candidate_response.salary_negotiation.amount && (
+                                  <span> — {hiringDecision.candidate_response.salary_negotiation.amount.toLocaleString()}만원</span>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                          {hiringDecision.candidate_response.start_date_change && (
+                            <tr>
+                              <td className="py-1 text-gray-500">희망 입사일</td>
+                              <td className="font-medium">{hiringDecision.candidate_response.start_date_change}</td>
+                            </tr>
+                          )}
+                          {hiringDecision.candidate_response.notes && (
+                            <tr>
+                              <td className="py-1 text-gray-500 align-top">기타 요청</td>
+                              <td className="font-medium whitespace-pre-wrap">{hiringDecision.candidate_response.notes}</td>
+                            </tr>
+                          )}
+                          {hiringDecision.candidate_response.submitted_at && (
+                            <tr>
+                              <td className="py-1 text-gray-500">응답 일시</td>
+                              <td className="text-xs text-gray-400">{new Date(hiringDecision.candidate_response.submitted_at).toLocaleString('ko-KR')}</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : hiringDecision ? (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-xs text-amber-700">지원자가 아직 합격 조건에 응답하지 않았습니다.</p>
+                    </div>
+                  ) : null}
                 </div>
               ) : candidate.status === 'rejected' ? (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
