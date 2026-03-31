@@ -12,7 +12,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Video, Mic, Upload, Loader2, Sparkles, ChevronDown, ChevronUp,
   Clock, MessageSquare, CheckCircle, Trash2, AlertTriangle, FileVideo, FileAudio,
-  Cloud, Download,
+  Cloud, Download, Play, ExternalLink,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -455,34 +455,27 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
 
       if (!analysis) throw new Error('분석 데이터 없음')
 
-      // 1. 분석 확인 완료 표시
+      // 분석 확인 완료 표시 + 14일 후 자동 삭제 예정일 기록
+      const deleteAfter = new Date()
+      deleteAfter.setDate(deleteAfter.getDate() + 14)
+
       await supabase
         .from('interview_analyses')
         .update({
           confirmed_at: new Date().toISOString(),
-          file_deleted: true,
+          file_deleted: false,
         })
         .eq('id', analysis.id)
 
-      // 2. Storage에서 원본 파일 삭제
-      if (recording?.recording_url) {
-        const storagePath = recording.recording_url.split('/interview-recordings/').pop()
-        if (storagePath) {
-          await supabase.storage
-            .from('interview-recordings')
-            .remove([decodeURIComponent(storagePath)])
-        }
-      }
-
-      // 3. recording 레코드 상태 업데이트 (파일 삭제됨)
+      // recording에 삭제 예정일 표시 (파일은 유지, 14일 후 Storage 정책으로 삭제)
       if (recording) {
         await supabase
           .from('interview_recordings')
-          .update({ status: 'deleted', recording_url: null })
+          .update({ status: 'confirmed', delete_after: deleteAfter.toISOString() })
           .eq('id', recording.id)
       }
 
-      toast('분석 결과가 확인되었습니다. 원본 파일이 삭제되어 용량이 절약됩니다.', 'success')
+      toast('분석 결과가 확인되었습니다. 원본 파일은 14일간 보관 후 자동 삭제됩니다.', 'success')
       setConfirmDialogOpen(false)
       setConfirmingGroup(null)
       fetchData()
@@ -764,34 +757,82 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
                     </div>
                   )}
 
-                  {/* 업로드된 파일 정보 */}
-                  {step === 'uploaded' && group.recording && (
-                    <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        {isVideo ? (
-                          <FileVideo className="h-4 w-4 text-blue-500" />
-                        ) : (
-                          <FileAudio className="h-4 w-4 text-amber-500" />
-                        )}
-                        <span>{isVideo ? '녹화' : '녹음'} 파일 업로드됨</span>
-                        {group.recording.file_size_bytes && (
-                          <span className="text-xs text-gray-400">
-                            ({Math.round((group.recording.file_size_bytes / 1024 / 1024) * 10) / 10}
-                            MB)
-                          </span>
+                  {/* 업로드된 파일 정보 + 다운로드/바로보기 */}
+                  {(step === 'uploaded' || step === 'analyzed') && group.recording?.recording_url && (
+                    <div className="p-2.5 bg-gray-50 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          {isVideo ? (
+                            <FileVideo className="h-4 w-4 text-blue-500" />
+                          ) : (
+                            <FileAudio className="h-4 w-4 text-amber-500" />
+                          )}
+                          <span>{isVideo ? '녹화' : '녹음'} 파일</span>
+                          {group.recording.file_size_bytes && (
+                            <span className="text-xs text-gray-400">
+                              ({Math.round((group.recording.file_size_bytes / 1024 / 1024) * 10) / 10}
+                              MB)
+                            </span>
+                          )}
+                        </div>
+                        {step === 'uploaded' && (
+                          <Badge variant="default" className="bg-amber-100 text-amber-700 text-[10px]">
+                            분석 대기
+                          </Badge>
                         )}
                       </div>
-                      <Badge variant="default" className="bg-amber-100 text-amber-700 text-[10px]">
-                        분석 대기
-                      </Badge>
+                      <div className="flex gap-2">
+                        <a
+                          href={group.recording.recording_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded-md transition-colors"
+                        >
+                          <Play className="h-3.5 w-3.5" /> 바로보기
+                        </a>
+                        <a
+                          href={group.recording.recording_url}
+                          download
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-md transition-colors"
+                        >
+                          <Download className="h-3.5 w-3.5" /> 다운로드
+                        </a>
+                      </div>
                     </div>
                   )}
 
-                  {/* 확인 완료 후 파일 삭제됨 표시 */}
-                  {step === 'confirmed' && (
-                    <div className="flex items-center gap-2 p-2.5 bg-green-50 rounded-lg text-sm text-green-700">
-                      <Trash2 className="h-4 w-4 text-green-500" />
-                      <span>원본 파일이 삭제되었습니다. 분석 텍스트만 보관됩니다.</span>
+                  {/* 확인 완료 후 — 14일 보관 중 */}
+                  {step === 'confirmed' && group.recording?.recording_url && (
+                    <div className="p-2.5 bg-green-50 rounded-lg space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-green-700">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <span>확인 완료 — 원본 파일 14일간 보관 중</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <a
+                          href={group.recording.recording_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 text-xs rounded-md transition-colors"
+                        >
+                          <Play className="h-3.5 w-3.5" /> 바로보기
+                        </a>
+                        <a
+                          href={group.recording.recording_url}
+                          download
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-md transition-colors"
+                        >
+                          <Download className="h-3.5 w-3.5" /> 다운로드
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 확인 완료 후 — 파일 삭제됨 (14일 경과) */}
+                  {step === 'confirmed' && !group.recording?.recording_url && (
+                    <div className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg text-sm text-gray-500">
+                      <Trash2 className="h-4 w-4 text-gray-400" />
+                      <span>보관 기간 만료 — 분석 텍스트만 보관됩니다.</span>
                     </div>
                   )}
 
@@ -971,13 +1012,13 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         className="max-w-md"
       >
         <div className="space-y-4">
-          <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-            <div className="text-sm text-amber-800">
-              <p className="font-medium mb-1">원본 파일이 삭제됩니다</p>
+          <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <AlertTriangle className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-800">
+              <p className="font-medium mb-1">14일간 파일 보관</p>
               <p className="text-xs">
-                확인 완료 시 Storage의 원본 녹화/녹음 파일이 영구 삭제되며,
-                AI 분석 결과(텍스트)만 보관됩니다. 이 작업은 되돌릴 수 없습니다.
+                확인 완료 후 원본 녹화/녹음 파일은 <strong>14일간 보관</strong>되며,
+                이후 자동 삭제됩니다. AI 분석 결과(텍스트)는 영구 보관됩니다.
               </p>
             </div>
           </div>
@@ -997,7 +1038,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
                 </>
               ) : (
                 <>
-                  <CheckCircle className="h-4 w-4 mr-1" /> 확인 완료 및 파일 삭제
+                  <CheckCircle className="h-4 w-4 mr-1" /> 확인 완료
                 </>
               )}
             </Button>
