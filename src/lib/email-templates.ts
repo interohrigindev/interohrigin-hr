@@ -311,3 +311,60 @@ export function interviewInviteEmail(
     `.trim(),
   }
 }
+
+export function interviewerNotificationEmail(
+  interviewerName: string,
+  candidateName: string,
+  candidateEmail: string,
+  scheduledAt: string,
+  durationMinutes: number,
+  interviewType: string,
+  meetingLink?: string | null,
+  locationInfo?: string | null,
+  jobTitle?: string,
+): { subject: string; html: string } {
+  let dateStr = scheduledAt
+  try {
+    const d = new Date(scheduledAt)
+    if (!isNaN(d.getTime())) {
+      dateStr = d.toLocaleString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })
+    }
+  } catch {}
+  const typeLabel = interviewType === 'video' ? 'Google Meet 화상면접' : '대면면접'
+  const dateShort = dateStr.split(' ').slice(0, 3).join(' ')
+  return {
+    subject: `[인터오리진] 면접 일정 안내 — ${candidateName} (${dateShort})`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#fff;">
+  <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+    <h1 style="color:#fff;font-size:20px;margin:0;">INTEROHRIGIN</h1>
+    <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">면접 일정 안내</p>
+  </div>
+  <div style="padding:32px 28px;">
+    <p style="font-size:15px;color:#1f2937;margin:0 0 16px;"><strong>${interviewerName}</strong>님, 면접 일정을 안내드립니다.</p>
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+      <tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;width:100px;">지원자</td><td style="padding:10px 12px;font-size:14px;font-weight:600;color:#1f2937;">${candidateName}</td></tr>
+      <tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">이메일</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">${candidateEmail}</td></tr>
+      ${jobTitle ? '<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">포지션</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">' + jobTitle + '</td></tr>' : ''}
+      <tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">일시</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">${dateStr}</td></tr>
+      <tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">소요시간</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">약 ${durationMinutes}분</td></tr>
+      <tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">형태</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">${typeLabel}</td></tr>
+      ${meetingLink ? '<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">접속링크</td><td style="padding:10px 12px;"><a href="' + meetingLink + '" style="color:#6B3FA0;font-size:14px;">' + meetingLink + '</a></td></tr>' : ''}
+      ${locationInfo ? '<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">장소</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">' + locationInfo + '</td></tr>' : ''}
+    </table>
+    ${meetingLink ? '<div style="text-align:center;margin:28px 0;"><a href="' + meetingLink + '" style="display:inline-block;background:#6B3FA0;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">면접 입장하기</a></div>' : ''}
+    <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-top:20px;">
+      <p style="font-size:13px;color:#92400e;margin:0;">면접 전 지원자의 이력서와 사전 질의서 응답을 확인해 주세요.</p>
+    </div>
+  </div>
+  <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+    <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">인터오리진 채용팀 | hr@interohrigin.com</p>
+  </div>
+</div>
+</body></html>
+    `.trim(),
+  }
+}

@@ -16,7 +16,7 @@ import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { useAllSchedules, useInterviewScheduleMutations } from '@/hooks/useInterviewSchedules'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS } from '@/lib/recruitment-constants'
-import { interviewInviteEmail } from '@/lib/email-templates'
+import { interviewInviteEmail, interviewerNotificationEmail } from '@/lib/email-templates'
 import { format, addDays, startOfWeek, isToday as isDateToday } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import type { Candidate, CandidateStatus } from '@/types/recruitment'
@@ -61,6 +61,8 @@ export default function InterviewSchedules() {
     return d
   })
 
+  const [interviewers, setInterviewers] = useState<{ id: string; name: string; email: string; role: string }[]>([])
+
   const [form, setForm] = useState({
     candidate_id: '',
     interview_type: 'video',
@@ -72,6 +74,7 @@ export default function InterviewSchedules() {
     meeting_link: '',
     google_event_id: '',
     location_info: '',
+    interviewer_ids: [] as string[],
   })
 
   const [autoForm, setAutoForm] = useState({
@@ -80,6 +83,7 @@ export default function InterviewSchedules() {
     end_time: '18:00',
     slot_minutes: '30',
     break_minutes: '10',
+    default_interviewer_ids: [] as string[],
   })
 
   /* ─── 데이터 로드 ─────────────────────────────────── */
@@ -92,6 +96,16 @@ export default function InterviewSchedules() {
       .order('created_at', { ascending: true })
       .then(({ data }) => {
         if (data) setCandidates(data as Candidate[])
+      })
+    // 면접관 후보 로드 (리더 이상)
+    supabase
+      .from('employees')
+      .select('id, name, email, role')
+      .in('role', ['leader', 'director', 'division_head', 'ceo', 'admin'])
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => {
+        if (data) setInterviewers(data)
       })
   }, [])
 
@@ -178,7 +192,10 @@ export default function InterviewSchedules() {
           description: `인터오리진 채용 면접\n지원자: ${cand?.name || ''}\n이메일: ${cand?.email || ''}`,
           startTime: new Date(meetKst).toISOString(),
           durationMinutes: parseInt(form.duration_minutes),
-          attendees: cand?.email ? [cand.email] : [],
+          attendees: [
+            ...(cand?.email ? [cand.email] : []),
+            ...form.interviewer_ids.map(id => interviewers.find(e => e.id === id)?.email).filter(Boolean),
+          ],
         }),
       })
       const result = await res.json()
@@ -222,7 +239,10 @@ export default function InterviewSchedules() {
             description: `인터오리진 채용 면접`,
             startTime: new Date(kstTime).toISOString(),
             durationMinutes: parseInt(form.duration_minutes),
-            attendees: cand?.email ? [cand.email] : [],
+            attendees: [
+              ...(cand?.email ? [cand.email] : []),
+              ...form.interviewer_ids.map(id => interviewers.find(e => e.id === id)?.email).filter(Boolean),
+            ],
           }),
         })
         const result = await res.json()
@@ -249,6 +269,7 @@ export default function InterviewSchedules() {
       meeting_link: meetLink,
       google_event_id: googleEventId,
       location_info: form.location_info || null,
+      interviewer_ids: form.interviewer_ids,
       status: 'scheduled',
     })
 
@@ -277,6 +298,7 @@ export default function InterviewSchedules() {
         meeting_link: '',
         google_event_id: '',
         location_info: '',
+        interviewer_ids: [],
       })
       refetch()
     }
@@ -394,7 +416,10 @@ ${candidateList}
                   description: `인터오리진 채용 면접\n지원자: ${cand?.name || ''}\n이메일: ${cand?.email || ''}`,
                   startTime: slotTime + '+09:00',
                   durationMinutes: slotMin,
-                  attendeeEmail: cand?.email || undefined,
+                  attendees: [
+                    ...(cand?.email ? [cand.email] : []),
+                    ...autoForm.default_interviewer_ids.map(id => interviewers.find(e => e.id === id)?.email).filter(Boolean),
+                  ],
                 }),
               })
               const meetResult = await meetRes.json()
@@ -415,6 +440,7 @@ ${candidateList}
           priority: i === 0 ? 'urgent' : 'normal',
           meeting_link: meetLink,
           google_event_id: googleEventId,
+          interviewer_ids: autoForm.default_interviewer_ids,
           status: 'scheduled',
         })
 
@@ -477,11 +503,34 @@ ${candidateList}
         return
       }
 
+      // 면접관에게도 안내 이메일 발송
+      if (schedule.interviewer_ids?.length > 0) {
+        const { data: ivList } = await supabase
+          .from('employees')
+          .select('name, email')
+          .in('id', schedule.interviewer_ids)
+        for (const iv of ivList || []) {
+          if (!iv.email) continue
+          const { subject: ivSubj, html: ivHtml } = interviewerNotificationEmail(
+            iv.name, candidate.name, candidate.email,
+            schedule.scheduled_at, schedule.duration_minutes,
+            schedule.interview_type, schedule.meeting_link, schedule.location_info,
+          )
+          await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: iv.email, subject: ivSubj, html: ivHtml }),
+          }).catch(() => {})
+        }
+      }
+
       const { error } = await sendPreMaterials(scheduleId)
       if (error) {
         toast('DB 업데이트 실패 (이메일은 발송됨)', 'error')
       } else {
-        toast(`${candidate.name}님에게 면접 안내 이메일을 발송했습니다.`, 'success')
+        const ivCount = schedule.interviewer_ids?.length || 0
+        const ivMsg = ivCount > 0 ? ` + 면접관 ${ivCount}명` : ''
+        toast(`${candidate.name}님${ivMsg}에게 면접 안내 이메일을 발송했습니다.`, 'success')
         refetch()
       }
     } catch (err: any) {
@@ -731,6 +780,7 @@ ${candidateList}
                             onSendMaterials={() => handleSendMaterials(s.id)}
                             onComplete={() => handleStatusChange(s.id, 'completed')}
                             onNoShow={() => handleStatusChange(s.id, 'no_show')}
+                            interviewers={interviewers}
                           />
                         ))
                       )}
@@ -927,6 +977,40 @@ ${candidateList}
               placeholder="서울 강남구 테헤란로..."
             />
           )}
+
+          {/* 면접관 배정 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              면접관 배정 <span className="text-xs text-gray-400">(선택)</span>
+            </label>
+            <div className="border rounded-lg max-h-40 overflow-y-auto divide-y">
+              {interviewers.map((iv) => (
+                <label key={iv.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.interviewer_ids.includes(iv.id)}
+                    onChange={() => setForm((p) => ({
+                      ...p,
+                      interviewer_ids: p.interviewer_ids.includes(iv.id)
+                        ? p.interviewer_ids.filter((id) => id !== iv.id)
+                        : [...p.interviewer_ids, iv.id],
+                    }))}
+                    className="rounded border-gray-300 text-brand-600"
+                  />
+                  <span className="text-sm text-gray-700">{iv.name}</span>
+                  <Badge variant="default" className="text-[10px] ml-auto">
+                    {iv.role === 'ceo' ? '대표' : iv.role === 'director' ? '이사' : iv.role === 'leader' ? '팀장' : iv.role === 'admin' ? '관리자' : iv.role}
+                  </Badge>
+                </label>
+              ))}
+            </div>
+            {form.interviewer_ids.length > 0 && (
+              <p className="text-xs text-brand-600 mt-1">
+                {form.interviewer_ids.length}명 선택 — 캘린더 초대 + 면접 안내 이메일이 자동 발송됩니다
+              </p>
+            )}
+          </div>
+
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               취소
@@ -989,6 +1073,37 @@ ${candidateList}
             <p>2차 대면면접 대기: {candidates.filter((c) => c.status === 'video_done').length}명</p>
           </div>
 
+          {/* 기본 면접관 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              기본 면접관 <span className="text-xs text-gray-400">(자동 배정에 포함)</span>
+            </label>
+            <div className="border rounded-lg max-h-32 overflow-y-auto divide-y">
+              {interviewers.map((iv) => (
+                <label key={iv.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoForm.default_interviewer_ids.includes(iv.id)}
+                    onChange={() => setAutoForm((p) => ({
+                      ...p,
+                      default_interviewer_ids: p.default_interviewer_ids.includes(iv.id)
+                        ? p.default_interviewer_ids.filter((id) => id !== iv.id)
+                        : [...p.default_interviewer_ids, iv.id],
+                    }))}
+                    className="rounded border-gray-300 text-brand-600"
+                  />
+                  <span className="text-sm text-gray-700">{iv.name}</span>
+                  <span className="text-[10px] text-gray-400 ml-auto">
+                    {iv.role === 'ceo' ? '대표' : iv.role === 'director' ? '이사' : iv.role === 'leader' ? '팀장' : iv.role}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {autoForm.default_interviewer_ids.length > 0 && (
+              <p className="text-xs text-brand-600 mt-1">{autoForm.default_interviewer_ids.length}명 선택됨</p>
+            )}
+          </div>
+
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button variant="outline" onClick={() => setAutoDialogOpen(false)}>
               취소
@@ -1020,6 +1135,7 @@ function ScheduleCard({
   onSendMaterials,
   onComplete,
   onNoShow,
+  interviewers = [],
 }: {
   schedule: any
   compact: boolean
@@ -1027,6 +1143,7 @@ function ScheduleCard({
   onSendMaterials: () => void
   onComplete: () => void
   onNoShow: () => void
+  interviewers?: { id: string; name: string; email: string; role: string }[]
 }) {
   const isVideo = s.interview_type === 'video'
 
@@ -1094,6 +1211,14 @@ function ScheduleCard({
         )}
         {s.candidate_name}
       </p>
+
+      {/* 면접관 표시 */}
+      {s.interviewer_ids?.length > 0 && (
+        <p className="text-[11px] text-gray-500 truncate mt-0.5" title={s.interviewer_ids.map((id: string) => interviewers.find((e) => e.id === id)?.name || '').filter(Boolean).join(', ')}>
+          <Users className="h-3 w-3 inline mr-0.5 -mt-0.5" />
+          {s.interviewer_ids.map((id: string) => interviewers.find((e) => e.id === id)?.name || '').filter(Boolean).join(', ')}
+        </p>
+      )}
 
       {/* Google Meet 버튼 또는 장소 */}
       {isVideo && s.meeting_link && s.status === 'scheduled' && (
