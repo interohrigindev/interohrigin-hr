@@ -93,15 +93,21 @@ async function callGemini(apiKey: string, model: string, body: AIRequestBody): P
     }
   } else {
     // 텍스트 + 파일 첨부 (멀티모달)
+    // Gemini 지원 MIME: application/pdf, image/*, text/plain, audio/*, video/*
+    const GEMINI_MIME_PREFIXES = ['application/pdf', 'image/', 'text/', 'audio/', 'video/']
     const parts: any[] = [{ text: body.prompt || '' }]
     if (body.files && body.files.length > 0) {
       for (const file of body.files) {
-        parts.push({
-          inline_data: {
-            mime_type: file.mimeType,
-            data: file.base64,
-          },
-        })
+        const isSupported = GEMINI_MIME_PREFIXES.some((p) => file.mimeType.startsWith(p))
+        if (isSupported) {
+          parts.push({
+            inline_data: {
+              mime_type: file.mimeType,
+              data: file.base64,
+            },
+          })
+        }
+        // 미지원 MIME(docx 등)은 건너뜀 — 텍스트 추출은 프론트에서 처리
       }
     }
     requestBody = {
