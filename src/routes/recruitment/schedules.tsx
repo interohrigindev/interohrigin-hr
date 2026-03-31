@@ -291,7 +291,7 @@ export default function InterviewSchedules() {
 
     setAutoGenerating(true)
     try {
-      const unscheduledCandidates = candidates.filter((c) => c.status === 'survey_done')
+      const unscheduledCandidates = candidates.filter((c) => c.status === 'survey_done' || c.status === 'video_done')
       if (unscheduledCandidates.length === 0) {
         toast('배정할 지원자가 없습니다.', 'error')
         setAutoGenerating(false)
