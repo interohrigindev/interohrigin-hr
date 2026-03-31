@@ -223,31 +223,21 @@ export default function CandidateReport() {
         }
       }
 
-      // docx에서 텍스트 추출 (ZIP 내 word/document.xml 파싱)
+      // docx에서 텍스트 추출 (바이너리에서 XML 텍스트 추출)
       async function extractTextFromDocx(blob: Blob): Promise<string | null> {
         try {
-          const { BlobReader, ZipReader, TextWriter } = await import('@zip.js/zip.js')
-          const reader = new ZipReader(new BlobReader(blob))
-          const entries = await reader.getEntries()
-          const docEntry = entries.find((e) => e.filename === 'word/document.xml')
-          if (!docEntry?.getData) { await reader.close(); return null }
-          const xmlText = await docEntry.getData(new TextWriter())
-          await reader.close()
-          // XML 태그 제거하여 순수 텍스트 추출
-          return xmlText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-        } catch {
-          // zip.js 라이브러리가 없으면 기본 텍스트 추출 시도
-          try {
-            const text = await blob.text()
-            // XML 기반 docx에서 텍스트만 추출
-            const matches = text.match(/<w:t[^>]*>([^<]*)<\/w:t>/g)
-            if (matches) {
-              return matches.map((m) => m.replace(/<[^>]+>/g, '')).join(' ')
-            }
-            return null
-          } catch {
-            return null
+          const buffer = await blob.arrayBuffer()
+          const bytes = new Uint8Array(buffer)
+          // docx는 ZIP 파일 — 바이너리에서 <w:t> 태그를 직접 찾아 텍스트 추출
+          const decoder = new TextDecoder('utf-8', { fatal: false })
+          const raw = decoder.decode(bytes)
+          const matches = raw.match(/<w:t[^>]*>([^<]*)<\/w:t>/g)
+          if (matches && matches.length > 0) {
+            return matches.map((m) => m.replace(/<[^>]+>/g, '')).join(' ').trim()
           }
+          return null
+        } catch {
+          return null
         }
       }
 
