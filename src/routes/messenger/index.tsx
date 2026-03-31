@@ -83,12 +83,35 @@ export default function MessengerPage() {
     }
   }, [paramRoomId])
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages + room change
+  const prevMsgCount = useRef(0)
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages.length])
+    // 새 메시지 도착 알림 (내가 보낸 것 제외)
+    if (messages.length > prevMsgCount.current && prevMsgCount.current > 0) {
+      const latest = messages[messages.length - 1]
+      if (latest && latest.sender_id !== profile?.id) {
+        // 알림 사운드
+        try {
+          const audio = new Audio('data:audio/wav;base64,UklGRlYAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YTIAAABkAKgA3AAIASwBQAFMAUgBNAEYAfAAwACIAEgACADI/5D/YP84/xj/AP/w/uj+6P7w/gD/GP84/2D/kP/I/wgASACIAMAA8AAYAUABSAFMAUABLAEIANOALABMAASAAP/I/5D/YP84/xj/')
+          audio.volume = 0.3
+          audio.play().catch(() => {})
+        } catch {}
+        // 브라우저 알림 (권한 있을 때만)
+        if (Notification.permission === 'granted') {
+          new Notification('새 메시지', {
+            body: `${latest.sender_name || '알 수 없음'}: ${latest.content?.substring(0, 50) || ''}`,
+            icon: '/favicon.ico',
+          })
+        } else if (Notification.permission === 'default') {
+          Notification.requestPermission()
+        }
+      }
+    }
+    prevMsgCount.current = messages.length
+  }, [messages.length, selectedRoomId])
 
   // Browser tab title with unread count
   useEffect(() => {
@@ -343,14 +366,21 @@ ${recentMsgs}
       return
     }
 
-    const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(filePath)
+    // private 버킷이므로 signed URL 생성 (7일간 유효)
+    const { data: signedData, error: signedErr } = await supabase.storage
+      .from('chat-attachments')
+      .createSignedUrl(filePath, 60 * 60 * 24 * 7)
+    if (signedErr || !signedData?.signedUrl) {
+      toast('파일 URL 생성 실패', 'error')
+      return
+    }
     const isImage = file.type.startsWith('image/')
 
     await sendMessage(
       isImage ? `📷 ${file.name}` : `📎 ${file.name}`,
       isImage ? 'image' : 'file',
       {
-        attachment_url: urlData.publicUrl,
+        attachment_url: signedData.signedUrl,
         attachment_name: file.name,
         attachment_size: file.size,
         attachment_type: file.type,
@@ -637,6 +667,7 @@ ${recentMsgs}
                                 <div className="space-y-1 mb-1">
                                   <a
                                     href={msg.attachment_url}
+                                    download={msg.attachment_name || true}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100"
@@ -766,7 +797,22 @@ ${recentMsgs}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={selectedRoom.is_ai_enabled ? '@AI로 AI 호출 가능 · Enter로 전송' : '메시지를 입력하세요...'}
+              onPaste={async (e) => {
+                const items = e.clipboardData?.items
+                if (!items) return
+                for (const item of Array.from(items)) {
+                  if (item.type.startsWith('image/')) {
+                    e.preventDefault()
+                    const file = item.getAsFile()
+                    if (file) {
+                      const renamed = new File([file], `paste_${Date.now()}.png`, { type: file.type })
+                      handleFileUpload({ target: { files: [renamed] } } as any)
+                    }
+                    return
+                  }
+                }
+              }}
+              placeholder={selectedRoom.is_ai_enabled ? '@AI로 AI 호출 가능 · Enter로 전송 · 이미지 붙여넣기 가능' : '메시지를 입력하세요... (이미지 붙여넣기 가능)'}
               rows={1}
               className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-500 max-h-32"
               style={{ minHeight: '42px' }}
