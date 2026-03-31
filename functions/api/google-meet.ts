@@ -15,6 +15,8 @@ interface Env {
   GMAIL_CLIENT_SECRET: string
   GMAIL_REFRESH_TOKEN: string
   GMAIL_SENDER_EMAIL: string
+  // 캘린더/Meet 전용 (미설정 시 GMAIL_ 토큰 사용)
+  CALENDAR_REFRESH_TOKEN?: string
 }
 
 interface MeetRequestBody {
@@ -88,11 +90,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
     const tz = timeZone || 'Asia/Seoul'
 
-    // OAuth2 Access Token 발급 (Gmail과 동일한 토큰)
+    // OAuth2 Access Token 발급 (캘린더 전용 토큰 우선, 없으면 Gmail 토큰)
+    const calendarToken = env.CALENDAR_REFRESH_TOKEN || env.GMAIL_REFRESH_TOKEN
     const accessToken = await getAccessToken(
       env.GMAIL_CLIENT_ID,
       env.GMAIL_CLIENT_SECRET,
-      env.GMAIL_REFRESH_TOKEN,
+      calendarToken,
     )
 
     // Google Calendar 이벤트 생성 (Meet 자동 포함)

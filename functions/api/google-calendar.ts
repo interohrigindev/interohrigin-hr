@@ -11,6 +11,8 @@ interface Env {
   GMAIL_CLIENT_SECRET: string
   GMAIL_REFRESH_TOKEN: string
   GMAIL_SENDER_EMAIL: string
+  // 캘린더/Meet 전용 (미설정 시 GMAIL_ 토큰 사용)
+  CALENDAR_REFRESH_TOKEN?: string
 }
 
 const CORS_HEADERS = {
@@ -27,13 +29,15 @@ function jsonResponse(data: unknown, status = 200) {
 }
 
 async function getAccessToken(env: Env): Promise<string> {
+  // 캘린더 전용 토큰 우선, 없으면 Gmail 토큰
+  const calendarToken = env.CALENDAR_REFRESH_TOKEN || env.GMAIL_REFRESH_TOKEN
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: env.GMAIL_CLIENT_ID,
       client_secret: env.GMAIL_CLIENT_SECRET,
-      refresh_token: env.GMAIL_REFRESH_TOKEN,
+      refresh_token: calendarToken,
       grant_type: 'refresh_token',
     }),
   })
