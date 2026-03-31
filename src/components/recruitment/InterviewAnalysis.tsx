@@ -12,7 +12,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Video, Mic, Upload, Loader2, Sparkles, ChevronDown, ChevronUp,
   Clock, MessageSquare, CheckCircle, Trash2, AlertTriangle, FileVideo, FileAudio,
-  Cloud, Download, Play, ExternalLink,
+  Cloud, Download, Play,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
