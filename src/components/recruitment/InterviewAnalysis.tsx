@@ -471,10 +471,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
 
       if (!analysis) throw new Error('분석 데이터 없음')
 
-      // 분석 확인 완료 표시 + 14일 후 자동 삭제 예정일 기록
-      const deleteAfter = new Date()
-      deleteAfter.setDate(deleteAfter.getDate() + 14)
-
+      // 분석 확인 완료 표시 (파일은 14일간 보관 — Storage 정책으로 자동 삭제)
       await supabase
         .from('interview_analyses')
         .update({
@@ -483,11 +480,11 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         })
         .eq('id', analysis.id)
 
-      // recording에 삭제 예정일 표시 (파일은 유지, 14일 후 Storage 정책으로 삭제)
+      // recording 상태를 confirmed로 변경 (파일은 유지)
       if (recording) {
         await supabase
           .from('interview_recordings')
-          .update({ status: 'confirmed', delete_after: deleteAfter.toISOString() })
+          .update({ status: 'confirmed' })
           .eq('id', recording.id)
       }
 

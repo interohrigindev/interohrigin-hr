@@ -330,7 +330,6 @@ export default function MenuPermissions() {
       employee_id: selectedId,
       allowed_menus: Array.from(checkedPaths),
       updated_at: new Date().toISOString(),
-      updated_by: user?.id ?? null,
     }
     const { error } = await supabase
       .from('menu_permissions')
@@ -354,7 +353,6 @@ export default function MenuPermissions() {
       employee_id: empId,
       allowed_menus: menus,
       updated_at: now,
-      updated_by: user?.id ?? null,
     }))
     const { error } = await supabase
       .from('menu_permissions')

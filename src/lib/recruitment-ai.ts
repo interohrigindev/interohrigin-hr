@@ -132,10 +132,33 @@ export async function runComprehensiveAnalysis(candidateId: string) {
 
   const result = await generateAIContent(config, prompt)
 
-  // JSON 파싱
-  const jsonMatch = result.content.match(/\{[\s\S]*\}/)
+  // JSON 파싱 (안전한 추출)
+  let cleaned = result.content
+    .replace(/```(?:json)?\s*/gi, '')
+    .replace(/```/g, '')
+    .trim()
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('AI 응답 파싱 실패')
-  const parsed = JSON.parse(jsonMatch[0])
+  let jsonStr = jsonMatch[0]
+    .replace(/,\s*([\]}])/g, '$1') // trailing comma 제거
+    .replace(/[\x00-\x1f\x7f]/g, (ch) => ch === '\n' || ch === '\r' || ch === '\t' ? ch : '')
+  let parsed: any
+  try {
+    parsed = JSON.parse(jsonStr)
+  } catch {
+    // 2차 시도: 줄바꿈 이스케이프
+    jsonStr = jsonStr.replace(/(?<!\\)\n/g, '\\n')
+    parsed = JSON.parse(jsonStr)
+  }
+
+  // AI 추천값 검증
+  const validRecs = ['STRONG_HIRE', 'HIRE', 'REVIEW', 'NO_HIRE']
+  if (!validRecs.includes(parsed.ai_recommendation)) {
+    parsed.ai_recommendation = 'REVIEW'
+  }
+  if (typeof parsed.overall_score !== 'number') {
+    parsed.overall_score = parseInt(parsed.overall_score) || 50
+  }
 
   // recruitment_reports 저장
   const { data: report, error } = await supabase
