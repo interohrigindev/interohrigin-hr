@@ -177,7 +177,7 @@ const ROLE_PRESETS: { label: string; paths: string[] }[] = [
 // ─── Component ──────────────────────────────────────────────────
 
 export default function MenuPermissions() {
-  const { user } = useAuth()
+  const { } = useAuth()
   const { toast } = useToast()
 
   // Data
