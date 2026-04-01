@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
-import { Mic, Download, Clock, Users, ChevronDown, ChevronUp, Loader2, Trash2 } from 'lucide-react'
+import {
+  Mic, Download, Clock, Users, ChevronDown, ChevronUp, Loader2, Trash2,
+  FileText, AlertTriangle, CheckCircle, ListChecks, MessageSquare,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
-import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import DOMPurify from 'dompurify'
 
 interface MeetingRecord {
   id: string
@@ -32,10 +33,7 @@ interface MeetingRecord {
   created_at: string
 }
 
-interface Employee {
-  id: string
-  name: string
-}
+interface Employee { id: string; name: string }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   recording: { label: '녹음 중', color: 'bg-red-100 text-red-700' },
@@ -46,8 +44,44 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   error: { label: '오류', color: 'bg-red-100 text-red-700' },
 }
 
+const RETENTION_DAYS = 14
+
+function getDaysRemaining(createdAt: string): number {
+  const created = new Date(createdAt)
+  const expiry = new Date(created.getTime() + RETENTION_DAYS * 24 * 60 * 60 * 1000)
+  return Math.max(0, Math.ceil((expiry.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+}
+
+function formatSummaryAsDocument(summary: string): string {
+  if (!summary) return ''
+  let html = summary
+    // 마크다운 헤더 → HTML
+    .replace(/^### (.+)$/gm, '<h4 class="text-sm font-bold text-gray-800 mt-4 mb-1 flex items-center gap-1"><span class="w-1 h-4 bg-brand-500 rounded-full inline-block mr-1"></span>$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 class="text-base font-bold text-gray-900 mt-5 mb-2 pb-1 border-b border-gray-200">$1</h3>')
+    .replace(/^# (.+)$/gm, '<h2 class="text-lg font-bold text-gray-900 mt-4 mb-2">$1</h2>')
+    // 볼드/이탤릭
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-gray-900">$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // 리스트
+    .replace(/^- (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-brand-500 mt-1 shrink-0">•</span><span>$1</span></li>')
+    .replace(/^\d+\. (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-brand-600 font-semibold mt-0 shrink-0 w-5 text-right">▸</span><span>$1</span></li>')
+    // 줄바꿈
+    .replace(/\n\n/g, '</p><p class="mt-2">')
+    .replace(/\n/g, '<br>')
+  return `<div class="space-y-1">${html}</div>`
+}
+
+function downloadAsTextFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function MeetingNotes() {
-  const { } = useAuth()
   const { toast } = useToast()
   const [records, setRecords] = useState<MeetingRecord[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -57,36 +91,24 @@ export default function MeetingNotes() {
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null })
   const [deleting, setDeleting] = useState(false)
 
-  useEffect(() => {
-    fetchData()
-  }, [])
+  useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
     setLoading(true)
     const [recRes, empRes] = await Promise.all([
-      supabase
-        .from('meeting_records')
-        .select('*')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('employees')
-        .select('id, name')
-        .eq('is_active', true),
+      supabase.from('meeting_records').select('*').order('created_at', { ascending: false }),
+      supabase.from('employees').select('id, name').eq('is_active', true),
     ])
-
     const recs = (recRes.data || []) as MeetingRecord[]
     setRecords(recs)
     setEmployees((empRes.data || []) as Employee[])
 
-    // Signed URL 생성 (녹음 파일)
     const urls: Record<string, string> = {}
     for (const r of recs) {
       if (r.recording_url && r.status !== 'error') {
         const path = r.recording_url.split('/meeting-recordings/').pop()
         if (path) {
-          const { data } = await supabase.storage
-            .from('meeting-recordings')
-            .createSignedUrl(decodeURIComponent(path), 3600)
+          const { data } = await supabase.storage.from('meeting-recordings').createSignedUrl(decodeURIComponent(path), 3600)
           if (data?.signedUrl) urls[r.id] = data.signedUrl
         }
       }
@@ -95,9 +117,7 @@ export default function MeetingNotes() {
     setLoading(false)
   }
 
-  function getEmpName(id: string) {
-    return employees.find((e) => e.id === id)?.name || '알 수 없음'
-  }
+  const getEmpName = (id: string) => employees.find((e) => e.id === id)?.name || '알 수 없음'
 
   function formatDuration(seconds: number | null) {
     if (!seconds) return '-'
@@ -107,36 +127,44 @@ export default function MeetingNotes() {
   }
 
   function toggleExpand(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
 
   async function handleDelete(id: string) {
     setDeleting(true)
     const record = records.find((r) => r.id === id)
-
-    // Storage 파일 삭제
     if (record?.recording_url) {
       const path = record.recording_url.split('/meeting-recordings/').pop()
-      if (path) {
-        await supabase.storage.from('meeting-recordings').remove([decodeURIComponent(path)])
-      }
+      if (path) await supabase.storage.from('meeting-recordings').remove([decodeURIComponent(path)])
     }
-
-    // DB 삭제
     const { error } = await supabase.from('meeting_records').delete().eq('id', id)
-    if (error) {
-      toast('삭제 실패: ' + error.message, 'error')
-    } else {
-      toast('회의록이 삭제되었습니다.', 'success')
-      setRecords((prev) => prev.filter((r) => r.id !== id))
-    }
+    if (error) toast('삭제 실패: ' + error.message, 'error')
+    else { toast('회의록이 삭제되었습니다.', 'success'); setRecords((prev) => prev.filter((r) => r.id !== id)) }
     setDeleting(false)
     setDeleteDialog({ open: false, id: null })
+  }
+
+  function buildTranscriptText(r: MeetingRecord): string {
+    const lines: string[] = []
+    lines.push(`회의록: ${r.title || '제목 없음'}`)
+    lines.push(`일시: ${new Date(r.created_at).toLocaleString('ko-KR')}`)
+    lines.push(`녹음 시간: ${formatDuration(r.duration_seconds)}`)
+    lines.push(`참석자: ${r.participant_ids?.map((id) => getEmpName(id)).join(', ') || '없음'}`)
+    lines.push(`녹음자: ${getEmpName(r.recorded_by)}`)
+    lines.push('')
+    if (r.summary) { lines.push('=== AI 요약 ==='); lines.push(r.summary); lines.push('') }
+    if (r.action_items && Array.isArray(r.action_items) && r.action_items.length > 0) {
+      lines.push('=== 액션 아이템 ===')
+      r.action_items.forEach((item: any, i: number) => lines.push(`${i + 1}. ${typeof item === 'string' ? item : item.task || JSON.stringify(item)}`))
+      lines.push('')
+    }
+    if (r.decisions && Array.isArray(r.decisions) && r.decisions.length > 0) {
+      lines.push('=== 결정 사항 ===')
+      r.decisions.forEach((d: any, i: number) => lines.push(`${i + 1}. ${typeof d === 'string' ? d : d.decision || JSON.stringify(d)}`))
+      lines.push('')
+    }
+    if (r.transcription) { lines.push('=== 전사 텍스트 ==='); lines.push(r.transcription) }
+    return lines.join('\n')
   }
 
   if (loading) return <PageSpinner />
@@ -158,33 +186,21 @@ export default function MeetingNotes() {
         </div>
       </div>
 
+      {/* 14일 보관 안내 */}
+      <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <AlertTriangle className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+        <div className="text-sm text-blue-700">
+          <p className="font-medium">녹음 파일은 {RETENTION_DAYS}일간 보관 후 자동 삭제됩니다.</p>
+          <p className="text-xs text-blue-600 mt-0.5">필요한 녹음은 다운로드하여 보관하세요. AI 요약/전사 텍스트는 영구 보관됩니다.</p>
+        </div>
+      </div>
+
       {/* 통계 카드 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="py-3 px-4">
-            <p className="text-[11px] text-gray-500">전체 회의록</p>
-            <p className="text-2xl font-bold text-gray-900">{records.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 px-4">
-            <p className="text-[11px] text-gray-500">완료</p>
-            <p className="text-2xl font-bold text-green-600">{completedCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 px-4">
-            <p className="text-[11px] text-gray-500">총 녹음 시간</p>
-            <p className="text-2xl font-bold text-blue-600">{Math.round(totalDuration / 60)}분</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-3 px-4">
-            <p className="text-[11px] text-gray-500">예상 STT 비용</p>
-            <p className="text-2xl font-bold text-amber-600">${(totalDuration / 60 * 0.006).toFixed(2)}</p>
-            <p className="text-[10px] text-gray-400">Whisper $0.006/분</p>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">전체 회의록</p><p className="text-2xl font-bold text-gray-900">{records.length}</p></CardContent></Card>
+        <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">완료</p><p className="text-2xl font-bold text-green-600">{completedCount}</p></CardContent></Card>
+        <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">총 녹음 시간</p><p className="text-2xl font-bold text-blue-600">{Math.round(totalDuration / 60)}분</p></CardContent></Card>
+        <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">예상 STT 비용</p><p className="text-2xl font-bold text-amber-600">${(totalDuration / 60 * 0.006).toFixed(2)}</p><p className="text-[10px] text-gray-400">Whisper $0.006/분</p></CardContent></Card>
       </div>
 
       {/* 회의록 목록 */}
@@ -202,6 +218,7 @@ export default function MeetingNotes() {
             const isOpen = expanded.has(r.id)
             const status = STATUS_CONFIG[r.status] || { label: r.status, color: 'bg-gray-100 text-gray-700' }
             const participants = r.participant_ids?.map((id) => getEmpName(id)).filter(Boolean) || []
+            const daysLeft = getDaysRemaining(r.created_at)
 
             return (
               <Card key={r.id} className="overflow-hidden">
@@ -210,12 +227,17 @@ export default function MeetingNotes() {
                   className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left"
                   onClick={() => toggleExpand(r.id)}
                 >
-                  <Mic className={`h-5 w-5 shrink-0 ${r.status === 'completed' ? 'text-green-500' : 'text-gray-400'}`} />
+                  <div className={`p-2 rounded-lg ${r.status === 'completed' ? 'bg-green-100' : 'bg-gray-100'}`}>
+                    <Mic className={`h-5 w-5 ${r.status === 'completed' ? 'text-green-600' : 'text-gray-400'}`} />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-gray-900 truncate">{r.title || '제목 없음'}</p>
                       <Badge variant="default" className={status.color + ' text-[10px]'}>{status.label}</Badge>
                       {r.is_sent && <Badge variant="default" className="bg-blue-50 text-blue-600 text-[10px]">발송됨</Badge>}
+                      {daysLeft <= 3 && daysLeft > 0 && (
+                        <Badge variant="default" className="bg-red-50 text-red-600 text-[10px]">{daysLeft}일 후 삭제</Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                       <span><Clock className="h-3 w-3 inline mr-0.5" />{formatDuration(r.duration_seconds)}</span>
@@ -229,92 +251,146 @@ export default function MeetingNotes() {
 
                 {/* 상세 내용 */}
                 {isOpen && (
-                  <div className="border-t px-4 pb-4 space-y-4">
-                    {/* 참석자 */}
-                    {participants.length > 0 && (
-                      <div className="pt-3">
-                        <p className="text-xs font-semibold text-gray-500 mb-1">참석자</p>
-                        <div className="flex flex-wrap gap-1">
-                          {participants.map((name, i) => (
-                            <Badge key={i} variant="default" className="bg-gray-100 text-gray-700 text-xs">{name}</Badge>
-                          ))}
-                        </div>
+                  <div className="border-t">
+                    {/* 상단 메타 + 보관 안내 */}
+                    <div className="px-4 pt-3 pb-2 bg-gray-50/50 flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1">
+                        {participants.map((name, i) => (
+                          <Badge key={i} variant="default" className="bg-white text-gray-700 text-xs border">{name}</Badge>
+                        ))}
                       </div>
-                    )}
-
-                    {/* 녹음 파일 */}
-                    {signedUrls[r.id] && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 mb-2">녹음 파일</p>
-                        <div className="flex items-center gap-2">
-                          <audio controls src={signedUrls[r.id]} className="h-8 flex-1" />
-                          <a
-                            href={signedUrls[r.id]}
-                            download={`회의록_${r.title || r.id}.webm`}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-md"
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-400">
+                          {daysLeft > 0 ? `파일 보관: ${daysLeft}일 남음` : '보관 기간 만료'}
+                        </span>
+                        {/* TXT 다운로드 */}
+                        {(r.summary || r.transcription) && (
+                          <button
+                            onClick={() => downloadAsTextFile(`회의록_${r.title || r.id}.txt`, buildTranscriptText(r))}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-white border rounded text-xs text-gray-600 hover:bg-gray-50"
                           >
-                            <Download className="h-3.5 w-3.5" /> 다운로드
-                          </a>
-                        </div>
-                        {r.file_size_bytes && (
-                          <p className="text-[10px] text-gray-400 mt-1">{(r.file_size_bytes / 1024 / 1024).toFixed(1)} MB</p>
+                            <FileText className="h-3 w-3" /> TXT 저장
+                          </button>
                         )}
                       </div>
-                    )}
+                    </div>
 
-                    {/* AI 요약 */}
-                    {r.summary && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 mb-2">AI 요약</p>
-                        <div
-                          className="prose prose-sm max-w-none text-gray-700 bg-gray-50 rounded-lg p-4"
-                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(r.summary.replace(/\n/g, '<br>')) }}
-                        />
-                      </div>
-                    )}
-
-                    {/* 전사 텍스트 */}
-                    {r.transcription && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 mb-2">전사 텍스트</p>
-                        <div className="bg-gray-50 rounded-lg p-4 max-h-60 overflow-y-auto">
-                          <p className="text-sm text-gray-600 whitespace-pre-wrap">{r.transcription}</p>
+                    <div className="px-4 pb-4 space-y-4">
+                      {/* 녹음 파일 재생 */}
+                      {signedUrls[r.id] && (
+                        <div className="p-3 bg-gray-50 rounded-lg space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-gray-500 flex items-center gap-1">
+                              <Mic className="h-3.5 w-3.5" /> 녹음 파일
+                            </p>
+                            <div className="flex items-center gap-2">
+                              {r.file_size_bytes && (
+                                <span className="text-[10px] text-gray-400">{(r.file_size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                              )}
+                              <a
+                                href={signedUrls[r.id]}
+                                download={`회의록_${r.title || r.id}.webm`}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-white border rounded text-xs text-gray-600 hover:bg-gray-100"
+                              >
+                                <Download className="h-3 w-3" /> 다운로드
+                              </a>
+                            </div>
+                          </div>
+                          <audio controls src={signedUrls[r.id]} className="w-full h-10" />
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* 액션 아이템 */}
-                    {r.action_items && Array.isArray(r.action_items) && r.action_items.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 mb-2">액션 아이템</p>
-                        <ul className="space-y-1">
-                          {r.action_items.map((item: any, i: number) => (
-                            <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                              <span className="text-brand-500 mt-0.5">•</span>
-                              <span>{typeof item === 'string' ? item : item.task || JSON.stringify(item)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                      {/* AI 요약 — 문서 서식 */}
+                      {r.summary && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="bg-gradient-to-r from-brand-50 to-purple-50 px-4 py-2 flex items-center gap-2 border-b">
+                            <MessageSquare className="h-4 w-4 text-brand-600" />
+                            <p className="text-sm font-semibold text-brand-700">AI 회의 요약</p>
+                          </div>
+                          <div
+                            className="px-4 py-3 text-sm text-gray-700 leading-relaxed"
+                            dangerouslySetInnerHTML={{ __html: formatSummaryAsDocument(r.summary) }}
+                          />
+                        </div>
+                      )}
 
-                    {/* 에러 */}
-                    {r.status === 'error' && r.error_message && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <p className="text-sm text-red-700">{r.error_message}</p>
-                      </div>
-                    )}
+                      {/* 액션 아이템 */}
+                      {r.action_items && Array.isArray(r.action_items) && r.action_items.length > 0 && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="bg-amber-50 px-4 py-2 flex items-center gap-2 border-b border-amber-100">
+                            <ListChecks className="h-4 w-4 text-amber-600" />
+                            <p className="text-sm font-semibold text-amber-700">액션 아이템 ({r.action_items.length}건)</p>
+                          </div>
+                          <div className="px-4 py-2 divide-y divide-gray-100">
+                            {r.action_items.map((item: any, i: number) => (
+                              <div key={i} className="flex items-start gap-3 py-2">
+                                <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                                  {i + 1}
+                                </span>
+                                <p className="text-sm text-gray-700">{typeof item === 'string' ? item : item.task || JSON.stringify(item)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-                    {/* 삭제 버튼 */}
-                    <div className="flex justify-end pt-2 border-t">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDeleteDialog({ open: true, id: r.id })}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-1" /> 삭제
-                      </Button>
+                      {/* 결정 사항 */}
+                      {r.decisions && Array.isArray(r.decisions) && r.decisions.length > 0 && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="bg-green-50 px-4 py-2 flex items-center gap-2 border-b border-green-100">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <p className="text-sm font-semibold text-green-700">결정 사항 ({r.decisions.length}건)</p>
+                          </div>
+                          <div className="px-4 py-2 divide-y divide-gray-100">
+                            {r.decisions.map((d: any, i: number) => (
+                              <div key={i} className="flex items-start gap-3 py-2">
+                                <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                                <p className="text-sm text-gray-700">{typeof d === 'string' ? d : d.decision || JSON.stringify(d)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 전사 텍스트 */}
+                      {r.transcription && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b">
+                            <p className="text-xs font-semibold text-gray-500 flex items-center gap-1">
+                              <FileText className="h-3.5 w-3.5" /> 전사 텍스트 (STT)
+                            </p>
+                            <button
+                              onClick={() => downloadAsTextFile(`전사_${r.title || r.id}.txt`, r.transcription || '')}
+                              className="text-[10px] text-brand-600 hover:underline"
+                            >
+                              TXT 다운로드
+                            </button>
+                          </div>
+                          <div className="px-4 py-3 max-h-48 overflow-y-auto">
+                            <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{r.transcription}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 에러 */}
+                      {r.status === 'error' && r.error_message && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                          <p className="text-sm text-red-700">{r.error_message}</p>
+                        </div>
+                      )}
+
+                      {/* 하단 버튼 */}
+                      <div className="flex justify-end pt-2 border-t">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDeleteDialog({ open: true, id: r.id })}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" /> 삭제
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -330,11 +406,7 @@ export default function MeetingNotes() {
           <p className="text-sm text-gray-600">이 회의록을 삭제하시겠습니까? 녹음 파일과 전사/요약 내용이 모두 삭제됩니다.</p>
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setDeleteDialog({ open: false, id: null })}>취소</Button>
-            <Button
-              variant="danger"
-              onClick={() => deleteDialog.id && handleDelete(deleteDialog.id)}
-              disabled={deleting}
-            >
+            <Button variant="danger" onClick={() => deleteDialog.id && handleDelete(deleteDialog.id)} disabled={deleting}>
               {deleting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 삭제 중...</> : '삭제'}
             </Button>
           </div>
