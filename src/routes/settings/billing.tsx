@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { DollarSign, Database, Bot, Mail, Video, Mic, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Database, Bot, Mail, Mic, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Mic, Play, Download, Clock, Users, FileText, ChevronDown, ChevronUp, Loader2, Trash2 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Mic, Download, Clock, Users, ChevronDown, ChevronUp, Loader2, Trash2 } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
@@ -47,7 +47,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 }
 
 export default function MeetingNotes() {
-  const { profile } = useAuth()
+  const { } = useAuth()
   const { toast } = useToast()
   const [records, setRecords] = useState<MeetingRecord[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
