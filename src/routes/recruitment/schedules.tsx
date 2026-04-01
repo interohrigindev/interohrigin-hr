@@ -538,6 +538,41 @@ ${candidateList}
     }
   }
 
+  // Meet 링크 재생성
+  async function handleRegenerateMeet(scheduleId: string) {
+    const schedule = schedules.find((s: any) => s.id === scheduleId)
+    if (!schedule) return
+    const cand = candidates.find((c) => c.id === schedule.candidate_id)
+    setGeneratingMeet(true)
+    try {
+      const res = await fetch('/api/google-meet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          summary: `[인터오리진 면접] ${cand?.name || '지원자'}`,
+          description: `인터오리진 채용 면접 (재생성)`,
+          startTime: schedule.scheduled_at,
+          durationMinutes: schedule.duration_minutes,
+          attendees: [
+            ...(cand?.email ? [cand.email] : []),
+            ...(schedule.interviewer_ids || []).map((id: string) => interviewers.find((e) => e.id === id)?.email).filter(Boolean),
+          ],
+        }),
+      })
+      const result = await res.json()
+      if (res.ok && result.meetLink) {
+        await updateSchedule(scheduleId, { meeting_link: result.meetLink, google_event_id: result.eventId } as any)
+        toast('Meet 링크가 재생성되었습니다: ' + result.meetLink, 'success')
+        refetch()
+      } else {
+        toast('Meet 생성 실패: ' + (result.error || ''), 'error')
+      }
+    } catch (err: any) {
+      toast('Meet 재생성 실패: ' + err.message, 'error')
+    }
+    setGeneratingMeet(false)
+  }
+
   async function handleStatusChange(scheduleId: string, newStatus: string) {
     const { error } = await updateSchedule(scheduleId, { status: newStatus } as any)
     if (error) {
@@ -780,6 +815,7 @@ ${candidateList}
                             onSendMaterials={() => handleSendMaterials(s.id)}
                             onComplete={() => handleStatusChange(s.id, 'completed')}
                             onNoShow={() => handleStatusChange(s.id, 'no_show')}
+                            onRegenerateMeet={() => handleRegenerateMeet(s.id)}
                             interviewers={interviewers}
                           />
                         ))
@@ -807,7 +843,8 @@ ${candidateList}
             onChange={(e) => {
               const cand = candidates.find((c) => c.id === e.target.value)
               const autoType = cand?.status === 'video_done' ? 'face_to_face' : 'video'
-              setForm((p) => ({ ...p, candidate_id: e.target.value, interview_type: autoType }))
+              const defaultLocation = autoType === 'face_to_face' ? '서울 서대문구 통일로 484, 인터오리진' : ''
+              setForm((p) => ({ ...p, candidate_id: e.target.value, interview_type: autoType, location_info: defaultLocation }))
             }}
             options={[
               { value: '', label: '선택하세요' },
@@ -974,7 +1011,7 @@ ${candidateList}
               label="면접 장소"
               value={form.location_info}
               onChange={(e) => setForm((p) => ({ ...p, location_info: e.target.value }))}
-              placeholder="서울 강남구 테헤란로..."
+              placeholder="서울 서대문구 통일로 484, 인터오리진"
             />
           )}
 
@@ -1135,6 +1172,7 @@ function ScheduleCard({
   onSendMaterials,
   onComplete,
   onNoShow,
+  onRegenerateMeet,
   interviewers = [],
 }: {
   schedule: any
@@ -1143,6 +1181,7 @@ function ScheduleCard({
   onSendMaterials: () => void
   onComplete: () => void
   onNoShow: () => void
+  onRegenerateMeet?: () => void
   interviewers?: { id: string; name: string; email: string; role: string }[]
 }) {
   const isVideo = s.interview_type === 'video'
@@ -1252,16 +1291,21 @@ function ScheduleCard({
 
         {s.status === 'scheduled' && (
           <div className="flex items-center gap-0.5">
-            {!s.pre_materials_sent ? (
+            <button
+              onClick={onSendMaterials}
+              className="p-1 rounded-md hover:bg-white/80 transition-colors"
+              title={s.pre_materials_sent ? '이메일 재발송' : '안내 이메일 발송'}
+            >
+              <Send className={`h-3.5 w-3.5 ${s.pre_materials_sent ? 'text-green-500' : 'text-brand-500'}`} />
+            </button>
+            {isVideo && onRegenerateMeet && (
               <button
-                onClick={onSendMaterials}
-                className="p-1 rounded-md hover:bg-white/80 transition-colors"
-                title="안내 이메일 발송"
+                onClick={onRegenerateMeet}
+                className="p-1 rounded-md hover:bg-blue-100 transition-colors"
+                title="Meet 링크 재생성"
               >
-                <Send className="h-3.5 w-3.5 text-brand-500" />
+                <Video className="h-3.5 w-3.5 text-blue-500" />
               </button>
-            ) : (
-              <span className="text-[9px] text-green-500 font-medium mr-0.5">발송</span>
             )}
             <button
               onClick={onComplete}

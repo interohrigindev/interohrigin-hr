@@ -60,6 +60,7 @@ export default function CandidateReport() {
     candidate_response: Record<string, any> | null
     created_at: string
   } | null>(null)
+  const [duplicateCandidates, setDuplicateCandidates] = useState<{ id: string; name: string; status: string; created_at: string; job_posting_id: string | null }[]>([])
 
   useEffect(() => {
     if (!id) return
@@ -117,6 +118,18 @@ export default function CandidateReport() {
       // 면접관 코멘트 로딩
       if (cand?.interviewer_comments) {
         setComments((cand.interviewer_comments as typeof comments) || [])
+      }
+
+      // 중복 지원자 체크 (같은 이름 + 같은 전화번호 또는 이메일)
+      if (cand) {
+        const { data: dupes } = await supabase
+          .from('candidates')
+          .select('id, name, status, created_at, job_posting_id')
+          .neq('id', id)
+          .or(`name.eq.${cand.name},email.eq.${cand.email}`)
+          .order('created_at', { ascending: false })
+          .limit(10)
+        if (dupes && dupes.length > 0) setDuplicateCandidates(dupes)
       }
 
       // 합격 결정 + 지원자 응답 로드
@@ -1585,6 +1598,21 @@ ${surveyText || '응답 없음'}
                       <p className="text-xs text-amber-700">지원자가 아직 합격 조건에 응답하지 않았습니다.</p>
                     </div>
                   ) : null}
+
+                  {/* 합격 → 불합격 변경 */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-red-600 hover:bg-red-50 hover:text-red-700 mt-2"
+                    onClick={async () => {
+                      if (!confirm('정말 불합격으로 변경하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return
+                      await supabase.from('candidates').update({ status: 'rejected' }).eq('id', id)
+                      setCandidate((p) => p ? { ...p, status: 'rejected' as any } : p)
+                      toast('불합격으로 변경되었습니다.', 'success')
+                    }}
+                  >
+                    <XCircle className="h-4 w-4 mr-1" /> 합격 취소 (불합격 변경)
+                  </Button>
                 </div>
               ) : candidate.status === 'rejected' ? (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
@@ -1598,6 +1626,32 @@ ${surveyText || '응답 없음'}
               )}
             </CardContent>
           </Card>
+
+          {/* 중복 지원자 알림 */}
+          {duplicateCandidates.length > 0 && (
+            <Card className="border-amber-300 bg-amber-50">
+              <CardContent className="py-3 px-4">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">중복 지원자 감지 ({duplicateCandidates.length}건)</p>
+                    <p className="text-xs text-amber-700 mt-0.5">동일 이름 또는 이메일로 지원한 이력이 있습니다.</p>
+                    <div className="mt-2 space-y-1">
+                      {duplicateCandidates.map((d) => (
+                        <a
+                          key={d.id}
+                          href={`/admin/recruitment/candidates/${d.id}`}
+                          className="block text-xs text-amber-700 hover:text-amber-900 hover:underline"
+                        >
+                          {d.name} — {CANDIDATE_STATUS_LABELS[d.status as CandidateStatus] || d.status} ({new Date(d.created_at).toLocaleDateString('ko-KR')})
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

@@ -38,6 +38,7 @@ const RECOMMENDED_PROVIDER: Record<string, 'gemini' | 'openai' | 'claude'> = {
   schedule_optimization: 'gemini',
   job_posting_ai: 'gemini',
   interview_transcription: 'gemini',
+  meeting_stt: 'openai',
   evaluation_report: 'gemini',
   personality_analysis: 'gemini',
   employee_profile_ai: 'gemini',
