@@ -44,6 +44,8 @@ import {
   Wallet,
   BookOpen,
   Building,
+  Mic,
+  DollarSign,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -107,6 +109,11 @@ const standaloneItems: NavItem[] = [
     to: '/bulletin',
     label: '게시판',
     icon: <FileText className="h-5 w-5" />,
+  },
+  {
+    to: '/meeting-notes',
+    label: '회의록',
+    icon: <Mic className="h-5 w-5" />,
   },
   // { to: '/calendar', label: '캘린더', icon: <CalendarDays className="h-5 w-5" /> }, // 일시 숨김
 ]
@@ -416,6 +423,21 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           >
             <Shield className="h-5 w-5" />
             메뉴 권한 관리
+          </NavLink>
+          <NavLink
+            to="/settings/billing"
+            onClick={onClose}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-brand-50 text-brand-700'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              )
+            }
+          >
+            <DollarSign className="h-5 w-5" />
+            비용 관리
           </NavLink>
         </>
       )}

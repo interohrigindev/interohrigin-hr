@@ -18,6 +18,8 @@ import Settings from '@/routes/settings'
 import EvaluationSettings from '@/routes/settings/evaluation'
 import GeneralSettings from '@/routes/settings/general'
 import MenuPermissions from '@/routes/settings/menu-permissions'
+import BillingDashboard from '@/routes/settings/billing'
+import MeetingNotes from '@/routes/meeting-notes'
 
 // 채용관리
 import RecruitmentDashboard from '@/routes/recruitment/dashboard'
@@ -166,6 +168,15 @@ function App() {
                   </AdminRoute>
                 }
               />
+              <Route
+                path="settings/billing"
+                element={
+                  <AdminRoute>
+                    <BillingDashboard />
+                  </AdminRoute>
+                }
+              />
+              <Route path="meeting-notes" element={<MeetingNotes />} />
 
               {/* 채용관리 (관리자/임원) */}
               <Route path="admin/recruitment" element={<AdminRoute><RecruitmentDashboard /></AdminRoute>} />
