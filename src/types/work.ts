@@ -20,6 +20,12 @@ export interface Project {
 export type TaskPriority = 'urgent' | 'high' | 'normal' | 'low'
 export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'cancelled'
 
+export interface TaskImage {
+  url: string
+  name: string
+  size: number
+}
+
 export interface Task {
   id: string
   project_id: string | null
@@ -35,6 +41,7 @@ export interface Task {
   ai_generated: boolean
   parent_task_id: string | null
   sort_order: number
+  images: TaskImage[]
   created_at: string
   updated_at: string
 }

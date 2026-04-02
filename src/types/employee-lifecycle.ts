@@ -177,7 +177,13 @@ export interface ProbationEvaluation {
 
 // ─── 월간 업무 점검 ────────────────────────────────────────────
 export type CheckinTag = '이슈' | '칭찬' | '제안' | '기타'
+export type SpecialNoteTag = '이슈' | '성과' | '칭찬' | '제안' | '기타'
 export type CheckinStatus = 'draft' | 'submitted' | 'leader_reviewed' | 'exec_reviewed' | 'ceo_reviewed'
+
+export interface CheckinNote {
+  tag: SpecialNoteTag
+  text: string
+}
 
 export interface MonthlyCheckin {
   id: string
@@ -186,6 +192,8 @@ export interface MonthlyCheckin {
   month: number
   tag: CheckinTag
   content: string | null
+  project_name: string | null
+  special_notes: CheckinNote[]
   leader_feedback: string | null
   exec_feedback: string | null
   ceo_feedback: string | null

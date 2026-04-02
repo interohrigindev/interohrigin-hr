@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Edit2, Trash2 } from 'lucide-react'
+import { Plus, Edit2, Trash2, ImagePlus, X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +10,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import type { Task, TaskStatus, TaskPriority, Project } from '@/types/work'
+import type { Task, TaskStatus, TaskPriority, Project, TaskImage } from '@/types/work'
 import type { Employee } from '@/types/database'
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -46,6 +46,7 @@ interface TaskForm {
   status: TaskStatus
   due_date: string
   estimated_hours: string
+  images: TaskImage[]
 }
 
 const emptyForm: TaskForm = {
@@ -57,6 +58,7 @@ const emptyForm: TaskForm = {
   status: 'todo',
   due_date: '',
   estimated_hours: '',
+  images: [],
 }
 
 export default function TaskManage() {
@@ -126,6 +128,7 @@ export default function TaskManage() {
       status: t.status,
       due_date: t.due_date || '',
       estimated_hours: t.estimated_hours?.toString() || '',
+      images: t.images || [],
     })
     setDialogOpen(true)
   }
@@ -145,6 +148,7 @@ export default function TaskManage() {
       status: form.status,
       due_date: form.due_date || null,
       estimated_hours: form.estimated_hours ? parseFloat(form.estimated_hours) : null,
+      images: form.images,
     }
 
     if (editingId) {
@@ -265,6 +269,9 @@ export default function TaskManage() {
                               | {task.due_date}
                             </span>
                           )}
+                          {(task.images || []).length > 0 && (
+                            <span className="text-brand-600">| <ImagePlus className="h-3 w-3 inline" /> {task.images.length}</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -304,6 +311,61 @@ export default function TaskManage() {
             onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
             rows={3}
           />
+
+          {/* 이미지 첨부 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">이미지 첨부</label>
+            {form.images.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {form.images.map((img, idx) => (
+                  <div key={idx} className="relative group">
+                    <img src={img.url} alt={img.name} className="w-20 h-20 object-cover rounded-lg border" />
+                    <button
+                      type="button"
+                      onClick={() => setForm(p => ({ ...p, images: p.images.filter((_, i) => i !== idx) }))}
+                      className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                    <p className="text-[10px] text-gray-500 text-center mt-0.5 truncate w-20">{img.name}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-gray-300 text-sm text-gray-600 hover:border-brand-400 hover:text-brand-600 cursor-pointer transition-colors">
+              <ImagePlus className="h-4 w-4" />
+              이미지 추가
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                multiple
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || [])
+                  if (files.length === 0) return
+                  for (const file of files) {
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast('이미지는 5MB 이하만 가능합니다.', 'error')
+                      continue
+                    }
+                    const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+                    const path = `task-images/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+                    const { error: uploadErr } = await supabase.storage.from('chat-attachments').upload(path, file)
+                    if (uploadErr) {
+                      toast('업로드 실패: ' + uploadErr.message, 'error')
+                      continue
+                    }
+                    const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(path)
+                    setForm(p => ({
+                      ...p,
+                      images: [...p.images, { url: urlData.publicUrl, name: file.name, size: file.size }],
+                    }))
+                  }
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
           <Select
             label="프로젝트"
             value={form.project_id}

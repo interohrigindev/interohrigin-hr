@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import type { MonthlyCheckin, CheckinTag, CheckinStatus } from '@/types/employee-lifecycle'
+import type { MonthlyCheckin, CheckinTag, CheckinStatus, CheckinNote } from '@/types/employee-lifecycle'
 
 export function useMonthlyCheckin(year?: number, month?: number) {
   const { profile } = useAuth()
@@ -43,6 +43,8 @@ export function useMonthlyCheckin(year?: number, month?: number) {
   async function save(data: {
     tag: CheckinTag
     content: string
+    project_name?: string
+    special_notes?: CheckinNote[]
     status?: CheckinStatus
   }): Promise<{ error: string | null }> {
     if (!profile?.id || !year || !month) return { error: '필수 정보가 없습니다' }
@@ -54,6 +56,8 @@ export function useMonthlyCheckin(year?: number, month?: number) {
       month,
       tag: data.tag,
       content: data.content || null,
+      project_name: data.project_name || null,
+      special_notes: data.special_notes || [],
       status: data.status || 'draft',
     }
 
@@ -70,6 +74,8 @@ export function useMonthlyCheckin(year?: number, month?: number) {
   async function submit(data: {
     tag: CheckinTag
     content: string
+    project_name?: string
+    special_notes?: CheckinNote[]
   }): Promise<{ error: string | null }> {
     return save({ ...data, status: 'submitted' })
   }

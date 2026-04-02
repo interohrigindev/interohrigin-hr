@@ -158,11 +158,38 @@ export function useJobPostingMutations() {
   }
 
   async function deletePosting(id: string) {
-    const { error } = await supabase
+    // 지원자 하위 테이블 먼저 정리 (CASCADE 누락 대비 안전장치)
+    const { data: candidates } = await supabase
+      .from('candidates')
+      .select('id')
+      .eq('job_posting_id', id)
+
+    if (candidates && candidates.length > 0) {
+      const candIds = candidates.map(c => c.id)
+      // 하위 테이블 순서대로 삭제
+      await supabase.from('ai_accuracy_log').delete().in('candidate_id', candIds)
+      await supabase.from('hiring_decisions').delete().in('candidate_id', candIds)
+      await supabase.from('recruitment_reports').delete().in('candidate_id', candIds)
+      await supabase.from('face_to_face_evals').delete().in('candidate_id', candIds)
+      await supabase.from('voice_analysis').delete().in('candidate_id', candIds)
+      await supabase.from('transcriptions').delete().in('candidate_id', candIds)
+      await supabase.from('interview_recordings').delete().in('candidate_id', candIds)
+      await supabase.from('interview_schedules').delete().in('candidate_id', candIds)
+      await supabase.from('resume_analysis').delete().in('candidate_id', candIds)
+      await supabase.from('candidates').delete().eq('job_posting_id', id)
+    }
+
+    const { data, error } = await supabase
       .from('job_postings')
       .delete()
       .eq('id', id)
-    return { error }
+      .select()
+
+    if (error) return { error }
+    if (!data || data.length === 0) {
+      return { error: { message: '삭제 권한이 없거나 이미 삭제된 공고입니다.' } as any }
+    }
+    return { error: null }
   }
 
   return { createPosting, updatePosting, deletePosting }

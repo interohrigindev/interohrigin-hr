@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { FileText, Send, MessageCircle, Loader2, Lock, ChevronDown, ChevronRight } from 'lucide-react'
+import { FileText, Send, MessageCircle, Loader2, Lock, ChevronDown, ChevronRight, Plus, X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -11,16 +11,18 @@ import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { useMonthlyCheckin } from '@/hooks/useMonthlyCheckin'
 import { supabase } from '@/lib/supabase'
-import type { MonthlyCheckin, CheckinTag, CheckinStatus } from '@/types/employee-lifecycle'
+import type { MonthlyCheckin, CheckinTag, CheckinStatus, CheckinNote, SpecialNoteTag } from '@/types/employee-lifecycle'
 
 // ─── Constants ──────────────────────────────────────────────────
 const TAGS: CheckinTag[] = ['이슈', '칭찬', '제안', '기타']
+const SPECIAL_NOTE_TAGS: SpecialNoteTag[] = ['이슈', '성과', '칭찬', '제안', '기타']
 
-const TAG_COLORS: Record<CheckinTag, string> = {
+const TAG_COLORS: Record<string, string> = {
   '이슈': 'bg-red-100 text-red-700',
   '칭찬': 'bg-emerald-100 text-emerald-700',
   '제안': 'bg-blue-100 text-blue-700',
   '기타': 'bg-gray-100 text-gray-700',
+  '성과': 'bg-amber-100 text-amber-700',
 }
 
 const STATUS_LABELS: Record<CheckinStatus, string> = {
@@ -60,6 +62,8 @@ export default function MonthlyCheckinPage() {
   // Employee's own form
   const [tag, setTag] = useState<CheckinTag>('기타')
   const [content, setContent] = useState('')
+  const [projectName, setProjectName] = useState('')
+  const [specialNotes, setSpecialNotes] = useState<CheckinNote[]>([])
   const [initialized, setInitialized] = useState(false)
 
   // Feedback dialog
@@ -89,6 +93,8 @@ export default function MonthlyCheckinPage() {
     if (initialized || !myCheckin) return
     setTag(myCheckin.tag as CheckinTag)
     setContent(myCheckin.content || '')
+    setProjectName(myCheckin.project_name || '')
+    setSpecialNotes(myCheckin.special_notes || [])
     setInitialized(true)
   }, [myCheckin, initialized])
 
@@ -96,8 +102,22 @@ export default function MonthlyCheckinPage() {
   useMemo(() => {
     setInitialized(false)
     setContent('')
+    setProjectName('')
+    setSpecialNotes([])
     setTag('기타')
   }, [selectedYear, selectedMonth])
+
+  function addSpecialNote() {
+    setSpecialNotes(prev => [...prev, { tag: '이슈' as SpecialNoteTag, text: '' }])
+  }
+
+  function updateSpecialNote(idx: number, field: 'tag' | 'text', value: string) {
+    setSpecialNotes(prev => prev.map((n, i) => i === idx ? { ...n, [field]: value } : n))
+  }
+
+  function removeSpecialNote(idx: number) {
+    setSpecialNotes(prev => prev.filter((_, i) => i !== idx))
+  }
 
   const isEmployee = !hasRole('leader')
   const canWrite = isEmployee && (!myCheckin || myCheckin.status === 'draft')
@@ -114,14 +134,16 @@ export default function MonthlyCheckinPage() {
   }
 
   async function handleSave() {
-    const result = await save({ tag, content })
+    const filteredNotes = specialNotes.filter(n => n.text.trim())
+    const result = await save({ tag, content, project_name: projectName, special_notes: filteredNotes })
     if (result.error) { toast('저장 실패: ' + result.error, 'error'); return }
     toast('임시 저장되었습니다.', 'success')
   }
 
   async function handleSubmit() {
     if (!content.trim()) { toast('내용을 입력하세요.', 'error'); return }
-    const result = await submit({ tag, content })
+    const filteredNotes = specialNotes.filter(n => n.text.trim())
+    const result = await submit({ tag, content, project_name: projectName, special_notes: filteredNotes })
     if (result.error) { toast('제출 실패: ' + result.error, 'error'); return }
     toast('월간 업무 점검이 제출되었습니다.', 'success')
   }
@@ -225,6 +247,7 @@ export default function MonthlyCheckinPage() {
           <CardContent className="space-y-4">
             {canWrite ? (
               <>
+                {/* 구분 태그 */}
                 <div className="flex gap-2">
                   {TAGS.map((t) => (
                     <button
@@ -238,13 +261,75 @@ export default function MonthlyCheckinPage() {
                     </button>
                   ))}
                 </div>
-                <Textarea
-                  label="업무 내용"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={6}
-                  placeholder="이번 달 주요 업무, 성과, 이슈 등을 자유롭게 작성하세요..."
-                />
+
+                {/* 프로젝트 + 본인(업무 내용) 테이블 형태 */}
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700 w-36">프로젝트</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700">본인</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700 w-56">특이사항</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="py-2 px-3 align-top border-r">
+                          <input
+                            type="text"
+                            value={projectName}
+                            onChange={(e) => setProjectName(e.target.value)}
+                            placeholder="프로젝트명"
+                            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+                          />
+                        </td>
+                        <td className="py-2 px-3 align-top border-r">
+                          <textarea
+                            value={content}
+                            onChange={(e) => setContent(e.target.value)}
+                            rows={4}
+                            placeholder="이번 달 주요 업무, 성과, 진행 상황을 상세하게 작성하세요..."
+                            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none resize-y"
+                          />
+                        </td>
+                        <td className="py-2 px-3 align-top">
+                          <div className="space-y-2">
+                            {specialNotes.map((note, idx) => (
+                              <div key={idx} className="flex items-start gap-1.5">
+                                <select
+                                  value={note.tag}
+                                  onChange={(e) => updateSpecialNote(idx, 'tag', e.target.value)}
+                                  className="shrink-0 rounded border border-gray-300 px-1 py-1 text-xs focus:border-brand-500 outline-none"
+                                >
+                                  {SPECIAL_NOTE_TAGS.map(t => (
+                                    <option key={t} value={t}>[{t}]</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="text"
+                                  value={note.text}
+                                  onChange={(e) => updateSpecialNote(idx, 'text', e.target.value)}
+                                  placeholder="내용 입력"
+                                  className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:border-brand-500 outline-none"
+                                />
+                                <button onClick={() => removeSpecialNote(idx)} className="shrink-0 p-0.5 text-gray-400 hover:text-red-500">
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              onClick={addSpecialNote}
+                              className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700"
+                            >
+                              <Plus className="h-3 w-3" /> 특이사항 추가
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
                 <div className="flex justify-end gap-3">
                   <Button variant="outline" onClick={handleSave} disabled={saving}>
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : '임시 저장'}
@@ -260,7 +345,38 @@ export default function MonthlyCheckinPage() {
                   <Badge className={TAG_COLORS[myCheckin.tag as CheckinTag]}>[{myCheckin.tag}]</Badge>
                   {myCheckin.is_locked && <Lock className="h-4 w-4 text-gray-400" />}
                 </div>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{myCheckin.content}</p>
+
+                {/* 제출 내용 테이블 형태 표시 */}
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700 w-36">프로젝트</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700">본인</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700 w-56">특이사항</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="py-3 px-3 align-top border-r text-gray-700">{myCheckin.project_name || '-'}</td>
+                        <td className="py-3 px-3 align-top border-r text-gray-700 whitespace-pre-wrap">{myCheckin.content || '-'}</td>
+                        <td className="py-3 px-3 align-top">
+                          {(myCheckin.special_notes || []).length > 0 ? (
+                            <div className="space-y-1">
+                              {(myCheckin.special_notes || []).map((note: CheckinNote, i: number) => (
+                                <div key={i} className="flex items-start gap-1.5">
+                                  <Badge className={`${TAG_COLORS[note.tag] || TAG_COLORS['기타']} text-[10px] shrink-0`}>[{note.tag}]</Badge>
+                                  <span className="text-gray-700 text-xs">{note.text}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : '-'}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
                 {myCheckin.leader_feedback && (
                   <div className="bg-brand-50 rounded-lg p-3">
                     <p className="text-xs font-medium text-brand-700 mb-1">리더 피드백</p>
@@ -326,7 +442,36 @@ export default function MonthlyCheckinPage() {
 
                       {isExpanded && (
                         <div className="px-4 pb-4 space-y-3 border-t">
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap mt-3">{checkin.content}</p>
+                          {/* 프로젝트/본인/특이사항 테이블 */}
+                          <div className="border rounded-lg overflow-hidden mt-3">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-gray-50 border-b">
+                                  <th className="text-left py-1.5 px-3 font-semibold text-gray-600 w-32 text-xs">프로젝트</th>
+                                  <th className="text-left py-1.5 px-3 font-semibold text-gray-600 text-xs">본인</th>
+                                  <th className="text-left py-1.5 px-3 font-semibold text-gray-600 w-52 text-xs">특이사항</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  <td className="py-2 px-3 align-top border-r text-gray-700 text-xs">{checkin.project_name || '-'}</td>
+                                  <td className="py-2 px-3 align-top border-r text-gray-700 text-xs whitespace-pre-wrap">{checkin.content || '-'}</td>
+                                  <td className="py-2 px-3 align-top text-xs">
+                                    {(checkin.special_notes || []).length > 0 ? (
+                                      <div className="space-y-1">
+                                        {((checkin.special_notes || []) as CheckinNote[]).map((note, i) => (
+                                          <div key={i} className="flex items-start gap-1">
+                                            <Badge className={`${TAG_COLORS[note.tag] || TAG_COLORS['기타']} text-[9px] shrink-0`}>[{note.tag}]</Badge>
+                                            <span className="text-gray-700">{note.text}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : '-'}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
 
                           {checkin.leader_feedback && (
                             <div className="bg-brand-50 rounded-lg p-3">

@@ -4,7 +4,6 @@
  * Supports Korean text via NanumGothic font (loaded at runtime).
  */
 import { jsPDF } from 'jspdf'
-import { registerKoreanFonts } from './pdf-fonts'
 
 // ─── Brand Colors ────────────────────────────────────────────────
 const BRAND = {
@@ -85,7 +84,58 @@ export interface PdfReportInput {
   } | null
 }
 
-// Korean fonts are loaded from shared utility: src/lib/pdf-fonts.ts
+// ─── Font cache ─────────────────────────────────────────────────
+let fontCacheRegular: ArrayBuffer | null = null
+let fontCacheBold: ArrayBuffer | null = null
+
+async function loadFont(url: string): Promise<ArrayBuffer> {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Font fetch failed: ${res.status}`)
+  return res.arrayBuffer()
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunks: string[] = []
+  const chunkSize = 4096
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const slice = bytes.subarray(i, Math.min(i + chunkSize, bytes.length))
+    chunks.push(String.fromCharCode.apply(null, Array.from(slice)))
+  }
+  return btoa(chunks.join(''))
+}
+
+async function registerKoreanFonts(doc: jsPDF) {
+  try {
+    if (!fontCacheRegular) {
+      fontCacheRegular = await loadFont('/fonts/NanumGothic-Regular.ttf')
+    }
+    if (!fontCacheBold) {
+      fontCacheBold = await loadFont('/fonts/NanumGothic-Bold.ttf')
+    }
+
+    if (!fontCacheRegular.byteLength || !fontCacheBold.byteLength) {
+      throw new Error('폰트 파일이 비어있습니다.')
+    }
+
+    const regularBase64 = arrayBufferToBase64(fontCacheRegular)
+    const boldBase64 = arrayBufferToBase64(fontCacheBold)
+
+    doc.addFileToVFS('NanumGothic-Regular.ttf', regularBase64)
+    doc.addFont('NanumGothic-Regular.ttf', 'NanumGothic', 'normal')
+
+    doc.addFileToVFS('NanumGothic-Bold.ttf', boldBase64)
+    doc.addFont('NanumGothic-Bold.ttf', 'NanumGothic', 'bold')
+
+    return true
+  } catch (e) {
+    console.error('한글 폰트 로딩 실패:', e)
+    fontCacheRegular = null
+    fontCacheBold = null
+    alert('PDF 한글 폰트를 불러오지 못했습니다. 페이지를 새로고침 후 다시 시도해주세요.')
+    return false
+  }
+}
 
 // ─── Main export ────────────────────────────────────────────────
 
