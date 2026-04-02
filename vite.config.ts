@@ -22,4 +22,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'pdf-fonts': ['./src/lib/pdf-font-data'],
+        },
+      },
+    },
+  },
 })
