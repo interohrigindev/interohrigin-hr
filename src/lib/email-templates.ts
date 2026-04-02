@@ -54,7 +54,7 @@ export function surveyInviteEmail(
     <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
       <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
         본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
-        문의: hr@interohrigin.com
+        문의: admin@interohriginhr.com
       </p>
     </div>
   </div>
@@ -145,13 +145,13 @@ export function hiringAcceptEmail(
       </p>
 
       <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:16px 0 0;">
-        문의: hr@interohrigin.com
+        문의: admin@interohriginhr.com
       </p>
     </div>
     <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
       <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
         본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
-        문의: hr@interohrigin.com
+        문의: admin@interohriginhr.com
       </p>
     </div>
   </div>
@@ -197,13 +197,13 @@ export function hiringRejectEmail(
       </p>
 
       <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:16px 0 0;">
-        문의: hr@interohrigin.com
+        문의: admin@interohriginhr.com
       </p>
     </div>
     <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
       <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
         본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
-        문의: hr@interohrigin.com
+        문의: admin@interohriginhr.com
       </p>
     </div>
   </div>
@@ -302,6 +302,13 @@ export function interviewInviteEmail(
                   border-radius:8px;text-decoration:none;font-size:13px;font-weight:bold;margin:0 6px;">
           카카오맵
         </a>
+      </div>
+      <div style="background:#eff6ff;border:1px solid #3b82f6;border-radius:8px;padding:12px 16px;margin:20px 0 0;">
+        <p style="font-size:13px;color:#1e40af;line-height:1.5;margin:0;">
+          <strong>📍 방문 안내</strong><br>
+          1층 도착하시면 <strong>010-3062-0070</strong>으로 연락 부탁드립니다.<br>
+          안내 도와드리겠습니다.
+        </p>
       </div>` : ''}
 
       <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin:20px 0 0;">
@@ -311,13 +318,13 @@ export function interviewInviteEmail(
         </p>
       </div>
       <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:16px 0 0;">
-        면접 관련 문의사항이 있으시면 hr@interohrigin.com으로 연락 부탁드립니다.
+        면접 관련 문의사항이 있으시면 admin@interohriginhr.com으로 연락 부탁드립니다.
       </p>
     </div>
     <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
       <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
         본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
-        문의: hr@interohrigin.com
+        문의: admin@interohriginhr.com
       </p>
     </div>
   </div>
@@ -376,7 +383,7 @@ export function interviewerNotificationEmail(
     </div>
   </div>
   <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
-    <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">인터오리진 채용팀 | hr@interohrigin.com</p>
+    <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">인터오리진 채용팀 | admin@interohriginhr.com</p>
   </div>
 </div>
 </body></html>
