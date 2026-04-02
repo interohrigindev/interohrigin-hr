@@ -5,6 +5,7 @@ import {
   Send, Paperclip, Download,
 } from 'lucide-react'
 import jsPDF from 'jspdf'
+import { registerKoreanFonts } from '@/lib/pdf-fonts'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -244,13 +245,22 @@ export default function ApprovalManagementPage() {
 
   /* ── PDF Download ── */
 
-  function handleDownloadPDF(doc: ApprovalDocument) {
+  async function handleDownloadPDF(doc: ApprovalDocument) {
     const pdf = new jsPDF()
     const steps = stepsMap[doc.id] || []
 
+    // 한글 폰트 등록
+    const hasKorean = await registerKoreanFonts(pdf)
+    const fontFamily = hasKorean ? 'NanumGothic' : 'helvetica'
+
+    function setFont(style: 'normal' | 'bold' = 'normal') {
+      pdf.setFont(fontFamily, style)
+    }
+
     // Title
     pdf.setFontSize(18)
-    pdf.text('APPROVAL DOCUMENT', 105, 20, { align: 'center' })
+    setFont('bold')
+    pdf.text('전자결재 문서', 105, 20, { align: 'center' })
 
     // Horizontal line
     pdf.setDrawColor(0)
@@ -261,64 +271,64 @@ export default function ApprovalManagementPage() {
     pdf.setFontSize(10)
     let y = 35
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('No:', 20, y)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(doc.doc_number || '-', 50, y)
+    setFont('bold')
+    pdf.text('문서번호:', 20, y)
+    setFont('normal')
+    pdf.text(doc.doc_number || '-', 55, y)
     y += 8
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('Title:', 20, y)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(doc.title, 50, y)
+    setFont('bold')
+    pdf.text('제목:', 20, y)
+    setFont('normal')
+    pdf.text(doc.title, 55, y)
     y += 8
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('Type:', 20, y)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(getDocTypeLabel(doc.doc_type), 50, y)
+    setFont('bold')
+    pdf.text('유형:', 20, y)
+    setFont('normal')
+    pdf.text(getDocTypeLabel(doc.doc_type), 55, y)
     y += 8
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('Requester:', 20, y)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(getEmpName(doc.requester_id), 50, y)
+    setFont('bold')
+    pdf.text('기안자:', 20, y)
+    setFont('normal')
+    pdf.text(getEmpName(doc.requester_id), 55, y)
     y += 8
 
     if (doc.department) {
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('Department:', 20, y)
-      pdf.setFont('helvetica', 'normal')
-      pdf.text(doc.department, 50, y)
+      setFont('bold')
+      pdf.text('부서:', 20, y)
+      setFont('normal')
+      pdf.text(doc.department, 55, y)
       y += 8
     }
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('Submitted:', 20, y)
-    pdf.setFont('helvetica', 'normal')
-    pdf.text(doc.submitted_at ? fmtDate(doc.submitted_at) : fmtDate(doc.created_at), 50, y)
+    setFont('bold')
+    pdf.text('제출일:', 20, y)
+    setFont('normal')
+    pdf.text(doc.submitted_at ? fmtDate(doc.submitted_at) : fmtDate(doc.created_at), 55, y)
     y += 8
 
     if (doc.completed_at) {
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('Completed:', 20, y)
-      pdf.setFont('helvetica', 'normal')
-      pdf.text(fmtDate(doc.completed_at), 50, y)
+      setFont('bold')
+      pdf.text('완료일:', 20, y)
+      setFont('normal')
+      pdf.text(fmtDate(doc.completed_at), 55, y)
       y += 8
     }
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('Status:', 20, y)
-    pdf.setFont('helvetica', 'normal')
+    setFont('bold')
+    pdf.text('상태:', 20, y)
+    setFont('normal')
     const statusLabel = STATUS_CONFIG[doc.status]?.label || doc.status
-    pdf.text(statusLabel, 50, y)
+    pdf.text(statusLabel, 55, y)
     y += 8
 
     if (doc.amount != null) {
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('Amount:', 20, y)
-      pdf.setFont('helvetica', 'normal')
-      pdf.text(fmtAmount(doc.amount), 50, y)
+      setFont('bold')
+      pdf.text('금액:', 20, y)
+      setFont('normal')
+      pdf.text(fmtAmount(doc.amount), 55, y)
       y += 8
     }
 
@@ -330,16 +340,16 @@ export default function ApprovalManagementPage() {
       y += 8
 
       pdf.setFontSize(12)
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('Content', 20, y)
+      setFont('bold')
+      pdf.text('내용', 20, y)
       y += 8
 
       pdf.setFontSize(10)
-      pdf.setFont('helvetica', 'normal')
+      setFont('normal')
       for (const [key, value] of Object.entries(doc.content)) {
-        pdf.setFont('helvetica', 'bold')
+        setFont('bold')
         pdf.text(`${key}:`, 25, y)
-        pdf.setFont('helvetica', 'normal')
+        setFont('normal')
         pdf.text(String(value), 70, y)
         y += 7
         if (y > 270) {
@@ -356,8 +366,8 @@ export default function ApprovalManagementPage() {
     y += 8
 
     pdf.setFontSize(12)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text(`Approval Flow (${doc.current_step}/${doc.total_steps})`, 20, y)
+    setFont('bold')
+    pdf.text(`결재 현황 (${doc.current_step}/${doc.total_steps})`, 20, y)
     y += 8
 
     pdf.setFontSize(10)
@@ -368,26 +378,25 @@ export default function ApprovalManagementPage() {
       }
 
       const actionLabel =
-        step.action === 'approved' ? 'Approved' :
-        step.action === 'rejected' ? 'Rejected' :
-        'Pending'
+        step.action === 'approved' ? '승인' :
+        step.action === 'rejected' ? '반려' :
+        '대기'
       const roleLabel = ROLE_LABELS[step.approver_role] || step.approver_role
 
-      pdf.setFont('helvetica', 'bold')
-      pdf.text(`Step ${step.step_order}:`, 25, y)
-      pdf.setFont('helvetica', 'normal')
-      pdf.text(`${getEmpName(step.approver_id)} (${roleLabel}) - ${actionLabel}`, 50, y)
+      setFont('bold')
+      pdf.text(`${step.step_order}단계:`, 25, y)
+      setFont('normal')
+      pdf.text(`${getEmpName(step.approver_id)} (${roleLabel}) - ${actionLabel}`, 55, y)
       y += 6
 
       if (step.comment) {
-        pdf.setFont('helvetica', 'italic')
-        pdf.text(`Comment: ${step.comment}`, 50, y)
-        pdf.setFont('helvetica', 'normal')
+        setFont('normal')
+        pdf.text(`의견: ${step.comment}`, 55, y)
         y += 6
       }
 
       if (step.acted_at) {
-        pdf.text(`Date: ${fmtDate(step.acted_at)}`, 50, y)
+        pdf.text(`일시: ${fmtDate(step.acted_at)}`, 55, y)
         y += 6
       }
 
