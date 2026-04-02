@@ -1020,11 +1020,18 @@ ${surveyText || '응답 없음'}
                   <ClipboardList className="h-4 w-4" /> 사전 질의서
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                   <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
                   <p className="text-sm text-amber-700">사전 질의서가 발송되었습니다. 지원자의 응답을 기다리고 있습니다.</p>
                 </div>
+                <Button size="sm" variant="outline" onClick={handleResendSurvey} disabled={resendingSurvey}>
+                  {resendingSurvey ? (
+                    <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 발송 중...</>
+                  ) : (
+                    <><Send className="h-3 w-3 mr-1" /> 사전 질의서 재발송</>
+                  )}
+                </Button>
               </CardContent>
             </Card>
           )}
