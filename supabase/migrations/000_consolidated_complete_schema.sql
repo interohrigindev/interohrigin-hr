@@ -430,7 +430,7 @@ CREATE TABLE public.voice_analysis (
 CREATE TABLE public.transcriptions (
   id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   recording_id  uuid        NOT NULL REFERENCES public.interview_recordings(id) ON DELETE CASCADE,
-  candidate_id  uuid        REFERENCES public.candidates(id),
+  candidate_id  uuid        REFERENCES public.candidates(id) ON DELETE CASCADE,
   full_text     text,
   segments      jsonb       DEFAULT '[]'::jsonb,
   language      text        DEFAULT 'ko',
@@ -546,8 +546,8 @@ CREATE TRIGGER trg_talent_profiles_updated_at
 -- ─── ai_accuracy_log (AI vs 실제 결정 비교) ─────────────────────────
 CREATE TABLE public.ai_accuracy_log (
   id                 uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  candidate_id       uuid        REFERENCES public.candidates(id),
-  employee_id        uuid        REFERENCES public.employees(id),
+  candidate_id       uuid        REFERENCES public.candidates(id) ON DELETE CASCADE,
+  employee_id        uuid        REFERENCES public.employees(id) ON DELETE SET NULL,
   ai_recommendation  text,
   ai_score           integer,
   actual_decision    text,
