@@ -123,7 +123,7 @@ export function hiringAcceptEmail(
       </div>
 
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
-        심사숙고 끝에 ${candidateName}님을 인터오리진아이앤씨의 새로운 구성원으로 모시게 되었습니다.
+        ${candidateName}님을 인터오리진아이앤씨의 새로운 구성원으로 모시게 되었습니다.
       </p>
       ${conditionHtml}
       ${acceptUrl ? `
