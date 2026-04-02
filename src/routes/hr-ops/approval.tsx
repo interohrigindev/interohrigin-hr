@@ -246,11 +246,15 @@ export default function ApprovalManagementPage() {
   /* ── PDF Download ── */
 
   async function handleDownloadPDF(doc: ApprovalDocument) {
+    try {
     const pdf = new jsPDF()
     const steps = stepsMap[doc.id] || []
 
     // 한글 폰트 등록
-    const hasKorean = await registerKoreanFonts(pdf)
+    let hasKorean = false
+    try {
+      hasKorean = await registerKoreanFonts(pdf)
+    } catch { /* 폰트 로딩 실패해도 계속 진행 */ }
     const fontFamily = hasKorean ? 'NanumGothic' : 'helvetica'
 
     function setFont(style: 'normal' | 'bold' = 'normal') {
@@ -404,6 +408,10 @@ export default function ApprovalManagementPage() {
     }
 
     pdf.save(`approval_${doc.doc_number || doc.id}.pdf`)
+    } catch (err) {
+      console.error('PDF 생성 실패:', err)
+      alert('PDF 다운로드에 실패했습니다. 다시 시도해주세요.')
+    }
   }
 
   /* ── Stats ── */
