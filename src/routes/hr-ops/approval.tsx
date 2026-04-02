@@ -250,11 +250,13 @@ export default function ApprovalManagementPage() {
     const pdf = new jsPDF()
     const steps = stepsMap[doc.id] || []
 
-    // 한글 폰트 등록
+    // 한글 폰트 등록 (3초 타임아웃)
     let hasKorean = false
     try {
-      hasKorean = await registerKoreanFonts(pdf)
-    } catch { /* 폰트 로딩 실패해도 계속 진행 */ }
+      const fontPromise = registerKoreanFonts(pdf)
+      const timeout = new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+      hasKorean = await Promise.race([fontPromise, timeout])
+    } catch { /* 폰트 로딩 실패/타임아웃 → helvetica 폴백 */ }
     const fontFamily = hasKorean ? 'NanumGothic' : 'helvetica'
 
     function setFont(style: 'normal' | 'bold' = 'normal') {
