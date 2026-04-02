@@ -1732,35 +1732,29 @@ ${surveyText || '응답 없음'}
                 <p className="text-sm font-semibold text-gray-700">합격 조건</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-gray-500">연봉 (만원)</label>
+                    <label className="text-xs text-gray-500">연봉 (만원) *</label>
                     <input type="number" placeholder="예: 4000" value={offerConditions.salary}
                       onChange={(e) => setOfferConditions(p => ({ ...p, salary: e.target.value }))}
                       className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500">수습 급여 (만원)</label>
+                    <label className="text-xs text-gray-500">수습 급여 (만원) *</label>
                     <input type="number" placeholder="예: 3600" value={offerConditions.probation_salary}
                       onChange={(e) => setOfferConditions(p => ({ ...p, probation_salary: e.target.value }))}
                       className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500">정규직 전환 급여 (만원)</label>
-                    <input type="number" placeholder="예: 4000" value={offerConditions.regular_salary}
-                      onChange={(e) => setOfferConditions(p => ({ ...p, regular_salary: e.target.value }))}
-                      className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">직무명</label>
+                    <label className="text-xs text-gray-500">직무명 *</label>
                     <input type="text" placeholder="예: 마케팅 기획" value={offerConditions.job_title}
                       onChange={(e) => setOfferConditions(p => ({ ...p, job_title: e.target.value }))}
                       className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
                   </div>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">입사 예정일</label>
-                  <input type="date" value={offerConditions.start_date}
-                    onChange={(e) => setOfferConditions(p => ({ ...p, start_date: e.target.value }))}
-                    className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
+                  <div>
+                    <label className="text-xs text-gray-500">입사 예정일 *</label>
+                    <input type="date" value={offerConditions.start_date}
+                      onChange={(e) => setOfferConditions(p => ({ ...p, start_date: e.target.value }))}
+                      className="w-full mt-1 px-3 py-1.5 border rounded-lg text-sm" />
+                  </div>
                 </div>
               </div>
             )}
