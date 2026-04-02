@@ -303,11 +303,21 @@ ${fileInfo}
         if (/I'm sorry|I cannot|I can't|unable to/i.test(raw) && !raw.includes('{')) {
           throw new Error('AI_REFUSED')
         }
-        // ```json ... ``` 또는 ``` ... ``` 제거
-        raw = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
-        const jsonMatch = raw.match(/\{[\s\S]*\}/)
-        if (!jsonMatch) throw new Error('JSON 없음')
-        parsed = JSON.parse(jsonMatch[0])
+        // JSON 파싱 (3단계 폴백)
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          raw = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+          const jsonMatch = raw.match(/\{[\s\S]*\}/)
+          if (!jsonMatch) throw new Error('JSON 없음')
+          let jsonStr = jsonMatch[0].replace(/,\s*([\]}])/g, '$1').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+          try {
+            parsed = JSON.parse(jsonStr)
+          } catch {
+            jsonStr = jsonStr.replace(/"((?:[^"\\]|\\.)*)"/g, (m) => m.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t'))
+            parsed = JSON.parse(jsonStr)
+          }
+        }
       } catch (parseErr: any) {
         console.error('AI 파싱 실패:', parseErr, result.content)
         if (parseErr.message === 'AI_REFUSED') {

@@ -132,23 +132,33 @@ export async function runComprehensiveAnalysis(candidateId: string) {
 
   const result = await generateAIContent(config, prompt)
 
-  // JSON 파싱 (안전한 추출)
-  let cleaned = result.content
-    .replace(/```(?:json)?\s*/gi, '')
-    .replace(/```/g, '')
-    .trim()
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error('AI 응답 파싱 실패')
-  let jsonStr = jsonMatch[0]
-    .replace(/,\s*([\]}])/g, '$1') // trailing comma 제거
-    .replace(/[\x00-\x1f\x7f]/g, (ch) => ch === '\n' || ch === '\r' || ch === '\t' ? ch : '')
+  // JSON 파싱 (안전한 추출 — 3단계 폴백)
   let parsed: any
+
+  // 1차: 직접 파싱 (깔끔한 JSON 응답)
   try {
-    parsed = JSON.parse(jsonStr)
+    parsed = JSON.parse(result.content)
   } catch {
-    // 2차 시도: 줄바꿈 이스케이프
-    jsonStr = jsonStr.replace(/(?<!\\)\n/g, '\\n')
-    parsed = JSON.parse(jsonStr)
+    // 2차: 마크다운 코드블록 제거 후 재시도
+    let cleaned = result.content
+      .replace(/```(?:json)?\s*/gi, '')
+      .replace(/```/g, '')
+      .trim()
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) throw new Error('AI 응답 파싱 실패')
+    let jsonStr = jsonMatch[0]
+      .replace(/,\s*([\]}])/g, '$1')
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+
+    try {
+      parsed = JSON.parse(jsonStr)
+    } catch {
+      // 3차: JSON 문자열 값 내부의 이스케이프 안 된 줄바꿈 처리
+      jsonStr = jsonStr.replace(/"((?:[^"\\]|\\.)*)"/g, (match) => {
+        return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
+      })
+      parsed = JSON.parse(jsonStr)
+    }
   }
 
   // AI 추천값 검증

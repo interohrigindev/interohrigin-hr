@@ -123,7 +123,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
         }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 16384,  // 긴 전사를 위해 충분한 토큰
+          maxOutputTokens: 16384,
+          responseMimeType: 'application/json',
         },
       }),
     })
@@ -155,38 +156,41 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
       return jsonResponse({ error: 'Gemini가 빈 응답을 반환했습니다. 파일이 올바른 오디오/비디오 형식인지 확인하세요.' }, 500)
     }
 
-    // 4. JSON 파싱 (마크다운 코드블록 제거 + 정리)
-    let cleaned = rawText
-      .replace(/```(?:json)?\s*/gi, '')
-      .replace(/```/g, '')
-      .trim()
-
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      return jsonResponse({
-        error: '분석 결과 파싱 실패',
-        raw: rawText,
-      }, 500)
-    }
-
-    let jsonStr = jsonMatch[0]
-
-    // trailing comma 제거 (JSON 파싱 오류의 주요 원인)
-    jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1')
-    // 제어 문자 제거
-    jsonStr = jsonStr.replace(/[\x00-\x1f\x7f]/g, (ch) => ch === '\n' || ch === '\r' || ch === '\t' ? ch : '')
-
+    // 4. JSON 파싱 (responseMimeType=application/json이면 바로 파싱 가능)
     let parsed: unknown
+
+    // 1차: 직접 파싱 시도 (responseMimeType=application/json 응답)
     try {
-      parsed = JSON.parse(jsonStr)
+      parsed = JSON.parse(rawText)
     } catch {
-      // 2차 시도: 줄바꿈을 이스케이프 처리
+      // 2차: 마크다운 코드블록 제거 후 재시도
+      let cleaned = rawText
+        .replace(/```(?:json)?\s*/gi, '')
+        .replace(/```/g, '')
+        .trim()
+
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        return jsonResponse({ error: '분석 결과 파싱 실패', raw: rawText.slice(0, 500) }, 500)
+      }
+
+      let jsonStr = jsonMatch[0]
+        .replace(/,\s*([\]}])/g, '$1')  // trailing comma 제거
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')  // 제어 문자 제거 (탭/줄바꿈 유지)
+
       try {
-        jsonStr = jsonStr.replace(/(?<!\\)\n/g, '\\n')
         parsed = JSON.parse(jsonStr)
-      } catch (e2: unknown) {
-        const msg = e2 instanceof Error ? e2.message : 'JSON parse failed'
-        return jsonResponse({ error: `분석 결과 JSON 파싱 실패: ${msg}`, raw: rawText.slice(0, 500) }, 500)
+      } catch {
+        // 3차: JSON 문자열 값 내부의 이스케이프 안 된 줄바꿈 처리
+        try {
+          jsonStr = jsonStr.replace(/"((?:[^"\\]|\\.)*)"/g, (match) => {
+            return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
+          })
+          parsed = JSON.parse(jsonStr)
+        } catch (e3: unknown) {
+          const msg = e3 instanceof Error ? e3.message : 'JSON parse failed'
+          return jsonResponse({ error: `분석 결과 JSON 파싱 실패: ${msg}`, raw: rawText.slice(0, 500) }, 500)
+        }
       }
     }
 
