@@ -163,7 +163,7 @@ export function hiringAcceptEmail(
 
 export function hiringRejectEmail(
   candidateName: string,
-  jobTitle?: string
+  _jobTitle?: string
 ): { subject: string; html: string } {
   return {
     subject: `[인터오리진아이앤씨] ${candidateName}님, 채용 결과 안내`,
@@ -179,25 +179,19 @@ export function hiringRejectEmail(
     </div>
     <div style="padding:32px 28px;">
       <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
-        <strong>${candidateName}</strong>님, 안녕하세요.
+        안녕하세요 <strong>${candidateName}</strong>님
       </p>
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
-        인터오리진아이앤씨에 관심을 가져주시고 채용 과정에 참여해 주셔서 진심으로 감사드립니다.
-      </p>
-      ${jobTitle ? `<p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">지원하신 <strong>${jobTitle}</strong> 포지션에 대해 신중하게 검토하였습니다.</p>` : ''}
-      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
-        안타깝지만, 종합적인 검토 결과 이번 채용에서는 함께하지 못하게 되었음을 알려드립니다.
+        저희 인터오리진아이앤씨 채용에 지원해 주셔서 진심으로 감사드립니다.
       </p>
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
-        ${candidateName}님의 역량과 경험은 충분히 인상적이었으며,
-        향후 적합한 포지션이 생길 경우 다시 연락드릴 수 있기를 희망합니다.
+        면접을 통해 ${candidateName}님의 역량과 열정을 느낄 수 있었으나, 이번에는 아쉽게도 함께하지 못하게 되었습니다.
       </p>
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 24px;">
-        ${candidateName}님의 앞으로의 행보를 응원하며, 좋은 결과 있으시길 바랍니다.
+        지원해 주신 귀한 시간과 노고에 다시 한 번 감사드리며, 앞으로 더 좋은 기회에서 꼭 좋은 인연으로 만나 뵙기를 바랍니다.
       </p>
-
-      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:16px 0 0;">
-        문의: admin@interohriginhr.com
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 0;">
+        감사합니다.<br>인터오리진아이앤씨 드림.
       </p>
     </div>
     <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
