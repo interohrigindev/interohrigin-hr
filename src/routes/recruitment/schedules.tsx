@@ -843,7 +843,7 @@ ${candidateList}
             onChange={(e) => {
               const cand = candidates.find((c) => c.id === e.target.value)
               const autoType = cand?.status === 'video_done' ? 'face_to_face' : 'video'
-              const defaultLocation = autoType === 'face_to_face' ? '서울 서대문구 통일로 484, 인터오리진' : ''
+              const defaultLocation = autoType === 'face_to_face' ? '서울 강남구 선릉로121길 5, 3층(논현동, 인터오리진타워)' : ''
               setForm((p) => ({ ...p, candidate_id: e.target.value, interview_type: autoType, location_info: defaultLocation }))
             }}
             options={[
@@ -1007,12 +1007,16 @@ ${candidateList}
             </div>
           )}
           {form.interview_type === 'face_to_face' && (
-            <Input
-              label="면접 장소"
-              value={form.location_info}
-              onChange={(e) => setForm((p) => ({ ...p, location_info: e.target.value }))}
-              placeholder="서울 서대문구 통일로 484, 인터오리진"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">면접 장소</label>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-800">
+                <p className="font-medium">서울 강남구 선릉로121길 5, 3층(논현동, 인터오리진타워)</p>
+                <div className="flex gap-2 mt-2">
+                  <a href="https://map.naver.com/p/search/%EC%84%9C%EC%9A%B8%20%EA%B0%95%EB%82%A8%EA%B5%AC%20%EC%84%A0%EB%A6%89%EB%A1%9C121%EA%B8%B8%205" target="_blank" rel="noopener noreferrer" className="text-xs text-green-600 hover:underline">네이버지도 →</a>
+                  <a href="https://map.kakao.com/?q=%EC%84%9C%EC%9A%B8%20%EA%B0%95%EB%82%A8%EA%B5%AC%20%EC%84%A0%EB%A6%89%EB%A1%9C121%EA%B8%B8%205" target="_blank" rel="noopener noreferrer" className="text-xs text-yellow-600 hover:underline">카카오맵 →</a>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* 면접관 배정 */}

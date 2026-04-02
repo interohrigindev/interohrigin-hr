@@ -10,12 +10,22 @@
 
 interface Env {}
 
+interface CandidateContext {
+  postingTitle?: string
+  postingRequirements?: string
+  resumeSummary?: string
+  surveyAnswers?: string
+  talentProfiles?: string
+  previousAnalysis?: string
+}
+
 interface TranscribeRequestBody {
   recordingUrl: string       // Supabase Storage signed URL
   apiKey: string             // Gemini API key
   model?: string             // Gemini model (default: gemini-2.5-flash)
   candidateName: string
   interviewType: 'video' | 'face_to_face'
+  context?: CandidateContext // 지원자 전체 컨텍스트
 }
 
 const CORS_HEADERS = {
@@ -46,24 +56,27 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 const ANALYSIS_PROMPT = `HR 면접 전문가로서 이 면접 녹음/녹화를 분석하세요.
 
+위에 제공된 지원자 정보(지원 직무, 직무 요건, 인재상, 이력서 분석, 사전 질의서 응답 등)를 반드시 참고하여 평가에 반영하세요.
+
 다음 작업을 수행하세요:
 1. 전체 대화를 한국어로 전사(transcription)하세요. 면접관과 지원자를 구분하세요.
-2. 주요 질문과 지원자의 답변을 정리하세요.
-3. 지원자의 역량을 다각도로 평가하세요.
+2. 주요 질문과 지원자의 답변을 정리하고, 각 답변이 직무 요건/인재상에 부합하는지 평가하세요.
+3. 이력서/사전질의서 내용과 면접 답변의 일관성을 확인하세요.
+4. 지원 직무에 대한 적합도를 다각도로 평가하세요.
 
 반드시 다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
 {
   "transcription": "전체 대화 전사 텍스트 (면접관: / 지원자: 형태로 구분)",
   "key_answers": [
-    {"question": "면접관 질문", "answer": "지원자 답변 요약", "evaluation": "해당 답변 평가 (1~2줄)"}
+    {"question": "면접관 질문", "answer": "지원자 답변 요약", "evaluation": "직무 적합성 관점에서 평가 (1~2줄)"}
   ],
   "communication_score": 0~100,
   "expertise_score": 0~100,
   "attitude_score": 0~100,
   "overall_score": 0~100,
-  "strengths": ["강점 항목 (3~5개)"],
-  "concerns": ["우려사항 (1~3개)"],
-  "overall_impression": "전체 인상 요약 (2~3줄)"
+  "strengths": ["직무/인재상 관점의 강점 (3~5개)"],
+  "concerns": ["직무 적합성 관점의 우려사항 (1~3개)"],
+  "overall_impression": "직무 적합도 + 인재상 부합도를 포함한 전체 인상 요약 (2~3줄)"
 }`
 
 export const onRequestOptions: PagesFunction<Env> = async () => {
@@ -73,7 +86,7 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
   try {
     const body: TranscribeRequestBody = await request.json()
-    const { recordingUrl, apiKey, candidateName, interviewType } = body
+    const { recordingUrl, apiKey, candidateName, interviewType, context } = body
     const model = body.model || 'gemini-2.5-flash'
 
     if (!recordingUrl || !apiKey) {
@@ -100,7 +113,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
 
     // 3. Gemini 멀티모달 API 호출
     const typeLabel = interviewType === 'video' ? '화상면접' : '대면면접'
-    const contextPrompt = `지원자: ${candidateName}\n면접 유형: ${typeLabel}\n\n${ANALYSIS_PROMPT}`
+
+    // 지원자 컨텍스트 구성
+    let candidateContext = `지원자: ${candidateName}\n면접 유형: ${typeLabel}`
+    if (context) {
+      if (context.postingTitle) candidateContext += `\n지원 직무: ${context.postingTitle}`
+      if (context.postingRequirements) candidateContext += `\n직무 요건:\n${context.postingRequirements}`
+      if (context.talentProfiles) candidateContext += `\n인재상:\n${context.talentProfiles}`
+      if (context.resumeSummary) candidateContext += `\n이력서 분석 요약:\n${context.resumeSummary}`
+      if (context.surveyAnswers) candidateContext += `\n사전 질의서 응답:\n${context.surveyAnswers}`
+      if (context.previousAnalysis) candidateContext += `\n이전 면접 분석:\n${context.previousAnalysis}`
+    }
+
+    const contextPrompt = `${candidateContext}\n\n위 지원자 정보를 참고하여, 지원 직무와 인재상에 부합하는지를 중점적으로 평가하세요.\n\n${ANALYSIS_PROMPT}`
 
     // MIME 타입 매핑 (Gemini 호환)
     let mimeType = contentType

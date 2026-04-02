@@ -289,6 +289,21 @@ export function interviewInviteEmail(
         </a>
       </div>` : ''}
 
+      ${locationInfo && !meetingLink ? `
+      <div style="text-align:center;margin:28px 0;">
+        <p style="font-size:13px;color:#374151;margin:0 0 12px;">면접 장소를 지도에서 확인하세요</p>
+        <a href="https://map.naver.com/p/search/${encodeURIComponent(locationInfo)}"
+           style="display:inline-block;background:#03C75A;color:#ffffff;padding:10px 24px;
+                  border-radius:8px;text-decoration:none;font-size:13px;font-weight:bold;margin:0 6px;">
+          네이버지도
+        </a>
+        <a href="https://map.kakao.com/?q=${encodeURIComponent(locationInfo)}"
+           style="display:inline-block;background:#FEE500;color:#3C1E1E;padding:10px 24px;
+                  border-radius:8px;text-decoration:none;font-size:13px;font-weight:bold;margin:0 6px;">
+          카카오맵
+        </a>
+      </div>` : ''}
+
       <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin:20px 0 0;">
         <p style="font-size:13px;color:#92400e;line-height:1.5;margin:0;">
           <strong>📌 안내사항</strong><br>

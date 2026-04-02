@@ -378,6 +378,48 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         throw new Error('파일 접근 URL 생성 실패')
       }
 
+      // 지원자 전체 컨텍스트 수집
+      const [candRes, analysisRes, talentRes, prevAnalysesRes] = await Promise.all([
+        supabase.from('candidates').select('*, job_postings(title, description, requirements)').eq('id', candidateId).single(),
+        supabase.from('resume_analysis').select('ai_summary, strengths, weaknesses, recommendation').eq('candidate_id', candidateId).order('created_at', { ascending: false }).limit(1).single(),
+        supabase.from('talent_profiles').select('name, traits, skills, values').eq('is_active', true),
+        supabase.from('interview_analyses').select('interview_type, ai_summary, overall_score, strengths, concerns').eq('candidate_id', candidateId).eq('status', 'completed'),
+      ])
+
+      const cand = candRes.data
+      const context: Record<string, string> = {}
+
+      if (cand?.job_postings) {
+        const jp = cand.job_postings as any
+        if (jp.title) context.postingTitle = jp.title
+        if (jp.requirements) context.postingRequirements = jp.requirements
+        if (jp.description) context.postingRequirements = `${jp.description}\n\n자격요건:\n${jp.requirements || ''}`
+      }
+
+      if (analysisRes.data) {
+        const ra = analysisRes.data
+        context.resumeSummary = `${ra.ai_summary || ''}\n강점: ${(ra.strengths || []).join(', ')}\n약점: ${(ra.weaknesses || []).join(', ')}\n추천: ${ra.recommendation || ''}`
+      }
+
+      if (cand?.pre_survey_data) {
+        const survey = cand.pre_survey_data as any
+        if (survey.answers) {
+          context.surveyAnswers = Object.entries(survey.answers).map(([k, v]) => `${k}: ${v}`).join('\n')
+        }
+      }
+
+      if (talentRes.data && talentRes.data.length > 0) {
+        context.talentProfiles = talentRes.data.map((t: any) =>
+          `${t.name}: 특성=${(t.traits || []).join(',')}, 역량=${(t.skills || []).join(',')}, 가치=${(t.values || []).join(',')}`
+        ).join('\n')
+      }
+
+      if (prevAnalysesRes.data && prevAnalysesRes.data.length > 0) {
+        context.previousAnalysis = prevAnalysesRes.data.map((a: any) =>
+          `${a.interview_type === 'video' ? '화상' : '대면'}면접 (${a.overall_score}점): ${a.ai_summary || ''}`
+        ).join('\n')
+      }
+
       // 분석 레코드 생성
       const { data: analysisRecord, error: createErr } = await supabase
         .from('interview_analyses')
@@ -395,7 +437,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
 
       if (createErr) throw createErr
 
-      // /api/transcribe 호출
+      // /api/transcribe 호출 (컨텍스트 포함)
       const res = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -405,6 +447,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
           model: aiConfig.model,
           candidateName,
           interviewType: group.type,
+          context,
         }),
       })
 
