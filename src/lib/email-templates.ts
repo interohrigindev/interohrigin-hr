@@ -8,7 +8,7 @@ export function surveyInviteEmail(
   jobTitle?: string
 ): { subject: string; html: string } {
   return {
-    subject: `[인터오리진] ${candidateName}님, 사전 질의서 작성 요청`,
+    subject: `[인터오리진아이앤씨] ${candidateName}님, 사전 질의서 작성 요청`,
     html: `
 <!DOCTYPE html>
 <html lang="ko">
@@ -17,7 +17,7 @@ export function surveyInviteEmail(
   <div style="max-width:600px;margin:0 auto;background:#ffffff;">
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
-      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">INTEROHRIGIN</h1>
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
       <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources</p>
     </div>
 
@@ -27,7 +27,7 @@ export function surveyInviteEmail(
         <strong>${candidateName}</strong>님, 안녕하세요.
       </p>
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
-        인터오리진에 관심을 가져주셔서 감사합니다.
+        인터오리진아이앤씨에 관심을 가져주셔서 감사합니다.
       </p>
       ${jobTitle ? `<p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">지원하신 <strong>${jobTitle}</strong> 포지션 관련하여 사전 질의서를 보내드립니다.</p>` : ''}
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 24px;">
@@ -53,7 +53,7 @@ export function surveyInviteEmail(
     <!-- Footer -->
     <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
       <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
-        본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
+        본 메일은 인터오리진아이앤씨 채용 프로세스의 일환으로 발송되었습니다.<br>
         문의: admin@interohriginhr.com
       </p>
     </div>
@@ -96,7 +96,7 @@ export function hiringAcceptEmail(
       </div>` : ''
 
   return {
-    subject: `[인터오리진] ${candidateName}님, 합격을 축하드립니다`,
+    subject: `[인터오리진아이앤씨] ${candidateName}님, 합격을 축하드립니다`,
     html: `
 <!DOCTYPE html>
 <html lang="ko">
@@ -104,7 +104,7 @@ export function hiringAcceptEmail(
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;">
     <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
-      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">INTEROHRIGIN</h1>
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
       <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources</p>
     </div>
     <div style="padding:32px 28px;">
@@ -112,7 +112,7 @@ export function hiringAcceptEmail(
         <strong>${candidateName}</strong>님, 안녕하세요.
       </p>
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
-        인터오리진에 관심을 가져주시고 채용 과정에 참여해 주셔서 진심으로 감사드립니다.
+        인터오리진아이앤씨에 관심을 가져주시고 채용 과정에 참여해 주셔서 진심으로 감사드립니다.
       </p>
 
       <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:24px;margin:20px 0;text-align:center;">
@@ -123,7 +123,7 @@ export function hiringAcceptEmail(
       </div>
 
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
-        심사숙고 끝에 ${candidateName}님을 인터오리진의 새로운 구성원으로 모시게 되었습니다.
+        심사숙고 끝에 ${candidateName}님을 인터오리진아이앤씨의 새로운 구성원으로 모시게 되었습니다.
       </p>
       ${conditionHtml}
       ${acceptUrl ? `
@@ -150,7 +150,7 @@ export function hiringAcceptEmail(
     </div>
     <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
       <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
-        본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
+        본 메일은 인터오리진아이앤씨 채용 프로세스의 일환으로 발송되었습니다.<br>
         문의: admin@interohriginhr.com
       </p>
     </div>
@@ -166,7 +166,7 @@ export function hiringRejectEmail(
   jobTitle?: string
 ): { subject: string; html: string } {
   return {
-    subject: `[인터오리진] ${candidateName}님, 채용 결과 안내`,
+    subject: `[인터오리진아이앤씨] ${candidateName}님, 채용 결과 안내`,
     html: `
 <!DOCTYPE html>
 <html lang="ko">
@@ -174,7 +174,7 @@ export function hiringRejectEmail(
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;">
     <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
-      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">INTEROHRIGIN</h1>
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
       <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources</p>
     </div>
     <div style="padding:32px 28px;">
@@ -182,7 +182,7 @@ export function hiringRejectEmail(
         <strong>${candidateName}</strong>님, 안녕하세요.
       </p>
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
-        인터오리진에 관심을 가져주시고 채용 과정에 참여해 주셔서 진심으로 감사드립니다.
+        인터오리진아이앤씨에 관심을 가져주시고 채용 과정에 참여해 주셔서 진심으로 감사드립니다.
       </p>
       ${jobTitle ? `<p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">지원하신 <strong>${jobTitle}</strong> 포지션에 대해 신중하게 검토하였습니다.</p>` : ''}
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;">
@@ -202,7 +202,7 @@ export function hiringRejectEmail(
     </div>
     <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
       <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
-        본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
+        본 메일은 인터오리진아이앤씨 채용 프로세스의 일환으로 발송되었습니다.<br>
         문의: admin@interohriginhr.com
       </p>
     </div>
@@ -234,7 +234,7 @@ export function interviewInviteEmail(
   const typeLabel = interviewType === 'video' ? 'Google Meet 화상면접' : '대면면접'
 
   return {
-    subject: `[인터오리진] ${candidateName}님, 면접 일정 안내`,
+    subject: `[인터오리진아이앤씨] ${candidateName}님, 면접 일정 안내`,
     html: `
 <!DOCTYPE html>
 <html lang="ko">
@@ -242,7 +242,7 @@ export function interviewInviteEmail(
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;">
     <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
-      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">INTEROHRIGIN</h1>
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
       <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources</p>
     </div>
     <div style="padding:32px 28px;">
@@ -250,7 +250,7 @@ export function interviewInviteEmail(
         <strong>${candidateName}</strong>님, 안녕하세요.
       </p>
       <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
-        인터오리진 채용 면접 일정을 안내드립니다.${jobTitle ? ` (${jobTitle} 포지션)` : ''}
+        인터오리진아이앤씨 채용 면접 일정을 안내드립니다.${jobTitle ? ` (${jobTitle} 포지션)` : ''}
       </p>
 
       <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin:0 0 24px;">
@@ -323,7 +323,7 @@ export function interviewInviteEmail(
     </div>
     <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
       <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
-        본 메일은 인터오리진 채용 프로세스의 일환으로 발송되었습니다.<br>
+        본 메일은 인터오리진아이앤씨 채용 프로세스의 일환으로 발송되었습니다.<br>
         문의: admin@interohriginhr.com
       </p>
     </div>
@@ -355,14 +355,14 @@ export function interviewerNotificationEmail(
   const typeLabel = interviewType === 'video' ? 'Google Meet 화상면접' : '대면면접'
   const dateShort = dateStr.split(' ').slice(0, 3).join(' ')
   return {
-    subject: `[인터오리진] 면접 일정 안내 — ${candidateName} (${dateShort})`,
+    subject: `[인터오리진아이앤씨] 면접 일정 안내 — ${candidateName} (${dateShort})`,
     html: `
 <!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
 <div style="max-width:600px;margin:0 auto;background:#fff;">
   <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
-    <h1 style="color:#fff;font-size:20px;margin:0;">INTEROHRIGIN</h1>
+    <h1 style="color:#fff;font-size:20px;margin:0;">Interohrigin I&amp;C</h1>
     <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">면접 일정 안내</p>
   </div>
   <div style="padding:32px 28px;">
@@ -383,7 +383,7 @@ export function interviewerNotificationEmail(
     </div>
   </div>
   <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
-    <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">인터오리진 채용팀 | admin@interohriginhr.com</p>
+    <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">인터오리진아이앤씨 채용팀 | admin@interohriginhr.com</p>
   </div>
 </div>
 </body></html>
