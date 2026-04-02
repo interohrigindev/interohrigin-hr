@@ -234,8 +234,11 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
       }
 
       const blob = await res.blob()
-      const ext = driveFile.name.split('.').pop() || 'mp4'
-      const filePath = `${candidateId}/${Date.now()}_video.${ext}`
+      const dotIdx = driveFile.name.lastIndexOf('.')
+      const ext = dotIdx > 0 && dotIdx > driveFile.name.length - 6
+        ? driveFile.name.slice(dotIdx + 1).replace(/[^a-zA-Z0-9]/g, '')
+        : 'mp4'
+      const filePath = `${candidateId}/${Date.now()}_video.${ext || 'mp4'}`
 
       // 2. Supabase Storage에 업로드
       const { error: uploadError } = await supabase.storage
