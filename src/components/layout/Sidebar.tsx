@@ -142,6 +142,7 @@ const navGroups: NavGroup[] = [
       { to: '/admin/recruitment/survey', label: '사전 질의서', icon: <MessageSquare className="h-4 w-4" /> },
       { to: '/admin/recruitment/talent', label: '인재상 설정', icon: <Star className="h-4 w-4" /> },
       { to: '/admin/recruitment/trust', label: 'AI 신뢰도', icon: <Shield className="h-4 w-4" /> },
+      { to: '/admin/recruitment/settings', label: '채용 설정', icon: <Settings className="h-4 w-4" /> },
     ],
   },
   {
