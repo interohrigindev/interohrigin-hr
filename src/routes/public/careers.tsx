@@ -22,7 +22,7 @@ interface JobPosting {
 
 const BENEFITS = [
   { no: '01', title: '휴가제도', desc: '리프레시 여름 휴가 제공으로 재충전의 기회 보장', icon: Plane },
-  { no: '02', title: 'OH! FRIENDLY DAY', desc: '매월 1회, 직원들과의 랜덤 회식으로 유대감 강화', icon: Users },
+  { no: '02', title: 'FRIENDLY DAY', desc: '매월 1회, 직원들과의 랜덤 회식으로 유대감 강화', icon: Users },
   { no: '03', title: '명절 혜택', desc: '설 & 추석 등 명절 상품권 지급', icon: Gift },
   { no: '04', title: '경조사 지원', desc: '화환 제공, 경조 휴가 및 비용 지원 등 전방위 지원', icon: Heart },
   { no: '05', title: '생일 복지', desc: '생일 파티, 케이크, 선물, 반차 제공으로 특별한 하루 선사', icon: Cake },
@@ -60,8 +60,19 @@ export default function CareersPage() {
         .order('created_at', { ascending: false })
 
       if (data) {
+        // departments RLS가 anon에서 접근 불가하므로 별도 조회 시도 후 폴백
+        let deptMap = new Map<string, string>()
         const { data: depts } = await supabase.from('departments').select('id, name')
-        const deptMap = new Map((depts || []).map((d: any) => [d.id, d.name]))
+        if (depts && depts.length > 0) {
+          deptMap = new Map(depts.map((d: any) => [d.id, d.name]))
+        } else {
+          // 비로그인 사용자용 폴백: 공고 제목에서 부서명 추출
+          for (const p of data) {
+            if (!p.department_id) continue
+            const match = p.title.match(/\]\s*(.+?본부|.+?팀)/)
+            if (match) deptMap.set(p.department_id, match[1])
+          }
+        }
         setPostings(data.map((p: any) => ({ ...p, department_name: deptMap.get(p.department_id) || '' })))
       }
       setLoading(false)
