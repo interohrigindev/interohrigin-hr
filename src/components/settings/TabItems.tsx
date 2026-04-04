@@ -149,7 +149,12 @@ export default function TabItems() {
   }
 
   async function handleDelete(item: EvaluationItem) {
-    if (!confirm(`"${item.name}" 항목을 삭제하시겠습니까?`)) return
+    if (!confirm(`"${item.name}" 항목을 삭제하시겠습니까?\n\n연관된 자기평가/평가자 점수 데이터도 함께 삭제됩니다.`)) return
+
+    // FK 제약 대응: 연관 데이터 순차 삭제
+    await supabase.from('evaluator_scores').delete().eq('item_id', item.id)
+    await supabase.from('self_evaluations').delete().eq('item_id', item.id)
+    await supabase.from('evaluation_item_job_types').delete().eq('item_id', item.id)
 
     const { error } = await supabase.from('evaluation_items').delete().eq('id', item.id)
     if (error) {
