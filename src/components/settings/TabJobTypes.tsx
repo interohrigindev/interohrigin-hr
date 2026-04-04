@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useJobTypes, useEmployeeJobAssignments } from '@/hooks/useEvaluation'
-import type { Employee, JobType, EmployeeJobAssignment } from '@/types/database'
+import type { Employee, JobType } from '@/types/database'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
