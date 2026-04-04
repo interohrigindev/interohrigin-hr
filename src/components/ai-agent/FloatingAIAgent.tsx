@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import DOMPurify from 'dompurify'
 import {
   Bot, X, Send, Plus, Loader2, Bookmark, Archive,
@@ -21,7 +22,12 @@ const CONTEXT_LABELS: Record<string, string> = {
   urgent: '긴급',
 }
 
+// 공개 페이지에서는 AI 챗봇 숨김
+const PUBLIC_PATHS = ['/careers', '/apply', '/survey', '/interview', '/exit-survey', '/accept', '/login', '/reset-password']
+
 export default function FloatingAIAgent() {
+  const location = useLocation()
+  const isPublicPage = PUBLIC_PATHS.some((p) => location.pathname.startsWith(p))
   const { profile } = useAuth()
   const {
     conversations, activeConversation, messages, sending, lastError,
@@ -49,8 +55,8 @@ export default function FloatingAIAgent() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // 로그인 안 되어 있으면 렌더링 안 함
-  if (!profile) return null
+  // 공개 페이지 또는 로그인 안 되어 있으면 렌더링 안 함
+  if (isPublicPage || !profile) return null
 
   async function handleSend() {
     if (!input.trim() || sending) return
