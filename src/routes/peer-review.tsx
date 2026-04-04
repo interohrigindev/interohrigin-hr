@@ -22,7 +22,8 @@ interface EmployeeBasic {
 
 interface EvaluationPeriod {
   id: string
-  title: string
+  year: number
+  quarter: number
   status: string
 }
 
@@ -51,7 +52,7 @@ export default function PeerReviewPage() {
 
   // Load periods
   useEffect(() => {
-    supabase.from('evaluation_periods').select('id, title, status').order('created_at', { ascending: false })
+    supabase.from('evaluation_periods').select('id, year, quarter, status').order('year', { ascending: false }).order('quarter', { ascending: false })
       .then(({ data }) => {
         if (data) {
           setPeriods(data as EvaluationPeriod[])
@@ -150,7 +151,7 @@ export default function PeerReviewPage() {
           <Select
             value={selectedPeriod}
             onChange={(e) => setSelectedPeriod(e.target.value)}
-            options={periods.map((p) => ({ value: p.id, label: p.title }))}
+            options={periods.map((p) => ({ value: p.id, label: `${p.year}년 ${p.quarter}분기` }))}
             placeholder="평가 기간 선택"
           />
           {isAdmin && (

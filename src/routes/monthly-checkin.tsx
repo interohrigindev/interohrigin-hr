@@ -310,7 +310,7 @@ function MonthCheckinCard({
 
 // ─── Main Page ──────────────────────────────────────────────────
 export default function MonthlyCheckinPage() {
-  const { hasRole } = useAuth()
+  const { profile, hasRole } = useAuth()
   const { toast } = useToast()
 
   const [selectedYear, setSelectedYear] = useState(currentYear)
@@ -371,12 +371,13 @@ export default function MonthlyCheckinPage() {
   function openFeedback(checkin: MonthlyCheckin, monthIdx: number) {
     setFeedbackTarget(checkin)
     setFeedbackTargetMonthIdx(monthIdx)
-    // Pre-fill with existing feedback based on role
-    if (hasRole('ceo')) {
+    // Pre-fill with existing feedback based on exact role
+    const userRole = profile?.role
+    if (userRole === 'ceo') {
       setFeedbackText(checkin.ceo_feedback || '')
-    } else if (hasRole('director')) {
+    } else if (userRole === 'director' || userRole === 'division_head') {
       setFeedbackText(checkin.exec_feedback || '')
-    } else if (hasRole('leader')) {
+    } else if (userRole === 'leader') {
       setFeedbackText(checkin.leader_feedback || '')
     }
     setFeedbackDialogOpen(true)
@@ -391,10 +392,12 @@ export default function MonthlyCheckinPage() {
     let feedbackType: 'leader_feedback' | 'exec_feedback' | 'ceo_feedback'
     let nextStatus: CheckinStatus
 
-    if (hasRole('ceo')) {
+    // 정확한 역할로 피드백 유형 결정 (계층형 체크 대신)
+    const userRole = profile?.role
+    if (userRole === 'ceo') {
       feedbackType = 'ceo_feedback'
       nextStatus = 'ceo_reviewed'
-    } else if (hasRole('director')) {
+    } else if (userRole === 'director' || userRole === 'division_head') {
       feedbackType = 'exec_feedback'
       nextStatus = 'exec_reviewed'
     } else {
@@ -411,11 +414,13 @@ export default function MonthlyCheckinPage() {
     setFeedbackText('')
   }
 
+  // 직원 → 리더 → 임원 → 대표 순서 엄격 적용
   function canGiveFeedback(checkin: MonthlyCheckin): boolean {
     if (checkin.is_locked) return false
-    if (hasRole('ceo') && (checkin.status === 'exec_reviewed' || checkin.status === 'leader_reviewed' || checkin.status === 'submitted')) return true
-    if (hasRole('director') && (checkin.status === 'leader_reviewed' || checkin.status === 'submitted')) return true
-    if (hasRole('leader') && checkin.status === 'submitted') return true
+    const userRole = profile?.role
+    if (userRole === 'ceo' && checkin.status === 'exec_reviewed') return true
+    if ((userRole === 'director' || userRole === 'division_head') && checkin.status === 'leader_reviewed') return true
+    if (userRole === 'leader' && checkin.status === 'submitted') return true
     return false
   }
 
@@ -606,8 +611,8 @@ export default function MonthlyCheckinPage() {
           )}
           <Textarea
             label={
-              hasRole('ceo') ? '대표 피드백' :
-              hasRole('director') ? '임원 피드백' :
+              profile?.role === 'ceo' ? '대표 피드백' :
+              (profile?.role === 'director' || profile?.role === 'division_head') ? '임원 피드백' :
               '리더 피드백'
             }
             value={feedbackText}
