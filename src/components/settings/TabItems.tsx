@@ -197,16 +197,97 @@ export default function TabItems() {
     fetchData()
   }
 
+  // 직무별 탭 필터
+  const [activeJobTab, setActiveJobTab] = useState<string>('all')
+
+  // 직무 탭별 항목 필터링
+  function getFilteredItems(categoryId: string) {
+    const catItems = items
+      .filter((i) => i.category_id === categoryId)
+      .sort((a, b) => a.sort_order - b.sort_order)
+
+    if (activeJobTab === 'all') return catItems
+    if (activeJobTab === 'common') {
+      // 전체 직무 (매핑 없는 항목)
+      return catItems.filter((item) =>
+        itemJobTypeMappings.filter((m) => m.item_id === item.id).length === 0
+      )
+    }
+    // 특정 직무 탭: 해당 직무에 매핑된 항목 + 전체 직무 항목
+    return catItems.filter((item) => {
+      const mappings = itemJobTypeMappings.filter((m) => m.item_id === item.id)
+      if (mappings.length === 0) return true // 전체 직무
+      return mappings.some((m) => m.job_type_id === activeJobTab)
+    })
+  }
+
+  // 직무별 항목 수 카운트
+  function getJobTabCount(jobTypeId: string) {
+    if (jobTypeId === 'all') return items.length
+    if (jobTypeId === 'common') {
+      return items.filter((item) =>
+        itemJobTypeMappings.filter((m) => m.item_id === item.id).length === 0
+      ).length
+    }
+    return items.filter((item) => {
+      const mappings = itemJobTypeMappings.filter((m) => m.item_id === item.id)
+      if (mappings.length === 0) return true
+      return mappings.some((m) => m.job_type_id === jobTypeId)
+    }).length
+  }
+
   if (loading) return <PageSpinner />
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-gray-500">업적평가 / 역량평가 항목을 관리합니다.</p>
+      <p className="text-sm text-gray-500">업적평가 / 역량평가 항목을 관리합니다. 직무별 탭으로 항목을 구분하여 확인할 수 있습니다.</p>
+
+      {/* 직무별 탭 */}
+      {jobTypes.length > 0 && (
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex gap-1 overflow-x-auto" aria-label="직무별 필터">
+            <button
+              onClick={() => setActiveJobTab('all')}
+              className={cn(
+                'whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
+                activeJobTab === 'all'
+                  ? 'border-brand-600 text-brand-600'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              )}
+            >
+              전체 <span className="ml-1 text-xs text-gray-400">({getJobTabCount('all')})</span>
+            </button>
+            {jobTypes.map((jt) => (
+              <button
+                key={jt.id}
+                onClick={() => setActiveJobTab(jt.id)}
+                className={cn(
+                  'whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
+                  activeJobTab === jt.id
+                    ? 'border-brand-600 text-brand-600'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                )}
+              >
+                {jt.name} <span className="ml-1 text-xs text-gray-400">({getJobTabCount(jt.id)})</span>
+              </button>
+            ))}
+            <button
+              onClick={() => setActiveJobTab('common')}
+              className={cn(
+                'whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
+                activeJobTab === 'common'
+                  ? 'border-brand-600 text-brand-600'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              )}
+            >
+              공통 <span className="ml-1 text-xs text-gray-400">({getJobTabCount('common')})</span>
+            </button>
+          </nav>
+        </div>
+      )}
 
       {categories.map((cat) => {
-        const catItems = items
-          .filter((i) => i.category_id === cat.id)
-          .sort((a, b) => a.sort_order - b.sort_order)
+        const catItems = getFilteredItems(cat.id)
 
         return (
           <Card key={cat.id}>
