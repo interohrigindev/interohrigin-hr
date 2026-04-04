@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { EvaluationCategory, EvaluationItem } from '@/types/database'
+import type { EvaluationCategory, EvaluationItem, JobType, EvaluationItemJobType } from '@/types/database'
 import { EVALUATION_TYPE_LABELS, EVALUATION_TYPE_COLORS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -25,14 +25,17 @@ interface ItemFormData {
   name: string
   description: string
   max_score: number
+  selectedJobTypeIds: string[]
 }
 
-const EMPTY_FORM: ItemFormData = { name: '', description: '', max_score: 10 }
+const EMPTY_FORM: ItemFormData = { name: '', description: '', max_score: 10, selectedJobTypeIds: [] }
 
 export default function TabItems() {
   const { toast } = useToast()
   const [categories, setCategories] = useState<EvaluationCategory[]>([])
   const [items, setItems] = useState<EvaluationItem[]>([])
+  const [jobTypes, setJobTypes] = useState<JobType[]>([])
+  const [itemJobTypeMappings, setItemJobTypeMappings] = useState<EvaluationItemJobType[]>([])
   const [loading, setLoading] = useState(true)
 
   // 다이얼로그 상태
@@ -43,12 +46,16 @@ export default function TabItems() {
   const [saving, setSaving] = useState(false)
 
   const fetchData = useCallback(async () => {
-    const [catRes, itemRes] = await Promise.all([
+    const [catRes, itemRes, jtRes, mappingRes] = await Promise.all([
       supabase.from('evaluation_categories').select('*').order('sort_order'),
       supabase.from('evaluation_items').select('*').order('sort_order'),
+      supabase.from('job_types').select('*').order('sort_order'),
+      supabase.from('evaluation_item_job_types').select('*'),
     ])
     setCategories(catRes.data ?? [])
     setItems(itemRes.data ?? [])
+    setJobTypes(jtRes.data ?? [])
+    setItemJobTypeMappings(mappingRes.data ?? [])
     setLoading(false)
   }, [])
 
@@ -66,7 +73,15 @@ export default function TabItems() {
   function openEdit(item: EvaluationItem) {
     setEditingItem(item)
     setSelectedCategoryId(item.category_id)
-    setForm({ name: item.name, description: item.description ?? '', max_score: item.max_score })
+    const assignedJobTypeIds = itemJobTypeMappings
+      .filter((m) => m.item_id === item.id)
+      .map((m) => m.job_type_id)
+    setForm({
+      name: item.name,
+      description: item.description ?? '',
+      max_score: item.max_score,
+      selectedJobTypeIds: assignedJobTypeIds,
+    })
     setShowDialog(true)
   }
 
@@ -90,6 +105,13 @@ export default function TabItems() {
       if (error) {
         toast('수정 실패: ' + error.message, 'error')
       } else {
+        // 직무 매핑 동기화
+        await supabase.from('evaluation_item_job_types').delete().eq('item_id', editingItem.id)
+        if (form.selectedJobTypeIds.length > 0) {
+          await supabase.from('evaluation_item_job_types').insert(
+            form.selectedJobTypeIds.map((jtId) => ({ item_id: editingItem.id, job_type_id: jtId }))
+          )
+        }
         toast('항목이 수정되었습니다')
         setShowDialog(false)
         fetchData()
@@ -100,18 +122,24 @@ export default function TabItems() {
         ? Math.max(...categoryItems.map((i) => i.sort_order)) + 1
         : 1
 
-      const { error } = await supabase.from('evaluation_items').insert({
+      const { data: inserted, error } = await supabase.from('evaluation_items').insert({
         category_id: selectedCategoryId,
         name: form.name,
         description: form.description || null,
         max_score: form.max_score,
         sort_order: nextOrder,
         is_active: true,
-      })
+      }).select('id').single()
 
       if (error) {
         toast('추가 실패: ' + error.message, 'error')
       } else {
+        // 직무 매핑 저장
+        if (inserted && form.selectedJobTypeIds.length > 0) {
+          await supabase.from('evaluation_item_job_types').insert(
+            form.selectedJobTypeIds.map((jtId) => ({ item_id: inserted.id, job_type_id: jtId }))
+          )
+        }
         toast('항목이 추가되었습니다')
         setShowDialog(false)
         fetchData()
@@ -237,6 +265,21 @@ export default function TabItems() {
                       {/* 최대 점수 */}
                       <Badge variant="default">최대 {item.max_score}점</Badge>
 
+                      {/* 적용 직무 */}
+                      {itemJobTypeMappings
+                        .filter((m) => m.item_id === item.id)
+                        .map((m) => {
+                          const jt = jobTypes.find((j) => j.id === m.job_type_id)
+                          return jt ? (
+                            <Badge key={m.id} variant="default" className="text-[10px]">
+                              {jt.name}
+                            </Badge>
+                          ) : null
+                        })}
+                      {itemJobTypeMappings.filter((m) => m.item_id === item.id).length === 0 && (
+                        <span className="text-[10px] text-gray-400">전체 직무</span>
+                      )}
+
                       {/* 활성 토글 */}
                       <button
                         onClick={() => handleToggleActive(item)}
@@ -303,6 +346,40 @@ export default function TabItems() {
             value={form.max_score}
             onChange={(e) => setForm({ ...form, max_score: parseInt(e.target.value) || 10 })}
           />
+          {jobTypes.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">적용 직무</p>
+              <p className="text-xs text-gray-400 mb-2">선택하지 않으면 모든 직무에 적용됩니다</p>
+              <div className="flex flex-wrap gap-2">
+                {jobTypes.map((jt) => (
+                  <label
+                    key={jt.id}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs cursor-pointer transition-colors',
+                      form.selectedJobTypeIds.includes(jt.id)
+                        ? 'border-brand-500 bg-brand-50 text-brand-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={form.selectedJobTypeIds.includes(jt.id)}
+                      onChange={(e) => {
+                        setForm((prev) => ({
+                          ...prev,
+                          selectedJobTypeIds: e.target.checked
+                            ? [...prev.selectedJobTypeIds, jt.id]
+                            : prev.selectedJobTypeIds.filter((id) => id !== jt.id),
+                        }))
+                      }}
+                    />
+                    {jt.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="outline" onClick={() => setShowDialog(false)}>
               취소

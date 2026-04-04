@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { GradeBadge } from '@/components/evaluation/GradeBadge'
 import { ROLE_LABELS, EVALUATION_TYPE_LABELS, EVALUATION_TYPE_COLORS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-import { ArrowLeft, Printer, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Award, AlertTriangle, Bot, RefreshCw, Sparkles, FileDown } from 'lucide-react'
+import { ArrowLeft, Printer, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Award, AlertTriangle, Bot, RefreshCw, Sparkles, FileDown, Lock } from 'lucide-react'
 import { generatePdfReport, type PdfReportInput } from '@/lib/pdf-report'
 import {
   LineChart,
@@ -152,6 +152,10 @@ export default function Report() {
       </div>
     )
   }
+
+  // ─── Publish gate: 일반 직원/리더는 공개된 결과만 열람 가능 ────
+  const isPrivilegedRole = isAdmin || (profile?.role && ['director', 'division_head', 'ceo', 'admin'].includes(profile.role))
+  const canViewResults = isPrivilegedRole || target?.is_published === true
 
   // ─── Grouped items by category ────────────────────────────────
   const groupedItems = categories
@@ -371,6 +375,19 @@ export default function Report() {
         </p>
       </div>
 
+      {/* 비공개 게이트 - 일반 직원/리더는 공개된 결과만 볼 수 있음 */}
+      {!canViewResults && (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-gray-200 bg-white p-12">
+          <Lock className="h-12 w-12 text-gray-300" />
+          <p className="text-lg font-medium text-gray-900">평가 결과 비공개</p>
+          <p className="text-sm text-gray-500 text-center">
+            평가 결과가 아직 공개되지 않았습니다.<br />
+            HR 검토 후 공개됩니다.
+          </p>
+        </div>
+      )}
+
+      {canViewResults && (<>
       {/* ─── Section 1: 종합 결과 카드 ──────────────────────────── */}
       <Card>
         <CardHeader>
@@ -664,6 +681,7 @@ export default function Report() {
           </Button>
         </div>
       </div>
+      </>)}
     </div>
   )
 }

@@ -47,6 +47,8 @@ export interface EvaluationPeriod {
   status: PeriodStatus
   start_date: string | null
   end_date: string | null
+  is_locked: boolean
+  locked_at: string | null
   created_at: string
 }
 
@@ -90,6 +92,11 @@ export interface EvaluationTarget {
   status: TargetStatus
   final_score: number | null
   grade: Grade | null
+  goals_submitted: boolean
+  goals_submitted_at: string | null
+  is_published: boolean
+  published_at: string | null
+  published_by: string | null
   created_at: string
   updated_at: string
 }
@@ -155,4 +162,27 @@ export interface GradeCriteria {
   min_score: number
   max_score: number
   label: string | null
+}
+
+// ─── job_types 테이블 ──────────────────────────────────────────
+export interface JobType {
+  id: string
+  name: string
+  sort_order: number
+  created_at: string
+}
+
+// ─── employee_job_assignments 테이블 ───────────────────────────
+export interface EmployeeJobAssignment {
+  id: string
+  employee_id: string
+  job_type_id: string
+  created_at: string
+}
+
+// ─── evaluation_item_job_types 테이블 ──────────────────────────
+export interface EvaluationItemJobType {
+  id: string
+  item_id: string
+  job_type_id: string
 }

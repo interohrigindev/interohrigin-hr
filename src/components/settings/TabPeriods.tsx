@@ -11,7 +11,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { PERIOD_STATUS_LABELS } from '@/lib/constants'
 import { formatDate } from '@/lib/utils'
-import { Plus, Play } from 'lucide-react'
+import { Plus, Play, Lock, Unlock, Eye } from 'lucide-react'
 
 export default function TabPeriods() {
   const { periods, loading, refetch } = useEvaluationPeriods()
@@ -20,6 +20,9 @@ export default function TabPeriods() {
   const [creating, setCreating] = useState(false)
   const [generating, setGenerating] = useState<string | null>(null)
   const [autoGenerate, setAutoGenerate] = useState(true)
+  const [publishDialogPeriodId, setPublishDialogPeriodId] = useState<string | null>(null)
+  const [publishTargets, setPublishTargets] = useState<any[]>([])
+  const [publishLoading, setPublishLoading] = useState(false)
   const [form, setForm] = useState({
     year: new Date().getFullYear(),
     quarter: 1,
@@ -79,6 +82,56 @@ export default function TabPeriods() {
     setGenerating(null)
   }
 
+  async function handleToggleLock(periodId: string, currentlyLocked: boolean) {
+    const { error } = await supabase
+      .from('evaluation_periods')
+      .update({
+        is_locked: !currentlyLocked,
+        locked_at: !currentlyLocked ? new Date().toISOString() : null,
+      })
+      .eq('id', periodId)
+    if (error) { toast('잠금 상태 변경 실패: ' + error.message, 'error'); return }
+    toast(!currentlyLocked ? '평가 기간이 잠겼습니다' : '평가 기간 잠금이 해제되었습니다')
+    refetch()
+  }
+
+  async function openPublishDialog(periodId: string) {
+    setPublishDialogPeriodId(periodId)
+    setPublishLoading(true)
+    const { data } = await supabase
+      .from('evaluation_targets')
+      .select('*, employee:employees!evaluation_targets_employee_id_fkey(id, name)')
+      .eq('period_id', periodId)
+      .eq('status', 'completed')
+      .order('created_at')
+    setPublishTargets(data ?? [])
+    setPublishLoading(false)
+  }
+
+  async function togglePublish(targetId: string, currentlyPublished: boolean) {
+    const { error } = await supabase
+      .from('evaluation_targets')
+      .update({
+        is_published: !currentlyPublished,
+        published_at: !currentlyPublished ? new Date().toISOString() : null,
+      })
+      .eq('id', targetId)
+    if (error) { toast('공개 상태 변경 실패: ' + error.message, 'error'); return }
+    if (publishDialogPeriodId) openPublishDialog(publishDialogPeriodId)
+  }
+
+  async function publishAll() {
+    const unpublished = publishTargets.filter(t => !t.is_published)
+    for (const t of unpublished) {
+      await supabase.from('evaluation_targets').update({
+        is_published: true,
+        published_at: new Date().toISOString(),
+      }).eq('id', t.id)
+    }
+    toast(`${unpublished.length}명의 결과가 공개되었습니다`)
+    if (publishDialogPeriodId) openPublishDialog(publishDialogPeriodId)
+  }
+
   if (loading) return <PageSpinner />
 
   return (
@@ -110,6 +163,8 @@ export default function TabPeriods() {
                     <th className="px-6 py-3 text-left font-medium text-gray-500">상태</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">상태 변경</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">작업</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">잠금</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">결과 공개</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -157,6 +212,34 @@ export default function TabPeriods() {
                         >
                           <Play className="h-3 w-3 mr-1" />
                           {generating === period.id ? '생성 중...' : '시트 생성'}
+                        </Button>
+                      </td>
+                      <td className="px-6 py-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleToggleLock(period.id, !!period.is_locked)}
+                            className={`p-1.5 rounded-md transition-colors ${
+                              period.is_locked
+                                ? 'text-red-600 bg-red-50 hover:bg-red-100'
+                                : 'text-gray-400 hover:bg-gray-100'
+                            }`}
+                            title={period.is_locked ? '잠금 해제' : '잠금'}
+                          >
+                            {period.is_locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                          </button>
+                          {period.is_locked && period.locked_at && (
+                            <span className="text-xs text-gray-400">{formatDate(period.locked_at, 'MM/dd HH:mm')}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openPublishDialog(period.id)}
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          결과 공개
                         </Button>
                       </td>
                     </tr>
@@ -222,6 +305,77 @@ export default function TabPeriods() {
             </Button>
             <Button onClick={handleCreate} disabled={creating}>
               {creating ? '생성 중...' : '생성'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={!!publishDialogPeriodId}
+        onClose={() => setPublishDialogPeriodId(null)}
+        title="결과 공개 관리"
+      >
+        <div className="space-y-4">
+          {publishLoading ? (
+            <div className="flex h-24 items-center justify-center text-sm text-gray-400">
+              불러오는 중...
+            </div>
+          ) : publishTargets.length === 0 ? (
+            <div className="flex h-24 items-center justify-center text-sm text-gray-400">
+              완료된 평가 대상이 없습니다
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  총 {publishTargets.length}명 / 공개 {publishTargets.filter(t => t.is_published).length}명
+                </span>
+                <Button size="sm" onClick={publishAll} disabled={publishTargets.every(t => t.is_published)}>
+                  일괄 공개
+                </Button>
+              </div>
+              <div className="max-h-80 overflow-y-auto border rounded-lg">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50 sticky top-0">
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">이름</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">등급</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">점수</th>
+                      <th className="px-4 py-2 text-center font-medium text-gray-500">공개</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {publishTargets.map((target) => (
+                      <tr key={target.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="px-4 py-2 font-medium text-gray-900">
+                          {target.employee?.name ?? '-'}
+                        </td>
+                        <td className="px-4 py-2 text-gray-600">{target.grade ?? '-'}</td>
+                        <td className="px-4 py-2 text-gray-600">{target.final_score ?? '-'}</td>
+                        <td className="px-4 py-2 text-center">
+                          <button
+                            onClick={() => togglePublish(target.id, !!target.is_published)}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                              target.is_published ? 'bg-brand-600' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                target.is_published ? 'translate-x-4.5' : 'translate-x-0.5'
+                              }`}
+                            />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button variant="outline" onClick={() => setPublishDialogPeriodId(null)}>
+              닫기
             </Button>
           </div>
         </div>

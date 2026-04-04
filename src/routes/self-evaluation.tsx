@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Dialog } from '@/components/ui/Dialog'
 import { EvaluationCard } from '@/components/evaluation/EvaluationCard'
 import type { EvaluationCardData } from '@/components/evaluation/EvaluationCard'
-import { CheckCircle } from 'lucide-react'
+import { CheckCircle, Lock } from 'lucide-react'
 
 export default function SelfEvaluation() {
   const { profile } = useAuth()
@@ -25,7 +25,10 @@ export default function SelfEvaluation() {
     saving,
     submitting,
     isReadOnly,
+    isLocked,
+    currentPhase,
     saveAll,
+    submitGoals,
     submit,
   } = useSelfEvaluation()
 
@@ -90,8 +93,15 @@ export default function SelfEvaluation() {
   const totalItems = items.length
   const completedItems = items.filter((item) => {
     const d = formData[item.id]
+    if (!d) return false
+    if (currentPhase === 'goal_setting') {
+      return d.personal_goal.trim() !== '' && d.achievement_method.trim() !== ''
+    }
+    if (currentPhase === 'quarterly_eval') {
+      return d.score != null && d.self_comment.trim() !== ''
+    }
+    // readonly — count all filled
     return (
-      d &&
       d.score != null &&
       d.personal_goal.trim() !== '' &&
       d.achievement_method.trim() !== '' &&
@@ -120,26 +130,48 @@ export default function SelfEvaluation() {
   }
 
   function handleSubmitClick() {
-    // Validate: all items must have score
-    const missing = items.filter((item) => formData[item.id]?.score == null)
-    if (missing.length > 0) {
-      toast(`점수가 입력되지 않은 항목이 ${missing.length}개 있습니다`, 'error')
-      return
+    if (currentPhase === 'goal_setting') {
+      const missing = items.filter((item) => {
+        const d = formData[item.id]
+        return !d || d.personal_goal.trim() === '' || d.achievement_method.trim() === ''
+      })
+      if (missing.length > 0) {
+        toast(`목표/달성방법이 입력되지 않은 항목이 ${missing.length}개 있습니다`, 'error')
+        return
+      }
+    } else if (currentPhase === 'quarterly_eval') {
+      const missing = items.filter((item) => {
+        const d = formData[item.id]
+        return !d || d.score == null || d.self_comment.trim() === ''
+      })
+      if (missing.length > 0) {
+        toast(`점수 또는 코멘트가 입력되지 않은 항목이 ${missing.length}개 있습니다`, 'error')
+        return
+      }
     }
     setConfirmOpen(true)
   }
 
   async function handleConfirmSubmit() {
     setConfirmOpen(false)
-    const { error } = await submit(formData)
-    if (error) {
-      toast('제출 중 오류가 발생했습니다: ' + error, 'error')
+    if (currentPhase === 'goal_setting') {
+      const { error } = await submitGoals(formData)
+      if (error) {
+        toast('제출 중 오류가 발생했습니다: ' + error, 'error')
+      } else {
+        toast('목표 설정이 제출되었습니다')
+      }
     } else {
-      toast('자기평가가 제출되었습니다')
+      const { error } = await submit(formData)
+      if (error) {
+        toast('제출 중 오류가 발생했습니다: ' + error, 'error')
+      } else {
+        toast('분기 평가가 제출되었습니다')
+      }
     }
   }
 
-  // ─── Read-only mode (after submission) ──────────────────
+  // ─── Read-only mode (after submission or locked) ────────
   if (isReadOnly) {
     return (
       <div className="space-y-6">
@@ -150,13 +182,22 @@ export default function SelfEvaluation() {
           </p>
         </div>
 
-        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-gray-200 bg-white p-12">
-          <CheckCircle className="h-12 w-12 text-emerald-500" />
-          <p className="text-lg font-medium text-gray-900">자기평가 제출 완료</p>
-          <p className="text-sm text-gray-500">
-            제출된 자기평가는 수정할 수 없습니다. 평가자 검토를 기다려주세요.
-          </p>
-        </div>
+        {isLocked && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-center gap-2">
+            <Lock className="h-4 w-4" />
+            평가 기간이 종료되어 수정이 불가합니다. 관리자에게 문의하세요.
+          </div>
+        )}
+
+        {!isLocked && (
+          <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-gray-200 bg-white p-12">
+            <CheckCircle className="h-12 w-12 text-emerald-500" />
+            <p className="text-lg font-medium text-gray-900">자기평가 제출 완료</p>
+            <p className="text-sm text-gray-500">
+              제출된 자기평가는 수정할 수 없습니다. 평가자 검토를 기다려주세요.
+            </p>
+          </div>
+        )}
 
         {/* Show submitted data as read-only */}
         {groupedItems.map((group) => {
@@ -191,17 +232,49 @@ export default function SelfEvaluation() {
 
   // ─── Editable mode ─────────────────────────────────────
 
+  const phaseLabel = currentPhase === 'goal_setting' ? '목표 설정' : '분기 평가'
+
   // Running item index across categories
   let runningIndex = 0
 
   return (
     <div className="space-y-6 pb-24">
+      {/* Locked banner */}
+      {isLocked && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-center gap-2">
+          <Lock className="h-4 w-4" />
+          평가 기간이 종료되어 수정이 불가합니다. 관리자에게 문의하세요.
+        </div>
+      )}
+
+      {/* Phase stepper */}
+      {target && target.status === 'pending' && (
+        <div className="flex items-center justify-center gap-4 mb-6">
+          <div className={`flex items-center gap-2 ${currentPhase === 'goal_setting' ? 'text-brand-600 font-semibold' : 'text-gray-400'}`}>
+            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm ${
+              currentPhase === 'goal_setting' ? 'bg-brand-600 text-white' :
+              target.goals_submitted ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500'
+            }`}>
+              {target.goals_submitted ? '✓' : '1'}
+            </span>
+            <span>목표 설정</span>
+          </div>
+          <div className="w-8 h-0.5 bg-gray-200" />
+          <div className={`flex items-center gap-2 ${currentPhase === 'quarterly_eval' ? 'text-brand-600 font-semibold' : 'text-gray-400'}`}>
+            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm ${
+              currentPhase === 'quarterly_eval' ? 'bg-brand-600 text-white' : 'bg-gray-200 text-gray-500'
+            }`}>2</span>
+            <span>분기 평가</span>
+          </div>
+        </div>
+      )}
+
       {/* Top info bar */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">
-              {period.year}년 {period.quarter}분기 자기평가
+              {period.year}년 {period.quarter}분기 {phaseLabel}
             </h2>
             <div className="mt-1 flex items-center gap-2 text-sm text-gray-500">
               <span>{profile?.name}</span>
@@ -250,6 +323,7 @@ export default function SelfEvaluation() {
                   evaluationType={item.evaluation_type}
                   data={formData[item.id] ?? { personal_goal: '', achievement_method: '', self_comment: '', score: null }}
                   onChange={(data) => updateItem(item.id, data)}
+                  phase={currentPhase}
                 />
               )
             })}
@@ -279,17 +353,23 @@ export default function SelfEvaluation() {
               임시저장
             </Button>
             <Button onClick={handleSubmitClick} disabled={saving || submitting}>
-              {submitting ? '제출 중...' : '제출하기'}
+              {submitting ? '제출 중...' : currentPhase === 'goal_setting' ? '목표 제출' : '평가 제출'}
             </Button>
           </div>
         </div>
       </div>
 
       {/* Confirm dialog */}
-      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title="자기평가 제출">
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title={currentPhase === 'goal_setting' ? '목표 설정 제출' : '분기 평가 제출'}
+      >
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
-            제출 후에는 자기평가를 수정할 수 없습니다. 제출하시겠습니까?
+            {currentPhase === 'goal_setting'
+              ? '목표 설정을 제출하시겠습니까? 제출 후에도 수정할 수 없습니다.'
+              : '분기 평가를 제출하시겠습니까? 제출 후에는 수정할 수 없습니다.'}
           </p>
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>

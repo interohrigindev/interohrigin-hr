@@ -7,6 +7,7 @@ import {
   useEvaluationItems,
   useTargetsList,
 } from '@/hooks/useEvaluation'
+// NOTE: items are now filtered by employee's job type via useEvaluationItems(employeeId)
 import type {
   Employee,
   EvaluationTarget,
@@ -48,11 +49,12 @@ export interface CommentFormData {
 // ─── Hook ───────────────────────────────────────────────────────
 
 export function useEvaluateDetail(employeeId: string | undefined) {
-  const { profile } = useAuth()
+  const { profile, isAdmin } = useAuth()
   const { activePeriod, loading: periodLoading } = useEvaluationPeriods()
   const { categories, loading: catsLoading } = useEvaluationCategories()
-  const { items, loading: itemsLoading } = useEvaluationItems()
+  const { items, loading: itemsLoading } = useEvaluationItems(employeeId)
   const { targets } = useTargetsList(activePeriod?.id ?? null)
+  const isLocked = !!(activePeriod?.is_locked && !isAdmin)
 
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [target, setTarget] = useState<EvaluationTarget | null>(null)
@@ -300,6 +302,7 @@ export function useEvaluateDetail(employeeId: string | undefined) {
     loading,
     saving,
     submitting,
+    isLocked,
     evaluableTargets,
     currentIndex,
     prevEmployeeId,

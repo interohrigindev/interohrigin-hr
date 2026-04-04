@@ -31,7 +31,7 @@ export interface QuarterlyTrend {
 export function useReport(employeeId: string | undefined, periodIdParam: string | null) {
   const { periods, activePeriod, loading: periodsLoading } = useEvaluationPeriods()
   const { categories, loading: catsLoading } = useEvaluationCategories()
-  const { items, loading: itemsLoading } = useEvaluationItems()
+  const { items, loading: itemsLoading } = useEvaluationItems(employeeId)
 
   const effectivePeriodId = periodIdParam ?? activePeriod?.id ?? null
 

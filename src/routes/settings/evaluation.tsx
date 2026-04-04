@@ -5,15 +5,18 @@ import {
   ListChecks,
   Scale,
   Award,
+  Briefcase,
 } from 'lucide-react'
 import TabPeriods from '@/components/settings/TabPeriods'
 import TabItems from '@/components/settings/TabItems'
 import TabWeights from '@/components/settings/TabWeights'
 import TabGrades from '@/components/settings/TabGrades'
+import TabJobTypes from '@/components/settings/TabJobTypes'
 
 const TABS = [
   { key: 'periods', label: '평가 기간', icon: Calendar },
   { key: 'items', label: '평가 항목', icon: ListChecks },
+  { key: 'job_types', label: '직무 관리', icon: Briefcase },
   { key: 'weights', label: '가중치', icon: Scale },
   { key: 'grades', label: '등급 기준', icon: Award },
 ] as const
@@ -60,6 +63,7 @@ export default function EvaluationSettings() {
       <div>
         {activeTab === 'periods' && <TabPeriods />}
         {activeTab === 'items' && <TabItems />}
+        {activeTab === 'job_types' && <TabJobTypes />}
         {activeTab === 'weights' && <TabWeights />}
         {activeTab === 'grades' && <TabGrades />}
       </div>
