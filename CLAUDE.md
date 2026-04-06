@@ -10,6 +10,7 @@ Tech: React + TypeScript + Tailwind / Supabase PRO / Cloudflare Pages
 - 민감 정보(건강/가정)는 임원 외 비공개
 - 한국어 UI, 날짜 YYYY.MM.DD, 모바일 반응형 필수
 - Phase 자동 전환 금지 (관리자 수동 승인)
+- 코드 수정 시 파일 전체를 덮어쓰지 말고 변경 부분만 수정(Edit), 수정 후 반드시 빌드 검증
 
 ## 문서 맵 (필요 시 참조)
 작업 주제에 맞는 문서를 읽어서 컨텍스트를 확보할 것.

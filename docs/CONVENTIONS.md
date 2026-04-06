@@ -39,6 +39,13 @@ toast('메시지', 'success' | 'error')
 if (loading) return <PageSpinner />
 ```
 
+## 코드 수정 원칙
+
+- **파일 전체 덮어쓰기(Write) 금지** — 반드시 변경 부분만 Edit으로 수정
+- 수정 전 해당 파일을 Read로 먼저 확인
+- 수정 후 `npx vite build`로 빌드 에러 없는지 검증
+- 여러 파일 수정 시 모든 수정 완료 후 빌드 1회 실행
+
 ## 중요 규칙
 
 - 기존 코드 먼저 파악 후 수정
