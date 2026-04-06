@@ -98,6 +98,8 @@ export default function Report() {
     weights,
     summaryRow,
     itemComparisons,
+    peerReviewAvg,
+    peerReviewCount,
     deptRank,
     quarterlyTrend,
     loading,
@@ -269,9 +271,10 @@ export default function Report() {
   }
 
   // ─── Weight formula display ───────────────────────────────────
+  const WEIGHT_ROLE_LABELS: Record<string, string> = { self: '자기', peer: '동료', leader: '리더', director: '이사', ceo: '대표' }
   const weightFormula = weights
     .map((w) => {
-      const label = w.evaluator_role === 'self' ? '자기' : ROLE_LABELS[w.evaluator_role as keyof typeof ROLE_LABELS] ?? w.evaluator_role
+      const label = WEIGHT_ROLE_LABELS[w.evaluator_role] ?? w.evaluator_role
       return `${label}(${Math.round(w.weight * 100)}%)`
     })
     .join(' + ')
@@ -543,6 +546,32 @@ export default function Report() {
                     />
                   </LineChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Section 5.5: 동료 평가 요약 ─────────────────────────── */}
+      {peerReviewAvg != null && (
+        <Card className="print:break-inside-avoid">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              동료 평가
+              <Badge variant="info" className="text-xs">{peerReviewCount}명 참여</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-6">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-brand-600">{peerReviewAvg}</p>
+                <p className="text-xs text-gray-500 mt-1">평균 점수 (100점 만점)</p>
+              </div>
+              <div className="flex-1 bg-gray-100 rounded-full h-3">
+                <div
+                  className="bg-brand-500 h-3 rounded-full transition-all"
+                  style={{ width: `${peerReviewAvg}%` }}
+                />
               </div>
             </div>
           </CardContent>

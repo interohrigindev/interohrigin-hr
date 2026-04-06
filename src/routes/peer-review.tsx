@@ -165,7 +165,7 @@ export default function PeerReviewPage() {
       {/* Info banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
         익명으로 동료를 평가합니다 (100점 만점). 리더는 합산 점수만 확인 가능하며, 개별 코멘트는 임원 이상만 열람할 수 있습니다.
-        동료 평가 점수는 최종 평가의 20%에 반영됩니다.
+        동료 평가 점수는 최종 평가의 15%에 반영됩니다.
       </div>
 
       {/* My assignments - peers to review */}

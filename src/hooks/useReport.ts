@@ -45,6 +45,8 @@ export function useReport(employeeId: string | undefined, periodIdParam: string 
   const [summaryRow, setSummaryRow] = useState<EvaluationSummaryRow | null>(null)
   const [itemComparisons, setItemComparisons] = useState<ItemScoreComparison[]>([])
   const [deptRank, setDeptRank] = useState<{ rank: number; total: number } | null>(null)
+  const [peerReviewAvg, setPeerReviewAvg] = useState<number | null>(null)
+  const [peerReviewCount, setPeerReviewCount] = useState(0)
   const [quarterlyTrend, setQuarterlyTrend] = useState<QuarterlyTrend[]>([])
   const [dataLoading, setDataLoading] = useState(true)
 
@@ -125,7 +127,23 @@ export function useReport(employeeId: string | undefined, periodIdParam: string 
     setSummaryRow(summaryRes.data as EvaluationSummaryRow | null)
     setItemComparisons((itemRes.data as ItemScoreComparison[] | null) ?? [])
 
-    // 4) Department rank: get all summaries for this period, filter same department
+    // 4) Peer review average
+    const { data: peerData } = await supabase
+      .from('peer_reviews')
+      .select('overall_score')
+      .eq('reviewee_id', employeeId)
+      .eq('period_id', effectivePeriodId)
+      .eq('is_submitted', true)
+    if (peerData && peerData.length > 0) {
+      const avg = peerData.reduce((s, r) => s + (r.overall_score || 0), 0) / peerData.length
+      setPeerReviewAvg(Math.round(avg * 10) / 10)
+      setPeerReviewCount(peerData.length)
+    } else {
+      setPeerReviewAvg(null)
+      setPeerReviewCount(0)
+    }
+
+    // 5) Department rank: get all summaries for this period, filter same department
     if (empData?.department_id) {
       const { data: allSummaries } = await supabase
         .from('v_evaluation_summary')
@@ -152,7 +170,7 @@ export function useReport(employeeId: string | undefined, periodIdParam: string 
       setDeptRank(null)
     }
 
-    // 5) Quarterly trend: all periods for this employee
+    // 6) Quarterly trend: all periods for this employee
     const { data: allTargets } = await supabase
       .from('evaluation_targets')
       .select('period_id, final_score, grade')
@@ -195,6 +213,8 @@ export function useReport(employeeId: string | undefined, periodIdParam: string 
     weights,
     summaryRow,
     itemComparisons,
+    peerReviewAvg,
+    peerReviewCount,
     deptRank,
     quarterlyTrend,
     loading,
