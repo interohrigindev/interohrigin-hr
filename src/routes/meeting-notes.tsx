@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   Mic, Download, Clock, Users, ChevronDown, ChevronUp, Loader2, Trash2,
-  FileText, AlertTriangle, CheckCircle, ListChecks, MessageSquare, Upload,
+  FileText, AlertTriangle, CheckCircle, ListChecks, MessageSquare, Upload, RefreshCw,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -94,8 +94,8 @@ export default function MeetingNotes() {
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null })
   const [deleting, setDeleting] = useState(false)
   const [retryingId, setRetryingId] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const retryTargetRef = useRef<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { fetchData() }, [])
 
@@ -136,47 +136,39 @@ export default function MeetingNotes() {
     setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
 
-  function triggerRetry(recordId: string) {
-    retryTargetRef.current = recordId
-    fileInputRef.current?.click()
-  }
-
-  async function handleRetryUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    const recordId = retryTargetRef.current
-    if (!file || !recordId || !profile?.id) return
-    e.target.value = '' // reset input
+  async function handleRetry(recordId: string) {
+    const record = records.find((r) => r.id === recordId)
+    if (!record?.recording_url) {
+      toast('녹음 파일이 없습니다.', 'error')
+      return
+    }
 
     setRetryingId(recordId)
     try {
-      // 1. 스토리지 업로드
-      const filePath = `${profile.id}/${recordId}.webm`
-      await supabase.storage.from('meeting-recordings').remove([filePath])
-      const { error: upErr } = await supabase.storage
-        .from('meeting-recordings').upload(filePath, file, { contentType: file.type || 'audio/webm' })
-      if (upErr) throw new Error('업로드 실패: ' + upErr.message)
+      // 1. Storage에서 녹음 파일 다운로드
+      await supabase.from('meeting_records').update({ status: 'transcribing', error_message: null }).eq('id', recordId)
 
-      const { data: urlData } = supabase.storage.from('meeting-recordings').getPublicUrl(filePath)
-      await supabase.from('meeting_records').update({
-        recording_url: urlData.publicUrl,
-        status: 'transcribing',
-        error_message: null,
-      }).eq('id', recordId)
+      const path = record.recording_url.split('/meeting-recordings/').pop()
+      if (!path) throw new Error('녹음 파일 경로를 찾을 수 없습니다.')
 
-      // 2. Whisper STT
+      const { data: signedData } = await supabase.storage.from('meeting-recordings').createSignedUrl(decodeURIComponent(path), 3600)
+      if (!signedData?.signedUrl) throw new Error('녹음 파일 URL 생성 실패')
+
+      const fileRes = await fetch(signedData.signedUrl)
+      if (!fileRes.ok) throw new Error('녹음 파일 다운로드 실패')
+      const audioBlob = await fileRes.blob()
+
+      // 2. Whisper STT (25MB 초과 시 자동 분할)
       const { data: aiCfg } = await supabase
         .from('ai_settings').select('settings').eq('setting_key', 'ai_config').single()
       const openaiKey = (aiCfg?.settings as Record<string, string>)?.openai_api_key
       if (!openaiKey) throw new Error('OpenAI API 키가 없습니다. 관리자 설정에서 등록하세요.')
 
-      const audioBlob = new Blob([await file.arrayBuffer()], { type: file.type || 'audio/webm' })
       const sttResult = await transcribeAudio(openaiKey, audioBlob, 'ko')
 
       // 3. AI 요약
       await supabase.from('meeting_records').update({ status: 'summarizing' }).eq('id', recordId)
-      const { data: geminiCfg } = await supabase
-        .from('ai_settings').select('settings').eq('setting_key', 'ai_config').single()
-      const geminiKey = (geminiCfg?.settings as Record<string, string>)?.gemini_api_key
+      const geminiKey = (aiCfg?.settings as Record<string, string>)?.gemini_api_key
 
       let summary = ''
       if (geminiKey && sttResult.text) {
@@ -197,7 +189,7 @@ export default function MeetingNotes() {
         }
       }
 
-      // 4. 완료 업데이트
+      // 4. 완료
       await supabase.from('meeting_records').update({
         transcription: sttResult.text,
         summary,
@@ -206,14 +198,103 @@ export default function MeetingNotes() {
         stt_cost: Math.round(((sttResult.segments?.slice(-1)[0]?.end || 0) / 60) * 0.006 * 1000) / 1000,
       }).eq('id', recordId)
 
-      toast('음성 변환 + 요약 완료', 'success')
+      toast('재분석 완료', 'success')
       fetchData()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '재분석 실패'
       toast(msg, 'error')
       await supabase.from('meeting_records').update({ status: 'error', error_message: msg }).eq('id', recordId)
+      fetchData()
     } finally {
       setRetryingId(null)
+    }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !profile?.id) return
+    e.target.value = ''
+
+    setUploading(true)
+    try {
+      // 1. DB 레코드 생성
+      const title = file.name.replace(/\.[^.]+$/, '') || '외부 녹음 파일'
+      const { data: meeting, error: dbErr } = await supabase
+        .from('meeting_records')
+        .insert({
+          title,
+          recorded_by: profile.id,
+          participant_ids: [],
+          file_size_bytes: file.size,
+          status: 'uploaded',
+        })
+        .select().single()
+      if (dbErr || !meeting) throw new Error('회의 생성 실패: ' + (dbErr?.message || ''))
+
+      // 2. Storage 업로드
+      const ext = file.name.split('.').pop() || 'webm'
+      const filePath = `${profile.id}/${meeting.id}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('meeting-recordings').upload(filePath, file, { contentType: file.type || 'audio/webm' })
+      if (upErr) throw new Error('업로드 실패: ' + upErr.message)
+
+      const { data: urlData } = supabase.storage.from('meeting-recordings').getPublicUrl(filePath)
+      await supabase.from('meeting_records').update({
+        recording_url: urlData.publicUrl,
+        status: 'transcribing',
+      }).eq('id', meeting.id)
+
+      // 3. Whisper STT (자동 분할)
+      const { data: aiCfg } = await supabase
+        .from('ai_settings').select('settings').eq('setting_key', 'ai_config').single()
+      const openaiKey = (aiCfg?.settings as Record<string, string>)?.openai_api_key
+      if (!openaiKey) throw new Error('OpenAI API 키가 없습니다.')
+
+      const audioBlob = new Blob([await file.arrayBuffer()], { type: file.type || 'audio/webm' })
+      const sttResult = await transcribeAudio(openaiKey, audioBlob, 'ko')
+
+      const durationSeconds = Math.round(sttResult.segments?.slice(-1)[0]?.end || 0)
+
+      // 4. AI 요약
+      await supabase.from('meeting_records').update({ status: 'summarizing' }).eq('id', meeting.id)
+      const geminiKey = (aiCfg?.settings as Record<string, string>)?.gemini_api_key
+
+      let summary = ''
+      if (geminiKey && sttResult.text) {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `다음 회의 녹취록을 한국어로 요약하세요. 핵심 논의사항, 결정사항, 액션아이템을 구분하여 정리하세요.\n\n${sttResult.text}` }] }],
+              generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+            }),
+          }
+        )
+        if (geminiRes.ok) {
+          const d = await geminiRes.json()
+          summary = d.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        }
+      }
+
+      // 5. 완료
+      await supabase.from('meeting_records').update({
+        transcription: sttResult.text,
+        summary,
+        duration_seconds: durationSeconds,
+        status: 'completed',
+        error_message: null,
+        stt_cost: Math.round((durationSeconds / 60) * 0.006 * 1000) / 1000,
+      }).eq('id', meeting.id)
+
+      toast('파일 업로드 + 분석 완료', 'success')
+      fetchData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '업로드 실패'
+      toast(msg, 'error')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -261,24 +342,36 @@ export default function MeetingNotes() {
 
   return (
     <div className="space-y-6">
-      {/* Hidden file input for retry upload */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="audio/*,video/*"
-        className="hidden"
-        onChange={handleRetryUpload}
-      />
-
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">회의록</h1>
           <p className="text-sm text-gray-500 mt-1">AI 어시스턴트에서 녹음한 회의 기록을 관리합니다.</p>
         </div>
-        <div className="flex items-center gap-3 text-sm text-gray-500">
-          <span>총 {records.length}건</span>
-          <span>완료 {completedCount}건</span>
-          <span>총 {Math.round(totalDuration / 60)}분</span>
+        <div className="flex items-center gap-3">
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept="audio/*,video/*,.m4a,.mp3,.wav,.ogg,.webm,.mp4"
+            className="hidden"
+            onChange={handleFileUpload}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => uploadInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 분석 중...</>
+            ) : (
+              <><Upload className="h-3.5 w-3.5 mr-1" /> 녹음 파일 업로드</>
+            )}
+          </Button>
+          <div className="flex items-center gap-3 text-sm text-gray-500">
+            <span>총 {records.length}건</span>
+            <span>완료 {completedCount}건</span>
+            <span>총 {Math.round(totalDuration / 60)}분</span>
+          </div>
         </div>
       </div>
 
@@ -479,13 +572,13 @@ export default function MeetingNotes() {
                           )}
                           <Button
                             size="sm"
-                            onClick={() => triggerRetry(r.id)}
+                            onClick={() => handleRetry(r.id)}
                             disabled={retryingId === r.id}
                           >
                             {retryingId === r.id ? (
                               <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 재분석 중...</>
                             ) : (
-                              <><Upload className="h-3.5 w-3.5 mr-1" /> 음성 파일 업로드하여 재분석</>
+                              <><RefreshCw className="h-3.5 w-3.5 mr-1" /> 재분석</>
                             )}
                           </Button>
                         </div>
