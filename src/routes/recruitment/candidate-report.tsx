@@ -61,6 +61,7 @@ export default function CandidateReport() {
     created_at: string
   } | null>(null)
   const [duplicateCandidates, setDuplicateCandidates] = useState<{ id: string; name: string; status: string; created_at: string; job_posting_id: string | null }[]>([])
+  const [jobTitle, setJobTitle] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -105,14 +106,15 @@ export default function CandidateReport() {
         }
       }
 
-      // AI 면접 질문 로딩
+      // AI 면접 질문 + 직무명 로딩
       if (cand?.job_posting_id) {
         const { data: jp } = await supabase
           .from('job_postings')
-          .select('ai_questions')
+          .select('ai_questions, title')
           .eq('id', cand.job_posting_id)
           .single()
         if (jp?.ai_questions) setAiQuestions((jp.ai_questions as string[]) || [])
+        if (jp?.title) setJobTitle(jp.title)
       }
 
       // 면접관 코멘트 로딩
@@ -830,6 +832,9 @@ ${surveyText || '응답 없음'}
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
+          {jobTitle && (
+            <Badge variant="info" className="mb-1 text-xs">{jobTitle}</Badge>
+          )}
           <h1 className="text-2xl font-bold text-gray-900">{candidate.name}</h1>
           <p className="text-sm text-gray-500">
             {candidate.email} · {SOURCE_CHANNEL_LABELS[candidate.source_channel as SourceChannel]}
@@ -1516,6 +1521,9 @@ ${surveyText || '응답 없음'}
                       <><Sparkles className="h-4 w-4 mr-1" /> 최종 종합 분석 실행</>
                     )}
                   </Button>
+                  <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
+                    <XCircle className="h-4 w-4 mr-1" /> 불합격 처리 (분석 생략)
+                  </Button>
                 </>
               ) : /* Step 5: 분석 완료 → 합격/불합격 결정 */
               candidate.status === 'analyzed' && report ? (
@@ -1528,7 +1536,12 @@ ${surveyText || '응답 없음'}
                   </Button>
                 </>
               ) : candidate.status === 'applied' ? (
-                <p className="text-sm text-gray-500">AI 이력서 분석을 먼저 실행하세요.</p>
+                <>
+                  <p className="text-sm text-gray-500">AI 이력서 분석을 먼저 실행하세요.</p>
+                  <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
+                    <XCircle className="h-4 w-4 mr-1" /> 불합격 처리 (AI 분석 생략)
+                  </Button>
+                </>
               ) : candidate.status === 'hired' ? (
                 <div className="space-y-3">
                   <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
