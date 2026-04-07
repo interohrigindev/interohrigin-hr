@@ -114,34 +114,33 @@ export async function generateAIChat(
 
 // ─── Whisper STT (음성→텍스트) ────────────────────────────────────
 
-const WHISPER_MAX_SIZE = 24 * 1024 * 1024 // 24MB (25MB 제한에 여유)
+const WHISPER_MAX_SIZE = 25 * 1024 * 1024 // 25MB (Whisper API 제한)
 
-// Blob MIME → Whisper 지원 확장자 매핑
-function getWhisperFilename(blob: Blob): string {
-  const t = blob.type.toLowerCase()
-  if (t.includes('webm')) return 'audio.webm'
-  if (t.includes('mp4') || t.includes('m4a')) return 'audio.m4a'
-  if (t.includes('mpeg') || t.includes('mp3') || t.includes('mpga')) return 'audio.mp3'
-  if (t.includes('wav')) return 'audio.wav'
-  if (t.includes('ogg') || t.includes('oga')) return 'audio.ogg'
-  if (t.includes('flac')) return 'audio.flac'
-  // 알 수 없으면 webm (브라우저 녹음 기본 포맷)
-  return 'audio.webm'
-}
-
-async function transcribeChunk(
+export async function transcribeAudio(
   apiKey: string,
-  chunk: Blob,
-  language: string,
-  filename: string,
+  audioBlob: Blob,
+  language = 'ko'
 ): Promise<{ text: string; segments: { start: number; end: number; text: string }[] }> {
-  // File 객체로 변환하여 MIME type + 파일명을 확실히 전달
-  const ext = filename.split('.').pop()?.toLowerCase() || 'webm'
-  const mimeTypes: Record<string, string> = {
-    webm: 'audio/webm', m4a: 'audio/mp4', mp3: 'audio/mpeg',
-    mp4: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac',
+  const sizeMB = Math.round(audioBlob.size / 1024 / 1024 * 10) / 10
+  if (audioBlob.size > WHISPER_MAX_SIZE) {
+    throw new Error(
+      `녹음 파일이 ${sizeMB}MB로 Whisper 최대 25MB를 초과합니다. ` +
+      `새로 녹음하면 자동 압축되어 약 1.5시간까지 처리 가능합니다.`
+    )
   }
-  const file = new File([chunk], filename, { type: mimeTypes[ext] || 'audio/webm' })
+
+  // Blob MIME → Whisper 지원 확장자 매핑
+  const t = audioBlob.type.toLowerCase()
+  let ext = 'webm'
+  if (t.includes('mp4') || t.includes('m4a')) ext = 'm4a'
+  else if (t.includes('mpeg') || t.includes('mp3') || t.includes('mpga')) ext = 'mp3'
+  else if (t.includes('wav')) ext = 'wav'
+  else if (t.includes('ogg') || t.includes('oga')) ext = 'ogg'
+  else if (t.includes('flac')) ext = 'flac'
+
+  const file = new File([audioBlob], `audio.${ext}`, {
+    type: audioBlob.type || 'audio/webm',
+  })
 
   const formData = new FormData()
   formData.append('file', file)
@@ -157,7 +156,7 @@ async function transcribeChunk(
   })
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
+    const err = await res.json().catch(() => ({})) as Record<string, any>
     throw new Error(err?.error?.message || `Whisper API error: ${res.status}`)
   }
 
@@ -170,49 +169,6 @@ async function transcribeChunk(
       text: s.text,
     })),
   }
-}
-
-export async function transcribeAudio(
-  apiKey: string,
-  audioBlob: Blob,
-  language = 'ko'
-): Promise<{ text: string; segments: { start: number; end: number; text: string }[] }> {
-  const filename = getWhisperFilename(audioBlob)
-
-  // 24MB 이하: 단일 요청
-  if (audioBlob.size <= WHISPER_MAX_SIZE) {
-    return transcribeChunk(apiKey, audioBlob, language, filename)
-  }
-
-  // 24MB 초과: 청크 분할 후 순차 전송
-  const chunkCount = Math.ceil(audioBlob.size / WHISPER_MAX_SIZE)
-  let allText = ''
-  let allSegments: { start: number; end: number; text: string }[] = []
-  let timeOffset = 0
-
-  for (let i = 0; i < chunkCount; i++) {
-    const start = i * WHISPER_MAX_SIZE
-    const end = Math.min(start + WHISPER_MAX_SIZE, audioBlob.size)
-    const chunk = audioBlob.slice(start, end, audioBlob.type)
-
-    const ext = filename.split('.').pop() || 'webm'
-    const result = await transcribeChunk(apiKey, chunk, language, `part${i + 1}.${ext}`)
-
-    if (result.text) {
-      allText += (allText ? '\n' : '') + result.text
-    }
-    if (result.segments.length > 0) {
-      const offsetSegments = result.segments.map((s) => ({
-        start: s.start + timeOffset,
-        end: s.end + timeOffset,
-        text: s.text,
-      }))
-      allSegments = [...allSegments, ...offsetSegments]
-      timeOffset = offsetSegments[offsetSegments.length - 1].end
-    }
-  }
-
-  return { text: allText, segments: allSegments }
 }
 
 // ─── API key validation ─────────────────────────────────────────
