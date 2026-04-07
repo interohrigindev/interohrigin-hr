@@ -135,8 +135,16 @@ async function transcribeChunk(
   language: string,
   filename: string,
 ): Promise<{ text: string; segments: { start: number; end: number; text: string }[] }> {
+  // File 객체로 변환하여 MIME type + 파일명을 확실히 전달
+  const ext = filename.split('.').pop()?.toLowerCase() || 'webm'
+  const mimeTypes: Record<string, string> = {
+    webm: 'audio/webm', m4a: 'audio/mp4', mp3: 'audio/mpeg',
+    mp4: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac',
+  }
+  const file = new File([chunk], filename, { type: mimeTypes[ext] || 'audio/webm' })
+
   const formData = new FormData()
-  formData.append('file', chunk, filename)
+  formData.append('file', file)
   formData.append('model', 'whisper-1')
   formData.append('language', language)
   formData.append('response_format', 'verbose_json')
