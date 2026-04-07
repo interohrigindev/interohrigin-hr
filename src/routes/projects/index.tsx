@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/Select'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
+import { useAuth } from '@/hooks/useAuth'
 import type {
   ProjectWithStages, StageStatus, ViewMode,
 } from '@/types/project-board'
@@ -57,6 +58,7 @@ export default function ProjectBoardPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { projects, loading, updateStageStatus, deleteProject, canDeleteProject } = useProjectBoard()
+  const { profile, isAdmin } = useAuth()
 
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [filterBrand, setFilterBrand] = useState('')
@@ -70,9 +72,25 @@ export default function ProjectBoardPage() {
   // Unique brands
   const brands = useMemo(() => [...new Set(projects.map((p) => p.brand))], [projects])
 
+  // 권한별 기본 필터: 관리자/임원은 전체, 일반 직원/리더는 본인 관련만
+  const isPrivileged = isAdmin || (profile?.role && ['director', 'division_head', 'ceo', 'admin'].includes(profile.role))
+  const [showAll, setShowAll] = useState(false)
+
   // Filter + sort
   const filtered = useMemo(() => {
     let result = [...projects]
+
+    // 일반 직원/리더: 본인이 담당자/참여자/매니저/리더/임원인 프로젝트만
+    if (!isPrivileged && !showAll && profile?.id) {
+      result = result.filter((p) =>
+        p.assignee_ids?.includes(profile.id) ||
+        p.manager_id === profile.id ||
+        p.leader_id === profile.id ||
+        p.executive_id === profile.id ||
+        p.created_by === profile.id
+      )
+    }
+
     if (filterBrand) result = result.filter((p) => p.brand === filterBrand)
     if (filterStatus) result = result.filter((p) => p.status === filterStatus)
     if (filterAssignee) result = result.filter((p) => p.assignee_names?.includes(filterAssignee))
@@ -91,7 +109,7 @@ export default function ProjectBoardPage() {
       return a.project_name.localeCompare(b.project_name)
     })
     return result
-  }, [projects, filterBrand, filterStatus, filterAssignee, searchQuery, sortBy])
+  }, [projects, filterBrand, filterStatus, filterAssignee, searchQuery, sortBy, isPrivileged, showAll, profile?.id])
 
   // Grouped projects
   const groupedProjects = useMemo(() => {
@@ -795,6 +813,17 @@ export default function ProjectBoardPage() {
               { value: 'name', label: '이름순' },
             ]}
           />
+          {isPrivileged && (
+            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none ml-1">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(e) => setShowAll(e.target.checked)}
+                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+              />
+              전체 프로젝트 보기
+            </label>
+          )}
         </div>
       </div>
 
