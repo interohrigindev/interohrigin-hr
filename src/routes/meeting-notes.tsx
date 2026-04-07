@@ -156,7 +156,11 @@ export default function MeetingNotes() {
 
       const fileRes = await fetch(signedData.signedUrl)
       if (!fileRes.ok) throw new Error('녹음 파일 다운로드 실패')
-      const audioBlob = await fileRes.blob()
+      const rawBlob = await fileRes.blob()
+      // Storage 응답의 MIME이 비어있을 수 있으므로 확장자로 보정
+      const ext = path.split('.').pop()?.toLowerCase() || 'webm'
+      const mimeMap: Record<string, string> = { webm: 'audio/webm', m4a: 'audio/mp4', mp3: 'audio/mpeg', mp4: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac' }
+      const audioBlob = new Blob([rawBlob], { type: mimeMap[ext] || rawBlob.type || 'audio/webm' })
 
       // 2. Whisper STT (25MB 초과 시 자동 분할)
       const { data: openaiCfg } = await supabase

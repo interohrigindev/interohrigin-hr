@@ -116,6 +116,19 @@ export async function generateAIChat(
 
 const WHISPER_MAX_SIZE = 24 * 1024 * 1024 // 24MB (25MB 제한에 여유)
 
+// Blob MIME → Whisper 지원 확장자 매핑
+function getWhisperFilename(blob: Blob): string {
+  const t = blob.type.toLowerCase()
+  if (t.includes('webm')) return 'audio.webm'
+  if (t.includes('mp4') || t.includes('m4a')) return 'audio.m4a'
+  if (t.includes('mpeg') || t.includes('mp3') || t.includes('mpga')) return 'audio.mp3'
+  if (t.includes('wav')) return 'audio.wav'
+  if (t.includes('ogg') || t.includes('oga')) return 'audio.ogg'
+  if (t.includes('flac')) return 'audio.flac'
+  // 알 수 없으면 webm (브라우저 녹음 기본 포맷)
+  return 'audio.webm'
+}
+
 async function transcribeChunk(
   apiKey: string,
   chunk: Blob,
@@ -156,9 +169,11 @@ export async function transcribeAudio(
   audioBlob: Blob,
   language = 'ko'
 ): Promise<{ text: string; segments: { start: number; end: number; text: string }[] }> {
+  const filename = getWhisperFilename(audioBlob)
+
   // 24MB 이하: 단일 요청
   if (audioBlob.size <= WHISPER_MAX_SIZE) {
-    return transcribeChunk(apiKey, audioBlob, language, 'meeting.webm')
+    return transcribeChunk(apiKey, audioBlob, language, filename)
   }
 
   // 24MB 초과: 청크 분할 후 순차 전송
@@ -172,7 +187,8 @@ export async function transcribeAudio(
     const end = Math.min(start + WHISPER_MAX_SIZE, audioBlob.size)
     const chunk = audioBlob.slice(start, end, audioBlob.type)
 
-    const result = await transcribeChunk(apiKey, chunk, language, `meeting_part${i + 1}.webm`)
+    const ext = filename.split('.').pop() || 'webm'
+    const result = await transcribeChunk(apiKey, chunk, language, `part${i + 1}.${ext}`)
 
     if (result.text) {
       allText += (allText ? '\n' : '') + result.text
