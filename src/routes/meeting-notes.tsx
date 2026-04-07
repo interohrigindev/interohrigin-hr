@@ -159,16 +159,18 @@ export default function MeetingNotes() {
       const audioBlob = await fileRes.blob()
 
       // 2. Whisper STT (25MB 초과 시 자동 분할)
-      const { data: aiCfg } = await supabase
-        .from('ai_settings').select('settings').eq('setting_key', 'ai_config').single()
-      const openaiKey = (aiCfg?.settings as Record<string, string>)?.openai_api_key
+      const { data: openaiCfg } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'openai').limit(1).single()
+      const openaiKey = openaiCfg?.api_key
       if (!openaiKey) throw new Error('OpenAI API 키가 없습니다. 관리자 설정에서 등록하세요.')
 
       const sttResult = await transcribeAudio(openaiKey, audioBlob, 'ko')
 
       // 3. AI 요약
       await supabase.from('meeting_records').update({ status: 'summarizing' }).eq('id', recordId)
-      const geminiKey = (aiCfg?.settings as Record<string, string>)?.gemini_api_key
+      const { data: geminiCfg } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'gemini').limit(1).single()
+      const geminiKey = geminiCfg?.api_key
 
       let summary = ''
       if (geminiKey && sttResult.text) {
@@ -245,19 +247,21 @@ export default function MeetingNotes() {
       }).eq('id', meeting.id)
 
       // 3. Whisper STT (자동 분할)
-      const { data: aiCfg } = await supabase
-        .from('ai_settings').select('settings').eq('setting_key', 'ai_config').single()
-      const openaiKey = (aiCfg?.settings as Record<string, string>)?.openai_api_key
-      if (!openaiKey) throw new Error('OpenAI API 키가 없습니다.')
+      const { data: openaiCfg2 } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'openai').limit(1).single()
+      const openaiKey2 = openaiCfg2?.api_key
+      if (!openaiKey2) throw new Error('OpenAI API 키가 없습니다. 관리자 설정에서 등록하세요.')
 
       const audioBlob = new Blob([await file.arrayBuffer()], { type: file.type || 'audio/webm' })
-      const sttResult = await transcribeAudio(openaiKey, audioBlob, 'ko')
+      const sttResult = await transcribeAudio(openaiKey2, audioBlob, 'ko')
 
       const durationSeconds = Math.round(sttResult.segments?.slice(-1)[0]?.end || 0)
 
       // 4. AI 요약
       await supabase.from('meeting_records').update({ status: 'summarizing' }).eq('id', meeting.id)
-      const geminiKey = (aiCfg?.settings as Record<string, string>)?.gemini_api_key
+      const { data: geminiCfg2 } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'gemini').limit(1).single()
+      const geminiKey = geminiCfg2?.api_key
 
       let summary = ''
       if (geminiKey && sttResult.text) {
