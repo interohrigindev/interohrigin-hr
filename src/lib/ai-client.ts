@@ -114,13 +114,16 @@ export async function generateAIChat(
 
 // ─── Whisper STT (음성→텍스트) ────────────────────────────────────
 
-export async function transcribeAudio(
+const WHISPER_MAX_SIZE = 24 * 1024 * 1024 // 24MB (25MB 제한에 여유)
+
+async function transcribeChunk(
   apiKey: string,
-  audioBlob: Blob,
-  language = 'ko'
+  chunk: Blob,
+  language: string,
+  filename: string,
 ): Promise<{ text: string; segments: { start: number; end: number; text: string }[] }> {
   const formData = new FormData()
-  formData.append('file', audioBlob, 'meeting.webm')
+  formData.append('file', chunk, filename)
   formData.append('model', 'whisper-1')
   formData.append('language', language)
   formData.append('response_format', 'verbose_json')
@@ -146,6 +149,46 @@ export async function transcribeAudio(
       text: s.text,
     })),
   }
+}
+
+export async function transcribeAudio(
+  apiKey: string,
+  audioBlob: Blob,
+  language = 'ko'
+): Promise<{ text: string; segments: { start: number; end: number; text: string }[] }> {
+  // 24MB 이하: 단일 요청
+  if (audioBlob.size <= WHISPER_MAX_SIZE) {
+    return transcribeChunk(apiKey, audioBlob, language, 'meeting.webm')
+  }
+
+  // 24MB 초과: 청크 분할 후 순차 전송
+  const chunkCount = Math.ceil(audioBlob.size / WHISPER_MAX_SIZE)
+  let allText = ''
+  let allSegments: { start: number; end: number; text: string }[] = []
+  let timeOffset = 0
+
+  for (let i = 0; i < chunkCount; i++) {
+    const start = i * WHISPER_MAX_SIZE
+    const end = Math.min(start + WHISPER_MAX_SIZE, audioBlob.size)
+    const chunk = audioBlob.slice(start, end, audioBlob.type)
+
+    const result = await transcribeChunk(apiKey, chunk, language, `meeting_part${i + 1}.webm`)
+
+    if (result.text) {
+      allText += (allText ? '\n' : '') + result.text
+    }
+    if (result.segments.length > 0) {
+      const offsetSegments = result.segments.map((s) => ({
+        start: s.start + timeOffset,
+        end: s.end + timeOffset,
+        text: s.text,
+      }))
+      allSegments = [...allSegments, ...offsetSegments]
+      timeOffset = offsetSegments[offsetSegments.length - 1].end
+    }
+  }
+
+  return { text: allText, segments: allSegments }
 }
 
 // ─── API key validation ─────────────────────────────────────────

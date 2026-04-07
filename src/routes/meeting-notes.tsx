@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Mic, Download, Clock, Users, ChevronDown, ChevronUp, Loader2, Trash2,
-  FileText, AlertTriangle, CheckCircle, ListChecks, MessageSquare,
+  FileText, AlertTriangle, CheckCircle, ListChecks, MessageSquare, Upload,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -10,6 +10,8 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { transcribeAudio } from '@/lib/ai-client'
+import { useAuth } from '@/hooks/useAuth'
 
 interface MeetingRecord {
   id: string
@@ -83,6 +85,7 @@ function downloadAsTextFile(filename: string, content: string) {
 
 export default function MeetingNotes() {
   const { toast } = useToast()
+  const { profile } = useAuth()
   const [records, setRecords] = useState<MeetingRecord[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -90,6 +93,9 @@ export default function MeetingNotes() {
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null })
   const [deleting, setDeleting] = useState(false)
+  const [retryingId, setRetryingId] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const retryTargetRef = useRef<string | null>(null)
 
   useEffect(() => { fetchData() }, [])
 
@@ -128,6 +134,87 @@ export default function MeetingNotes() {
 
   function toggleExpand(id: string) {
     setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+
+  function triggerRetry(recordId: string) {
+    retryTargetRef.current = recordId
+    fileInputRef.current?.click()
+  }
+
+  async function handleRetryUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    const recordId = retryTargetRef.current
+    if (!file || !recordId || !profile?.id) return
+    e.target.value = '' // reset input
+
+    setRetryingId(recordId)
+    try {
+      // 1. 스토리지 업로드
+      const filePath = `${profile.id}/${recordId}.webm`
+      await supabase.storage.from('meeting-recordings').remove([filePath])
+      const { error: upErr } = await supabase.storage
+        .from('meeting-recordings').upload(filePath, file, { contentType: file.type || 'audio/webm' })
+      if (upErr) throw new Error('업로드 실패: ' + upErr.message)
+
+      const { data: urlData } = supabase.storage.from('meeting-recordings').getPublicUrl(filePath)
+      await supabase.from('meeting_records').update({
+        recording_url: urlData.publicUrl,
+        status: 'transcribing',
+        error_message: null,
+      }).eq('id', recordId)
+
+      // 2. Whisper STT
+      const { data: aiCfg } = await supabase
+        .from('ai_settings').select('settings').eq('setting_key', 'ai_config').single()
+      const openaiKey = (aiCfg?.settings as Record<string, string>)?.openai_api_key
+      if (!openaiKey) throw new Error('OpenAI API 키가 없습니다. 관리자 설정에서 등록하세요.')
+
+      const audioBlob = new Blob([await file.arrayBuffer()], { type: file.type || 'audio/webm' })
+      const sttResult = await transcribeAudio(openaiKey, audioBlob, 'ko')
+
+      // 3. AI 요약
+      await supabase.from('meeting_records').update({ status: 'summarizing' }).eq('id', recordId)
+      const { data: geminiCfg } = await supabase
+        .from('ai_settings').select('settings').eq('setting_key', 'ai_config').single()
+      const geminiKey = (geminiCfg?.settings as Record<string, string>)?.gemini_api_key
+
+      let summary = ''
+      if (geminiKey && sttResult.text) {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `다음 회의 녹취록을 한국어로 요약하세요. 핵심 논의사항, 결정사항, 액션아이템을 구분하여 정리하세요.\n\n${sttResult.text}` }] }],
+              generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+            }),
+          }
+        )
+        if (geminiRes.ok) {
+          const d = await geminiRes.json()
+          summary = d.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        }
+      }
+
+      // 4. 완료 업데이트
+      await supabase.from('meeting_records').update({
+        transcription: sttResult.text,
+        summary,
+        status: 'completed',
+        error_message: null,
+        stt_cost: Math.round(((sttResult.segments?.slice(-1)[0]?.end || 0) / 60) * 0.006 * 1000) / 1000,
+      }).eq('id', recordId)
+
+      toast('음성 변환 + 요약 완료', 'success')
+      fetchData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '재분석 실패'
+      toast(msg, 'error')
+      await supabase.from('meeting_records').update({ status: 'error', error_message: msg }).eq('id', recordId)
+    } finally {
+      setRetryingId(null)
+    }
   }
 
   async function handleDelete(id: string) {
@@ -174,6 +261,15 @@ export default function MeetingNotes() {
 
   return (
     <div className="space-y-6">
+      {/* Hidden file input for retry upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/*,video/*"
+        className="hidden"
+        onChange={handleRetryUpload}
+      />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">회의록</h1>
@@ -372,11 +468,26 @@ export default function MeetingNotes() {
                         </div>
                       )}
 
-                      {/* 에러 */}
-                      {r.status === 'error' && r.error_message && (
-                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                          <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                          <p className="text-sm text-red-700">{r.error_message}</p>
+                      {/* 에러 + 재분석 */}
+                      {r.status === 'error' && (
+                        <div className="space-y-2">
+                          {r.error_message && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                              <p className="text-sm text-red-700">{r.error_message}</p>
+                            </div>
+                          )}
+                          <Button
+                            size="sm"
+                            onClick={() => triggerRetry(r.id)}
+                            disabled={retryingId === r.id}
+                          >
+                            {retryingId === r.id ? (
+                              <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 재분석 중...</>
+                            ) : (
+                              <><Upload className="h-3.5 w-3.5 mr-1" /> 음성 파일 업로드하여 재분석</>
+                            )}
+                          </Button>
                         </div>
                       )}
 

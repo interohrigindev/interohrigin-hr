@@ -64,6 +64,7 @@ export function useMeetingRecorder() {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
           : 'audio/webm',
+        audioBitsPerSecond: 32000, // 32kbps — Whisper 25MB 제한 대응 (약 1.5시간 녹음 가능)
       })
       mediaRecorderRef.current = mediaRecorder
 
