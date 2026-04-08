@@ -135,9 +135,21 @@ export function selectOptimalProvider(
 export async function routeMessage(message: string): Promise<{
   config: AIConfig | null
   taskType: TaskType
+  allProviders: AIConfig[]
 }> {
   const taskType = classifyTask(message)
   const available = await getAllActiveProviders()
   const config = selectOptimalProvider(taskType, available)
-  return { config, taskType }
+  return { config, taskType, allProviders: available }
+}
+
+// ─── Fallback: 실패한 provider 제외하고 다음 provider 선택 ──────
+
+export function getNextProvider(
+  taskType: TaskType,
+  allProviders: AIConfig[],
+  failedProvider: string
+): AIConfig | null {
+  const remaining = allProviders.filter((p) => p.provider !== failedProvider)
+  return selectOptimalProvider(taskType, remaining)
 }

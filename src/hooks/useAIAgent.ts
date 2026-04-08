@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { generateAIChat, getAIConfigForFeature } from '@/lib/ai-client'
 import type { AIConfig } from '@/lib/ai-client'
-import { routeMessage, getTaskLabel } from '@/lib/ai-router'
+import { routeMessage, getTaskLabel, getNextProvider } from '@/lib/ai-router'
 import type { TaskType } from '@/lib/ai-router'
 import { getSystemPrompt } from '@/lib/ai-prompts'
 import { detectDocumentRequest, generateDocument } from '@/lib/document-generator'
@@ -97,17 +97,17 @@ export function useAIAgent() {
 
   // ─── Smart AI Router — 메시지별 최적 Provider 선택 ────────
   async function getSmartConfig(message: string): Promise<{
-    config: AIConfig | null; taskType: TaskType
+    config: AIConfig | null; taskType: TaskType; allProviders: AIConfig[]
   }> {
     // 1) Smart Router로 최적 provider 선택
-    const { config, taskType } = await routeMessage(message)
+    const { config, taskType, allProviders } = await routeMessage(message)
     if (config) {
       console.log(`[AIRouter] ${getTaskLabel(taskType)} → ${config.provider}/${config.model}`)
-      return { config, taskType }
+      return { config, taskType, allProviders }
     }
     // 2) fallback: 기능별 설정
     const fallback = await getAIConfigForFeature('ai_agent')
-    return { config: fallback, taskType }
+    return { config: fallback, taskType, allProviders }
   }
 
   // ─── 새 대화 시작 ────────────────────────────────────────
@@ -182,7 +182,7 @@ export function useAIAgent() {
     }
 
     // AI 호출 — Smart Router로 최적 provider 선택
-    const { config: aiConfig, taskType } = await getSmartConfig(content)
+    const { config: aiConfig, taskType, allProviders } = await getSmartConfig(content)
     if (!aiConfig) {
       const errMsg = 'AI 설정이 없습니다. 관리자 설정에서 API 키를 등록하세요.'
       setLastError(errMsg)
@@ -205,8 +205,23 @@ export function useAIAgent() {
 
       const systemPrompt = getSystemPrompt(taskType, profile?.name, profile?.role)
 
-      console.log(`[AIRouter] ${getTaskLabel(taskType)} → ${aiConfig.provider}/${aiConfig.model} (${recentMsgs.length}msgs)`)
-      const response = await generateAIChat(aiConfig, systemPrompt, recentMsgs)
+      // AI 호출 (실패 시 다른 provider로 자동 fallback)
+      let response
+      let currentConfig = aiConfig
+      console.log(`[AIRouter] ${getTaskLabel(taskType)} → ${currentConfig.provider}/${currentConfig.model} (${recentMsgs.length}msgs)`)
+      try {
+        response = await generateAIChat(currentConfig, systemPrompt, recentMsgs)
+      } catch (primaryErr) {
+        console.warn(`[AIRouter] ${currentConfig.provider} 실패, fallback 시도:`, primaryErr)
+        const fallbackConfig = getNextProvider(taskType, allProviders, currentConfig.provider)
+        if (fallbackConfig) {
+          console.log(`[AIRouter] fallback → ${fallbackConfig.provider}/${fallbackConfig.model}`)
+          currentConfig = fallbackConfig
+          response = await generateAIChat(currentConfig, systemPrompt, recentMsgs)
+        } else {
+          throw primaryErr
+        }
+      }
       console.log('[AIAgent] AI 응답 수신, 길이:', response.content.length)
 
       // AI 응답 DB 저장
