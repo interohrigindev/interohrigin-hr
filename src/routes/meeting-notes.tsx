@@ -170,8 +170,16 @@ export default function MeetingNotes() {
 
       const sttResult = await transcribeAudio(deepgramKey, audioBlob, 'ko')
 
+      // STT 완료 즉시 저장 (요약 실패해도 전사 텍스트 보존)
+      await supabase.from('meeting_records').update({
+        transcription: sttResult.text,
+        transcription_segments: sttResult.segments,
+        duration_seconds: sttResult.durationSeconds || undefined,
+        stt_cost: Math.round((sttResult.durationSeconds / 60) * DEEPGRAM_COST_PER_MIN * 10000) / 10000,
+        status: 'summarizing',
+      }).eq('id', recordId)
+
       // 3. AI 요약
-      await supabase.from('meeting_records').update({ status: 'summarizing' }).eq('id', recordId)
       const { data: geminiCfg } = await supabase
         .from('ai_settings').select('api_key').eq('provider', 'gemini').limit(1).single()
       const geminiKey = geminiCfg?.api_key
@@ -197,13 +205,9 @@ export default function MeetingNotes() {
 
       // 4. 완료
       await supabase.from('meeting_records').update({
-        transcription: sttResult.text,
-        transcription_segments: sttResult.segments,
-        duration_seconds: sttResult.durationSeconds || undefined,
         summary,
         status: 'completed',
         error_message: null,
-        stt_cost: Math.round((sttResult.durationSeconds / 60) * DEEPGRAM_COST_PER_MIN * 10000) / 10000,
       }).eq('id', recordId)
 
       toast('재분석 완료', 'success')
@@ -224,6 +228,7 @@ export default function MeetingNotes() {
     e.target.value = ''
 
     setUploading(true)
+    let meetingId: string | null = null
     try {
       // 1. DB 레코드 생성
       const title = file.name.replace(/\.[^.]+$/, '') || '외부 녹음 파일'
@@ -238,6 +243,7 @@ export default function MeetingNotes() {
         })
         .select().single()
       if (dbErr || !meeting) throw new Error('회의 생성 실패: ' + (dbErr?.message || ''))
+      meetingId = meeting.id
 
       // 2. Storage 업로드
       const ext = file.name.split('.').pop() || 'webm'
@@ -263,8 +269,16 @@ export default function MeetingNotes() {
 
       const durationSeconds = sttResult.durationSeconds
 
+      // STT 완료 즉시 저장 (요약 실패해도 전사 텍스트 보존)
+      await supabase.from('meeting_records').update({
+        transcription: sttResult.text,
+        transcription_segments: sttResult.segments,
+        duration_seconds: durationSeconds,
+        stt_cost: Math.round((durationSeconds / 60) * DEEPGRAM_COST_PER_MIN * 10000) / 10000,
+        status: 'summarizing',
+      }).eq('id', meeting.id)
+
       // 4. AI 요약
-      await supabase.from('meeting_records').update({ status: 'summarizing' }).eq('id', meeting.id)
       const { data: geminiCfg2 } = await supabase
         .from('ai_settings').select('api_key').eq('provider', 'gemini').limit(1).single()
       const geminiKey = geminiCfg2?.api_key
@@ -290,13 +304,9 @@ export default function MeetingNotes() {
 
       // 5. 완료
       await supabase.from('meeting_records').update({
-        transcription: sttResult.text,
-        transcription_segments: sttResult.segments,
         summary,
-        duration_seconds: durationSeconds,
         status: 'completed',
         error_message: null,
-        stt_cost: Math.round((durationSeconds / 60) * DEEPGRAM_COST_PER_MIN * 10000) / 10000,
       }).eq('id', meeting.id)
 
       toast('파일 업로드 + 분석 완료', 'success')
@@ -304,6 +314,10 @@ export default function MeetingNotes() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '업로드 실패'
       toast(msg, 'error')
+      if (meetingId) {
+        await supabase.from('meeting_records').update({ status: 'error', error_message: msg }).eq('id', meetingId)
+      }
+      fetchData()
     } finally {
       setUploading(false)
     }
@@ -400,7 +414,7 @@ export default function MeetingNotes() {
         <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">전체 회의록</p><p className="text-2xl font-bold text-gray-900">{records.length}</p></CardContent></Card>
         <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">완료</p><p className="text-2xl font-bold text-green-600">{completedCount}</p></CardContent></Card>
         <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">총 녹음 시간</p><p className="text-2xl font-bold text-blue-600">{Math.round(totalDuration / 60)}분</p></CardContent></Card>
-        <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">예상 STT 비용</p><p className="text-2xl font-bold text-amber-600">${(totalDuration / 60 * 0.006).toFixed(2)}</p><p className="text-[10px] text-gray-400">Whisper $0.006/분</p></CardContent></Card>
+        <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">예상 STT 비용</p><p className="text-2xl font-bold text-amber-600">${(totalDuration / 60 * DEEPGRAM_COST_PER_MIN).toFixed(2)}</p><p className="text-[10px] text-gray-400">Deepgram $0.0043/분</p></CardContent></Card>
       </div>
 
       {/* 회의록 목록 */}
