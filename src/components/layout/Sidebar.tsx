@@ -101,9 +101,9 @@ const standaloneItems: NavItem[] = [
     hideForRoles: ['director', 'division_head', 'ceo', 'admin'],
   },
   {
-    to: '/messenger',
-    label: '메신저',
-    icon: <MessageSquare className="h-5 w-5" />,
+    to: '/io-ai',
+    label: 'IO AI',
+    icon: <Sparkles className="h-5 w-5" />,
   },
   {
     to: '/bulletin',

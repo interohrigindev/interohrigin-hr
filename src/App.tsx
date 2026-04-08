@@ -46,6 +46,9 @@ import PeerReview from '@/routes/peer-review'
 // 사내 메신저
 import MessengerPage from '@/routes/messenger/index'
 
+// IO AI
+import IOAIPage from '@/routes/io-ai/index'
+
 // 프로젝트 & 업무 (통합)
 import UnifiedDashboard from '@/routes/projects/unified-dashboard'
 import ProjectBoardPage from '@/routes/projects/index'
@@ -201,7 +204,10 @@ function App() {
               <Route path="monthly-checkin" element={<MonthlyCheckin />} />
               <Route path="peer-review" element={<PeerReview />} />
 
-              {/* 사내 메신저 */}
+              {/* IO AI */}
+              <Route path="io-ai" element={<IOAIPage />} />
+
+              {/* 사내 메신저 (하위호환) */}
               <Route path="messenger" element={<MessengerPage />} />
               <Route path="messenger/:roomId" element={<MessengerPage />} />
 

@@ -23,7 +23,7 @@ const CONTEXT_LABELS: Record<string, string> = {
 }
 
 // 공개 페이지에서는 AI 챗봇 숨김
-const PUBLIC_PATHS = ['/careers', '/apply', '/survey', '/interview', '/exit-survey', '/accept', '/login', '/reset-password']
+const PUBLIC_PATHS = ['/careers', '/apply', '/survey', '/interview', '/exit-survey', '/accept', '/login', '/reset-password', '/io-ai']
 
 export default function FloatingAIAgent() {
   const location = useLocation()
