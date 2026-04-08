@@ -1,8 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { transcribeAudio, DEEPGRAM_COST_PER_MIN } from '@/lib/ai-client'
-import { generateAIChat } from '@/lib/ai-client'
-import type { AIConfig } from '@/lib/ai-client'
+import { transcribeAudio, summarizeMeeting, DEEPGRAM_COST_PER_MIN } from '@/lib/ai-client'
 import { useAuth } from '@/hooks/useAuth'
 
 export type MeetingStatus = 'idle' | 'recording' | 'uploading' | 'transcribing' | 'summarizing' | 'completed' | 'error'
@@ -38,16 +36,15 @@ export function useMeetingRecorder() {
     return data?.api_key || null
   }
 
-  // ─── 활성 AI 설정 (요약용) ──────────────────────────────
-  async function getAIConfig(): Promise<AIConfig | null> {
+  // ─── Gemini 키 가져오기 (요약용) ─────────────────────────
+  async function getGeminiKey(): Promise<string | null> {
     const { data } = await supabase
       .from('ai_settings')
-      .select('*')
-      .eq('is_active', true)
+      .select('api_key')
+      .eq('provider', 'gemini')
       .limit(1)
       .single()
-    if (!data) return null
-    return { provider: data.provider, apiKey: data.api_key, model: data.model }
+    return data?.api_key || null
   }
 
   // ─── 녹음 시작 ──────────────────────────────────────────
@@ -183,8 +180,8 @@ export function useMeetingRecorder() {
 
     // 4. AI 요약
     setStatus('summarizing')
-    const aiConfig = await getAIConfig()
-    if (!aiConfig) {
+    const geminiKey = await getGeminiKey()
+    if (!geminiKey) {
       // STT까지는 성공, 요약만 스킵
       await supabase.from('meeting_records').update({ status: 'completed' }).eq('id', meeting.id)
       setResult({ id: meeting.id, transcription, summary: '', actionItems: [], decisions: [] })
@@ -193,51 +190,18 @@ export function useMeetingRecorder() {
     }
 
     try {
-      const summaryPrompt = `다음은 "${title}" 회의의 녹취록입니다. 아래 형식으로 회의록을 정리해주세요.
-
-## 회의 요약
-(3-5문장)
-
-## 주요 결정사항
-- 항목1
-- 항목2
-
-## 액션 아이템
-- [ ] 담당자: 내용 (기한)
-- [ ] 담당자: 내용 (기한)
-
-## 주요 논의 내용
-(핵심 논의를 구조화)
-
----
-녹취록:
-${transcription}`
-
-      const resp = await generateAIChat(aiConfig, '당신은 전문 회의록 작성자입니다. 한국어로 작성하세요.', [
-        { role: 'user', content: summaryPrompt },
-      ])
-
-      // 액션아이템/결정사항 추출
-      const actionItems = (resp.content.match(/- \[[ x]\] .+/g) || []).map((s) => s.replace(/^- \[[ x]\] /, ''))
-      const decisions = (resp.content.match(/^- (?!\[).+/gm) || []).slice(0, 10).map((s) => s.replace(/^- /, ''))
+      const { summary, actionItems, decisions } = await summarizeMeeting(geminiKey, title, transcription)
 
       await supabase.from('meeting_records').update({
-        summary: resp.content,
+        summary,
         action_items: actionItems,
         decisions,
         status: 'completed',
       }).eq('id', meeting.id)
 
-      setResult({
-        id: meeting.id,
-        transcription,
-        summary: resp.content,
-        actionItems,
-        decisions,
-      })
+      setResult({ id: meeting.id, transcription, summary, actionItems, decisions })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '요약 실패'
-      // STT는 성공했으므로 completed 처리
       await supabase.from('meeting_records').update({ status: 'completed', error_message: '요약 실패: ' + msg }).eq('id', meeting.id)
       setResult({ id: meeting.id, transcription, summary: '', actionItems: [], decisions: [] })
     }

@@ -10,7 +10,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { transcribeAudio, DEEPGRAM_COST_PER_MIN } from '@/lib/ai-client'
+import { transcribeAudio, summarizeMeeting, DEEPGRAM_COST_PER_MIN } from '@/lib/ai-client'
 import { useAuth } from '@/hooks/useAuth'
 
 interface MeetingRecord {
@@ -59,12 +59,22 @@ function formatSummaryAsDocument(summary: string): string {
   let html = summary
     // 마크다운 헤더 → HTML
     .replace(/^### (.+)$/gm, '<h4 class="text-sm font-bold text-gray-800 mt-4 mb-1 flex items-center gap-1"><span class="w-1 h-4 bg-brand-500 rounded-full inline-block mr-1"></span>$1</h4>')
+    .replace(/^## \d+\. (.+)$/gm, '<h3 class="text-base font-bold text-gray-900 mt-6 mb-2 pb-1 border-b border-gray-200">$1</h3>')
     .replace(/^## (.+)$/gm, '<h3 class="text-base font-bold text-gray-900 mt-5 mb-2 pb-1 border-b border-gray-200">$1</h3>')
     .replace(/^# (.+)$/gm, '<h2 class="text-lg font-bold text-gray-900 mt-4 mb-2">$1</h2>')
     // 볼드/이탤릭
     .replace(/\*\*(.+?)\*\*/g, '<strong class="text-gray-900">$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // 리스트
+    // 체크박스 아이템
+    .replace(/^- \[ \] (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-gray-400 mt-0.5 shrink-0">☐</span><span>$1</span></li>')
+    .replace(/^- \[x\] (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-green-500 mt-0.5 shrink-0">☑</span><span>$1</span></li>')
+    // 결정사항 (✅)
+    .replace(/^- ✅ (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-green-700 py-0.5 bg-green-50 rounded px-2"><span class="shrink-0">✅</span><span>$1</span></li>')
+    // 협의필요 (⚠️)
+    .replace(/^- ⚠️ (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-amber-700 py-0.5 bg-amber-50 rounded px-2"><span class="shrink-0">⚠️</span><span>$1</span></li>')
+    // 제안/의견 (💡)
+    .replace(/^- 💡 (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-blue-700 py-0.5 bg-blue-50 rounded px-2"><span class="shrink-0">💡</span><span>$1</span></li>')
+    // 일반 리스트
     .replace(/^- (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-brand-500 mt-1 shrink-0">•</span><span>$1</span></li>')
     .replace(/^\d+\. (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-brand-600 font-semibold mt-0 shrink-0 w-5 text-right">▸</span><span>$1</span></li>')
     // 줄바꿈
@@ -185,27 +195,20 @@ export default function MeetingNotes() {
       const geminiKey = geminiCfg?.api_key
 
       let summary = ''
+      let actionItems: string[] = []
+      let decisions: string[] = []
       if (geminiKey && sttResult.text) {
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: `다음 회의 녹취록을 한국어로 요약하세요. 핵심 논의사항, 결정사항, 액션아이템을 구분하여 정리하세요.\n\n${sttResult.text}` }] }],
-              generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-            }),
-          }
-        )
-        if (geminiRes.ok) {
-          const d = await geminiRes.json()
-          summary = d.candidates?.[0]?.content?.parts?.[0]?.text || ''
-        }
+        const result = await summarizeMeeting(geminiKey, record.title || '회의', sttResult.text)
+        summary = result.summary
+        actionItems = result.actionItems
+        decisions = result.decisions
       }
 
       // 4. 완료
       await supabase.from('meeting_records').update({
         summary,
+        action_items: actionItems,
+        decisions,
         status: 'completed',
         error_message: null,
       }).eq('id', recordId)
@@ -284,27 +287,20 @@ export default function MeetingNotes() {
       const geminiKey = geminiCfg2?.api_key
 
       let summary = ''
+      let actionItems: string[] = []
+      let decisions: string[] = []
       if (geminiKey && sttResult.text) {
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: `다음 회의 녹취록을 한국어로 요약하세요. 핵심 논의사항, 결정사항, 액션아이템을 구분하여 정리하세요.\n\n${sttResult.text}` }] }],
-              generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-            }),
-          }
-        )
-        if (geminiRes.ok) {
-          const d = await geminiRes.json()
-          summary = d.candidates?.[0]?.content?.parts?.[0]?.text || ''
-        }
+        const result = await summarizeMeeting(geminiKey, title, sttResult.text)
+        summary = result.summary
+        actionItems = result.actionItems
+        decisions = result.decisions
       }
 
       // 5. 완료
       await supabase.from('meeting_records').update({
         summary,
+        action_items: actionItems,
+        decisions,
         status: 'completed',
         error_message: null,
       }).eq('id', meeting.id)

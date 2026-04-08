@@ -174,6 +174,115 @@ export async function transcribeAudio(
   return { text, segments, durationSeconds }
 }
 
+// ─── 회의록 AI 요약 (2단계 구조화 분석) ──────────────────────────
+
+export interface MeetingSummaryResult {
+  summary: string
+  actionItems: string[]
+  decisions: string[]
+}
+
+const MEETING_SYSTEM_PROMPT = `당신은 10년 경력의 전문 회의록 작성자입니다.
+참가자 간 컨센서스를 명확히 하고, 회의 후 실행력을 높이는 구조화된 회의록을 작성합니다.
+반드시 한국어로 작성하며, 녹취록에 없는 내용은 추가하지 마세요.
+화자 구분이 있는 경우 발언자를 명시하세요.`
+
+function buildMeetingSummaryPrompt(title: string, transcription: string): string {
+  return `다음은 "${title}" 회의의 녹취록입니다. 아래 형식을 **정확히** 따라 회의록을 작성하세요.
+
+---
+
+## 1. 회의 개요
+- **회의 주제**: (회의의 핵심 목적 1문장)
+- **주요 안건**: (논의된 안건을 번호로 나열)
+
+## 2. 논의 내용 정리
+각 안건별로 누가 어떤 의견을 냈는지 구조화하세요.
+### 안건 1: (제목)
+- (화자/발언자): 핵심 발언 내용
+- (화자/발언자): 핵심 발언 내용
+- **합의점**: (이 안건에서 합의된 내용, 없으면 "미합의"로 표시)
+
+### 안건 2: (제목)
+(동일 구조 반복)
+
+## 3. 결정사항
+회의에서 **확정된** 사항만 기록합니다.
+- ✅ (구체적 결정 내용)
+- ✅ (구체적 결정 내용)
+
+## 4. 추가 협의 필요사항
+회의 중 결론이 나지 않아 **추후 협의가 필요한** 사항입니다.
+- ⚠️ (미결 사항 + 관련 이해관계자)
+- ⚠️ (미결 사항 + 관련 이해관계자)
+
+## 5. 액션 아이템 (To-Do)
+다음 미팅 전까지 각 담당자가 수행해야 할 업무입니다.
+- [ ] **담당자**: 업무 내용 (기한: YYYY.MM.DD 또는 "다음 미팅 전")
+- [ ] **담당자**: 업무 내용 (기한: YYYY.MM.DD 또는 "다음 미팅 전")
+
+## 6. 참고 의견 및 제안
+회의 흐름에서 나온 부가 의견, 아이디어, 리스크 사항 등을 기록합니다.
+- 💡 (의견/제안 내용)
+- 💡 (의견/제안 내용)
+
+## 7. 다음 미팅 안건 (예정)
+이번 회의에서 도출된 다음 미팅 시 다뤄야 할 주제입니다.
+- (안건 1)
+- (안건 2)
+
+---
+녹취록:
+${transcription}`
+}
+
+function parseMeetingSummary(content: string): MeetingSummaryResult {
+  // 액션아이템 추출: "- [ ] **담당자**: 내용" 또는 "- [ ] 담당자: 내용"
+  const actionItems = (content.match(/- \[[ x]\] .+/g) || [])
+    .map((s) => s.replace(/^- \[[ x]\] /, '').replace(/\*\*/g, ''))
+
+  // 결정사항 추출: "- ✅ 내용"
+  const decisions = (content.match(/- ✅ .+/g) || [])
+    .map((s) => s.replace(/^- ✅ /, ''))
+
+  return { summary: content, actionItems, decisions }
+}
+
+export async function summarizeMeeting(
+  geminiKey: string,
+  title: string,
+  transcription: string
+): Promise<MeetingSummaryResult> {
+  if (!transcription.trim()) {
+    return { summary: '', actionItems: [], decisions: [] }
+  }
+
+  const prompt = buildMeetingSummaryPrompt(title, transcription)
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: MEETING_SYSTEM_PROMPT }] },
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+      }),
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as Record<string, any>
+    throw new Error(err?.error?.message || `Gemini API error: ${res.status}`)
+  }
+
+  const data = await res.json()
+  const content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+  return parseMeetingSummary(content)
+}
+
 // ─── API key validation ─────────────────────────────────────────
 
 export async function validateApiKey(config: AIConfig): Promise<{ valid: boolean; error?: string }> {
