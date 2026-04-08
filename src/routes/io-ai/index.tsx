@@ -41,74 +41,80 @@ export default function IOAIPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden -m-6 bg-white">
-      {/* ─── 사이드바 (다크 테마) ─── */}
-      {/* 데스크톱: 토글 가능 */}
-      <div
-        className={`hidden md:flex shrink-0 transition-all duration-200 ${
-          sidebarOpen ? 'w-64 lg:w-72' : 'w-0'
-        } overflow-hidden`}
-      >
-        <ChatSidebar
-          conversations={conversations}
-          activeConvId={activeConversation?.id || null}
-          onSelect={handleSelectConv}
-          onNewChat={handleNewChat}
-          onBookmark={toggleBookmark}
-          onArchive={archiveConversation}
-          onDelete={deleteConversation}
-          onSearchArchive={searchArchive}
-        />
-      </div>
+    <>
+      {/*
+        DashboardLayout의 <main className="p-4 md:p-6"> 안에 렌더됨.
+        패딩/스크롤을 무시하고 전체 영역을 차지하기 위해
+        negative margin + fixed height 사용
+      */}
+      <div className="flex -m-4 md:-m-6 h-[calc(100vh-64px)] overflow-hidden">
+        {/* ─── 사이드바 (다크) ─── */}
+        {/* 데스크톱 */}
+        <div
+          className={`hidden md:block shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
+            sidebarOpen ? 'w-64' : 'w-0'
+          }`}
+        >
+          <div className="w-64 h-full">
+            <ChatSidebar
+              conversations={conversations}
+              activeConvId={activeConversation?.id || null}
+              onSelect={handleSelectConv}
+              onNewChat={handleNewChat}
+              onBookmark={toggleBookmark}
+              onArchive={archiveConversation}
+              onDelete={deleteConversation}
+              onSearchArchive={searchArchive}
+            />
+          </div>
+        </div>
 
-      {/* 모바일: 오버레이 */}
-      {!mobileChat && (
-        <div className="md:hidden flex w-full">
-          <ChatSidebar
-            conversations={conversations}
-            activeConvId={activeConversation?.id || null}
-            onSelect={handleSelectConv}
-            onNewChat={handleNewChat}
-            onBookmark={toggleBookmark}
-            onArchive={archiveConversation}
-            onDelete={deleteConversation}
-            onSearchArchive={searchArchive}
+        {/* 모바일 사이드바 */}
+        {!mobileChat && (
+          <div className="md:hidden w-full">
+            <ChatSidebar
+              conversations={conversations}
+              activeConvId={activeConversation?.id || null}
+              onSelect={handleSelectConv}
+              onNewChat={handleNewChat}
+              onBookmark={toggleBookmark}
+              onArchive={archiveConversation}
+              onDelete={deleteConversation}
+              onSearchArchive={searchArchive}
+            />
+          </div>
+        )}
+
+        {/* ─── 채팅 영역 ─── */}
+        <div className={`${mobileChat ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0 bg-white`}>
+          {/* 상단 바 */}
+          <div className="flex items-center gap-2 h-11 px-4 border-b border-gray-100 shrink-0">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="hidden md:flex p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              title={sidebarOpen ? '사이드바 닫기' : '사이드바 열기'}
+            >
+              {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={() => setMobileChat(false)}
+              className="md:hidden p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </button>
+            <p className="text-sm font-medium text-gray-600 truncate flex-1">
+              {activeConversation?.title || '새 대화'}
+            </p>
+          </div>
+
+          <ChatArea
+            messages={messages}
+            sending={sending}
+            lastError={lastError}
+            onSendMessage={handleSendMessage}
           />
         </div>
-      )}
-
-      {/* ─── 채팅 영역 ─── */}
-      <div className={`${mobileChat ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0 relative`}>
-        {/* 상단 바 — 사이드바 토글 + 대화 제목 */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-white/80 backdrop-blur-sm shrink-0">
-          {/* 데스크톱 사이드바 토글 */}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="hidden md:flex p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-            title={sidebarOpen ? '사이드바 닫기' : '사이드바 열기'}
-          >
-            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
-          </button>
-          {/* 모바일 뒤로가기 */}
-          <button
-            onClick={() => setMobileChat(false)}
-            className="md:hidden p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"
-          >
-            <PanelLeft className="h-4 w-4" />
-          </button>
-          <p className="text-sm font-medium text-gray-700 truncate flex-1">
-            {activeConversation?.title || '새 대화'}
-          </p>
-        </div>
-
-        <ChatArea
-          conversation={activeConversation}
-          messages={messages}
-          sending={sending}
-          lastError={lastError}
-          onSendMessage={handleSendMessage}
-        />
       </div>
-    </div>
+    </>
   )
 }

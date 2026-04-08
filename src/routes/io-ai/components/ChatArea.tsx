@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { Sparkles, ArrowUp } from 'lucide-react'
-import type { AgentMessage, AgentConversation } from '@/types/ai-agent'
+import type { AgentMessage } from '@/types/ai-agent'
 import MessageBubble from './MessageBubble'
 import TypingIndicator from './TypingIndicator'
 import SuggestionChips from './SuggestionChips'
@@ -15,7 +15,6 @@ const SUGGESTIONS = [
 ]
 
 interface ChatAreaProps {
-  conversation: AgentConversation | null
   messages: AgentMessage[]
   sending: boolean
   lastError: string | null
@@ -67,15 +66,15 @@ export default function ChatArea({
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-1">무엇을 도와드릴까요?</h1>
             <p className="text-sm text-gray-400 mb-8">IO AI가 업무를 지원합니다</p>
-            <div className="grid grid-cols-2 gap-2 max-w-md w-full">
+            <div className="grid grid-cols-2 gap-2 w-full max-w-lg px-4">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s.text}
                   onClick={() => onSendMessage(s.text)}
-                  className="flex items-start gap-2 p-3 bg-gray-50 border border-gray-100 rounded-xl text-left hover:bg-violet-50 hover:border-violet-200 transition-all group"
+                  className="flex items-center gap-2.5 p-3 bg-gray-50 border border-gray-100 rounded-xl text-left hover:bg-violet-50 hover:border-violet-200 transition-all group"
                 >
-                  <span className="text-base">{s.icon}</span>
-                  <span className="text-xs text-gray-600 group-hover:text-violet-700 leading-relaxed">{s.text}</span>
+                  <span className="text-lg shrink-0">{s.icon}</span>
+                  <span className="text-xs text-gray-600 group-hover:text-violet-700 leading-snug">{s.text}</span>
                 </button>
               ))}
             </div>
