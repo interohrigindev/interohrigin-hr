@@ -167,8 +167,16 @@ export default function TabAI() {
   }
 
   async function handleSetActive(id: string) {
-    // Deactivate all, then activate the selected one
-    await supabase.from('ai_settings').update({ is_active: false }).eq('module', 'hr')
+    // 활성화 대상의 provider 확인
+    const target = settings.find((s) => s.id === id)
+    const isDeepgram = target?.provider === 'deepgram'
+
+    // Deepgram은 독립 활성화, 텍스트 생성 provider끼리만 상호 비활성화
+    if (isDeepgram) {
+      await supabase.from('ai_settings').update({ is_active: false }).eq('module', 'hr').eq('provider', 'deepgram')
+    } else {
+      await supabase.from('ai_settings').update({ is_active: false }).eq('module', 'hr').neq('provider', 'deepgram')
+    }
     const { error } = await supabase.from('ai_settings').update({ is_active: true }).eq('id', id)
     if (error) {
       toast('활성화 실패: ' + error.message, 'error')
