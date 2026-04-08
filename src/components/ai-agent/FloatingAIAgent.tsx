@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import DOMPurify from 'dompurify'
 import {
   Bot, X, Send, Plus, Loader2, Bookmark, Archive,
   Trash2, ArrowLeft, Search, Sparkles, MessageSquare,
-  Mic, MicOff, Square, FileText, Users, CheckCircle,
+  Mic, MicOff, Square, FileText, Users, CheckCircle, Maximize2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAIAgent } from '@/hooks/useAIAgent'
@@ -27,6 +27,7 @@ const PUBLIC_PATHS = ['/careers', '/apply', '/survey', '/interview', '/exit-surv
 
 export default function FloatingAIAgent() {
   const location = useLocation()
+  const navigate = useNavigate()
   const isPublicPage = PUBLIC_PATHS.some((p) => location.pathname.startsWith(p))
   const { profile } = useAuth()
   const {
@@ -140,6 +141,16 @@ export default function FloatingAIAgent() {
               )}
               <button onClick={handleNewChat} className="p-1.5 hover:bg-violet-500 rounded" title="새 대화">
                 <Plus className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => {
+                  setIsOpen(false)
+                  navigate('/io-ai', { state: { conversationId: activeConversation?.id } })
+                }}
+                className="p-1.5 hover:bg-violet-500 rounded"
+                title="전체 화면으로 열기"
+              >
+                <Maximize2 className="h-4 w-4" />
               </button>
               <button onClick={() => setIsOpen(false)} className="p-1.5 hover:bg-violet-500 rounded">
                 <X className="h-4 w-4" />

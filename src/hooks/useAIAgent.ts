@@ -3,14 +3,11 @@ import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { generateAIChat, getAIConfigForFeature } from '@/lib/ai-client'
 import type { AIConfig } from '@/lib/ai-client'
+import { routeMessage, getTaskLabel } from '@/lib/ai-router'
+import type { TaskType } from '@/lib/ai-router'
+import { getSystemPrompt } from '@/lib/ai-prompts'
 import { useAuth } from '@/hooks/useAuth'
 import type { AgentConversation, AgentMessage, AgentContextType } from '@/types/ai-agent'
-
-const SYSTEM_PROMPT_BASE = `당신은 인터오리진(InterOhrigin)의 AI 어시스턴트 직원입니다.
-회사는 화장품/뷰티 브랜드 사업을 영위하며, 브랜드사업본부·마케팅영업본부·경영관리본부로 운영됩니다.
-한국어로 응답하며, 마크다운 형식을 사용합니다.
-당신의 대화는 전사 지식으로 아카이빙되므로 정확하고 유용한 정보를 제공하세요.
-프로젝트 진행, 시장 조사, 경쟁사 분석, 디자인 참고, 아이디어 도출, 의사결정 지원 등 실질적인 업무 도움을 제공합니다.`
 
 function detectContextType(pathname: string): AgentContextType {
   if (pathname.includes('/projects/')) return 'project'
@@ -97,26 +94,19 @@ export function useAIAgent() {
     return () => { supabase.removeChannel(channel) }
   }, [activeConvId])
 
-  // ─── AI 설정 로드 ────────────────────────────────────────
-  async function getAIConfig(): Promise<AIConfig | null> {
-    const config = await getAIConfigForFeature('ai_agent')
-    if (!config) {
-      console.error('[AIAgent] ai_settings 조회 실패')
-      return null
+  // ─── Smart AI Router — 메시지별 최적 Provider 선택 ────────
+  async function getSmartConfig(message: string): Promise<{
+    config: AIConfig | null; taskType: TaskType
+  }> {
+    // 1) Smart Router로 최적 provider 선택
+    const { config, taskType } = await routeMessage(message)
+    if (config) {
+      console.log(`[AIRouter] ${getTaskLabel(taskType)} → ${config.provider}/${config.model}`)
+      return { config, taskType }
     }
-    return config
-  }
-
-  // ─── 시스템 프롬프트 빌드 ────────────────────────────────
-  function buildSystemPrompt(contextType: AgentContextType): string {
-    let prompt = SYSTEM_PROMPT_BASE
-    if (profile) {
-      prompt += `\n\n현재 사용자: ${profile.name} (${profile.role})`
-    }
-    if (contextType === 'project') {
-      prompt += `\n프로젝트 맥락에서 실질적인 업무 지원을 제공하세요.`
-    }
-    return prompt
+    // 2) fallback: 기능별 설정
+    const fallback = await getAIConfigForFeature('ai_agent')
+    return { config: fallback, taskType }
   }
 
   // ─── 새 대화 시작 ────────────────────────────────────────
@@ -190,12 +180,11 @@ export function useAIAgent() {
       return { error: insertErr.message }
     }
 
-    // AI 호출
-    const aiConfig = await getAIConfig()
+    // AI 호출 — Smart Router로 최적 provider 선택
+    const { config: aiConfig, taskType } = await getSmartConfig(content)
     if (!aiConfig) {
       const errMsg = 'AI 설정이 없습니다. 관리자 설정에서 API 키를 등록하세요.'
       setLastError(errMsg)
-      // 에러 메시지를 로컬 state에 추가
       setMessages((prev) => [...prev, {
         id: 'err-' + Date.now(),
         conversation_id: convId,
@@ -213,10 +202,9 @@ export function useAIAgent() {
       const recentMsgs = [...messages.filter((m) => m.role !== 'system').slice(-20), { role: 'user' as const, content }]
         .map((m) => ({ role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant', content: m.content }))
 
-      const contextType = detectContextType(location.pathname)
-      const systemPrompt = buildSystemPrompt(contextType)
+      const systemPrompt = getSystemPrompt(taskType, profile?.name, profile?.role)
 
-      console.log('[AIAgent] AI 호출:', aiConfig.provider, aiConfig.model, '메시지 수:', recentMsgs.length)
+      console.log(`[AIRouter] ${getTaskLabel(taskType)} → ${aiConfig.provider}/${aiConfig.model} (${recentMsgs.length}msgs)`)
       const response = await generateAIChat(aiConfig, systemPrompt, recentMsgs)
       console.log('[AIAgent] AI 응답 수신, 길이:', response.content.length)
 
@@ -280,9 +268,9 @@ export function useAIAgent() {
   // ─── 제목 자동 생성 (비동기, 실패 무시) ──────────────────
   async function generateTitle(convId: string, userMsg: string, aiMsg: string) {
     try {
-      const aiConfig = await getAIConfig()
-      if (!aiConfig) return
-      const resp = await generateAIChat(aiConfig,
+      const { config: titleConfig } = await getSmartConfig('요약')
+      if (!titleConfig) return
+      const resp = await generateAIChat(titleConfig,
         '다음 대화를 5단어 이내로 요약하세요. 제목만 출력하고 다른 텍스트는 없이.',
         [{ role: 'user', content: userMsg }, { role: 'assistant', content: aiMsg }]
       )

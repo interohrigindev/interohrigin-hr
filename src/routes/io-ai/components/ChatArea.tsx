@@ -3,6 +3,7 @@ import { Send, Sparkles } from 'lucide-react'
 import type { AgentMessage, AgentConversation } from '@/types/ai-agent'
 import MessageBubble from './MessageBubble'
 import TypingIndicator from './TypingIndicator'
+import SuggestionChips from './SuggestionChips'
 
 const SUGGESTIONS = [
   { icon: '📊', text: '이번 분기 팀 성과를 분석해줘' },
@@ -110,6 +111,13 @@ export default function ChatArea({
             <MessageBubble key={msg.id} message={msg} />
           ))}
           {sending && <TypingIndicator />}
+          {/* 추천 칩: 마지막 AI 응답 후, 전송 중이 아닐 때 */}
+          {!sending && messages.length > 0 && messages[messages.length - 1]?.role === 'assistant' && (
+            <SuggestionChips
+              lastAssistantMessage={messages[messages.length - 1].content}
+              onSelect={onSendMessage}
+            />
+          )}
           <div ref={messagesEndRef} />
         </div>
       </div>
