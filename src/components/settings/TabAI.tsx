@@ -156,17 +156,22 @@ export default function TabAI() {
     setSaving(false)
   }
 
-  async function handleSetActive(id: string) {
-    // 같은 provider의 기존 설정만 비활성화, 다른 provider는 그대로 유지
+  async function handleToggleActive(id: string) {
     const target = settings.find((s) => s.id === id)
-    if (target) {
+    if (!target) return
+
+    const newActive = !target.is_active
+
+    // 같은 provider 내에서 다른 설정이 있으면 비활성화 (동일 provider 중복 방지)
+    if (newActive) {
       await supabase.from('ai_settings').update({ is_active: false }).eq('module', 'hr').eq('provider', target.provider)
     }
-    const { error } = await supabase.from('ai_settings').update({ is_active: true }).eq('id', id)
+
+    const { error } = await supabase.from('ai_settings').update({ is_active: newActive }).eq('id', id)
     if (error) {
-      toast('활성화 실패: ' + error.message, 'error')
+      toast('변경 실패: ' + error.message, 'error')
     } else {
-      toast('활성 설정이 변경되었습니다')
+      toast(newActive ? '활성화되었습니다' : '비활성화되었습니다')
       fetchSettings()
     }
   }
@@ -329,12 +334,15 @@ export default function TabAI() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {!s.is_active && (
-                      <Button size="sm" variant="outline" onClick={() => handleSetActive(s.id)}>
-                        활성화
-                      </Button>
-                    )}
+                  <div className="flex items-center gap-3">
+                    {/* 토글 스위치 */}
+                    <button
+                      onClick={() => handleToggleActive(s.id)}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${s.is_active ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                      title={s.is_active ? '비활성화' : '활성화'}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${s.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    </button>
                     <button
                       onClick={() => handleDelete(s.id)}
                       className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ArrowLeft, Menu } from 'lucide-react'
+import { PanelLeftClose, PanelLeft } from 'lucide-react'
 import { useAIAgent } from '@/hooks/useAIAgent'
 import ChatSidebar from './components/ChatSidebar'
 import ChatArea from './components/ChatArea'
@@ -13,35 +13,42 @@ export default function IOAIPage() {
     toggleBookmark, archiveConversation, deleteConversation, searchArchive,
   } = useAIAgent()
 
-  const [showSidebar, setShowSidebar] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [mobileChat, setMobileChat] = useState(false)
 
   // 플로팅에서 전환 시 conversationId 자동 선택
   useEffect(() => {
     const state = location.state as { conversationId?: string } | null
     if (state?.conversationId) {
       selectConversation(state.conversationId)
-      setShowSidebar(false)
+      setMobileChat(true)
     }
   }, [location.state])
 
   function handleNewChat() {
     startNewConversation()
-    setShowSidebar(false)
+    setMobileChat(true)
   }
 
   function handleSelectConv(id: string) {
     selectConversation(id)
-    setShowSidebar(false)
+    setMobileChat(true)
   }
 
   async function handleSendMessage(content: string) {
+    setMobileChat(true)
     await sendMessage(content)
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-white overflow-hidden -m-6">
-      {/* 사이드바 — 데스크톱 항상 표시, 모바일 토글 */}
-      <div className={`${showSidebar ? 'flex' : 'hidden'} md:flex w-full md:w-72 lg:w-80 shrink-0`}>
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden -m-6 bg-white">
+      {/* ─── 사이드바 (다크 테마) ─── */}
+      {/* 데스크톱: 토글 가능 */}
+      <div
+        className={`hidden md:flex shrink-0 transition-all duration-200 ${
+          sidebarOpen ? 'w-64 lg:w-72' : 'w-0'
+        } overflow-hidden`}
+      >
         <ChatSidebar
           conversations={conversations}
           activeConvId={activeConversation?.id || null}
@@ -54,19 +61,44 @@ export default function IOAIPage() {
         />
       </div>
 
-      {/* 채팅 영역 */}
-      <div className={`${!showSidebar ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0`}>
-        {/* 모바일 뒤로가기 */}
-        <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-white">
+      {/* 모바일: 오버레이 */}
+      {!mobileChat && (
+        <div className="md:hidden flex w-full">
+          <ChatSidebar
+            conversations={conversations}
+            activeConvId={activeConversation?.id || null}
+            onSelect={handleSelectConv}
+            onNewChat={handleNewChat}
+            onBookmark={toggleBookmark}
+            onArchive={archiveConversation}
+            onDelete={deleteConversation}
+            onSearchArchive={searchArchive}
+          />
+        </div>
+      )}
+
+      {/* ─── 채팅 영역 ─── */}
+      <div className={`${mobileChat ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0 relative`}>
+        {/* 상단 바 — 사이드바 토글 + 대화 제목 */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-white/80 backdrop-blur-sm shrink-0">
+          {/* 데스크톱 사이드바 토글 */}
           <button
-            onClick={() => setShowSidebar(true)}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="hidden md:flex p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+            title={sidebarOpen ? '사이드바 닫기' : '사이드바 열기'}
           >
-            <ArrowLeft className="h-4 w-4" />
+            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
           </button>
-          <span className="text-sm font-medium text-gray-700 truncate">
+          {/* 모바일 뒤로가기 */}
+          <button
+            onClick={() => setMobileChat(false)}
+            className="md:hidden p-1.5 rounded-lg text-gray-400 hover:bg-gray-100"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </button>
+          <p className="text-sm font-medium text-gray-700 truncate flex-1">
             {activeConversation?.title || '새 대화'}
-          </span>
+          </p>
         </div>
 
         <ChatArea
@@ -77,16 +109,6 @@ export default function IOAIPage() {
           onSendMessage={handleSendMessage}
         />
       </div>
-
-      {/* 모바일 사이드바 토글 버튼 (채팅 뷰에서) */}
-      {!showSidebar && (
-        <button
-          onClick={() => setShowSidebar(true)}
-          className="md:hidden fixed top-20 left-4 z-30 p-2 bg-white border rounded-xl shadow-sm text-gray-500 hover:bg-gray-50"
-        >
-          <Menu className="h-4 w-4" />
-        </button>
-      )}
     </div>
   )
 }
