@@ -179,11 +179,17 @@ export async function transcribeAudio(
 export async function validateApiKey(config: AIConfig): Promise<{ valid: boolean; error?: string }> {
   try {
     if (config.provider === 'deepgram') {
-      // Deepgram: 프로젝트 목록 조회로 키 검증
-      const res = await fetch('https://api.deepgram.com/v1/projects', {
-        headers: { 'Authorization': `Token ${config.apiKey}` },
+      // Deepgram: 빈 오디오로 인증 검증 (관리 API는 CORS 차단)
+      const res = await fetch('https://api.deepgram.com/v1/listen?model=nova-3&language=ko', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${config.apiKey}`,
+          'Content-Type': 'audio/wav',
+        },
+        body: new Blob([], { type: 'audio/wav' }),
       })
-      if (!res.ok) throw new Error(`Deepgram 키 검증 실패 (${res.status})`)
+      // 401/403 = 키 오류, 400 = 키는 유효하지만 빈 오디오라서 발생하는 정상 에러
+      if (res.status === 401 || res.status === 403) throw new Error('Deepgram API 키가 유효하지 않습니다.')
       return { valid: true }
     }
     await generateAIContent(config, 'Say "OK" in one word.')
