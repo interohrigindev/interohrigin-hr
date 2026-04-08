@@ -14,7 +14,7 @@ export interface AIConfig {
 // ─── 기능별 AI 설정 조회 ──────────────────────────────────────────
 // ai_feature_settings에 매핑이 있으면 해당 provider 사용, 없으면 is_active=true 기본 설정 사용
 export async function getAIConfigForFeature(featureKey: string): Promise<AIConfig | null> {
-  // 1) 기능별 매핑 확인
+  // 1) 기능별 매핑 확인 — 활성 상태인 설정만 사용
   const { data: featureSetting } = await supabase
     .from('ai_feature_settings')
     .select('ai_setting_id')
@@ -24,16 +24,18 @@ export async function getAIConfigForFeature(featureKey: string): Promise<AIConfi
   if (featureSetting?.ai_setting_id) {
     const { data: setting } = await supabase
       .from('ai_settings')
-      .select('provider, api_key, model')
+      .select('provider, api_key, model, is_active')
       .eq('id', featureSetting.ai_setting_id)
       .single()
 
-    if (setting) {
+    // 배정된 설정이 활성 상태이면 사용
+    if (setting?.is_active) {
       return { provider: setting.provider, apiKey: setting.api_key, model: setting.model }
     }
+    // 비활성이면 fallback으로 넘어감
   }
 
-  // 2) fallback: 기본 활성 설정 (deepgram은 STT 전용이므로 텍스트 생성 fallback에서 제외)
+  // 2) fallback: 활성 설정 중 텍스트 생성 가능한 provider (deepgram 제외)
   const { data: defaultSetting } = await supabase
     .from('ai_settings')
     .select('provider, api_key, model')
