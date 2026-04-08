@@ -273,9 +273,18 @@ export function useAIAgent() {
             created_at: new Date().toISOString(),
           }])
           console.log(`[Document] ${docType} 생성 완료:`, docResult.url)
-        } catch (docErr) {
-          console.error('[Document] 문서 생성 실패:', docErr)
-          // 문서 생성 실패해도 AI 응답은 이미 표시됨
+        } catch (docErr: unknown) {
+          const docErrMsg = docErr instanceof Error ? docErr.message : '문서 생성 실패'
+          console.error('[Document] 문서 생성 실패:', docErrMsg)
+          // 문서 생성 실패 메시지를 사용자에게 표시
+          setMessages((prev) => [...prev, {
+            id: 'doc-err-' + Date.now(),
+            conversation_id: convId,
+            role: 'assistant',
+            content: `⚠️ Google 문서 생성에 실패했습니다: ${docErrMsg}\n\n위 내용을 복사하여 직접 문서를 작성하실 수 있습니다.`,
+            provider: null, model: null,
+            created_at: new Date().toISOString(),
+          }])
         }
       }
 
