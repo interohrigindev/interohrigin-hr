@@ -6,7 +6,7 @@
 import { supabase } from '@/lib/supabase'
 
 export interface AIConfig {
-  provider: 'gemini' | 'openai' | 'claude'
+  provider: 'gemini' | 'openai' | 'claude' | 'deepgram'
   apiKey: string
   model: string
 }
@@ -112,69 +112,80 @@ export async function generateAIChat(
   return { content, provider: config.provider, model: config.model }
 }
 
-// ─── Whisper STT (음성→텍스트) ────────────────────────────────────
+// ─── Deepgram Nova-3 STT (음성→텍스트, 화자분리 포함) ─────────────
 
-const WHISPER_MAX_SIZE = 25 * 1024 * 1024 // 25MB (Whisper API 제한)
+export const DEEPGRAM_COST_PER_MIN = 0.0043 // USD $0.0043/분
 
 export async function transcribeAudio(
   apiKey: string,
   audioBlob: Blob,
   language = 'ko'
-): Promise<{ text: string; segments: { start: number; end: number; text: string }[] }> {
-  const sizeMB = Math.round(audioBlob.size / 1024 / 1024 * 10) / 10
-  if (audioBlob.size > WHISPER_MAX_SIZE) {
-    throw new Error(
-      `녹음 파일이 ${sizeMB}MB로 Whisper 최대 25MB를 초과합니다. ` +
-      `새로 녹음하면 자동 압축되어 약 1.5시간까지 처리 가능합니다.`
-    )
-  }
-
-  // Blob MIME → Whisper 지원 확장자 매핑
-  const t = audioBlob.type.toLowerCase()
-  let ext = 'webm'
-  if (t.includes('mp4') || t.includes('m4a')) ext = 'm4a'
-  else if (t.includes('mpeg') || t.includes('mp3') || t.includes('mpga')) ext = 'mp3'
-  else if (t.includes('wav')) ext = 'wav'
-  else if (t.includes('ogg') || t.includes('oga')) ext = 'ogg'
-  else if (t.includes('flac')) ext = 'flac'
-
-  const file = new File([audioBlob], `audio.${ext}`, {
-    type: audioBlob.type || 'audio/webm',
+): Promise<{
+  text: string
+  segments: { start: number; end: number; text: string; speaker?: number }[]
+  durationSeconds: number
+}> {
+  const params = new URLSearchParams({
+    model: 'nova-3',
+    language,
+    smart_format: 'true',
+    diarize: 'true',
+    utterances: 'true',
+    punctuate: 'true',
   })
 
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('model', 'whisper-1')
-  formData.append('language', language)
-  formData.append('response_format', 'verbose_json')
-  formData.append('timestamp_granularities[]', 'segment')
-
-  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+  const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}` },
-    body: formData,
+    headers: {
+      'Authorization': `Token ${apiKey}`,
+      'Content-Type': audioBlob.type || 'audio/webm',
+    },
+    body: audioBlob,
   })
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as Record<string, any>
-    throw new Error(err?.error?.message || `Whisper API error: ${res.status}`)
+    throw new Error(err?.err_msg || err?.error || `Deepgram API error: ${res.status}`)
   }
 
   const data = await res.json()
-  return {
-    text: data.text || '',
-    segments: (data.segments || []).map((s: { start: number; end: number; text: string }) => ({
-      start: s.start,
-      end: s.end,
-      text: s.text,
-    })),
+  const channel = data.results?.channels?.[0]?.alternatives?.[0]
+  const durationSeconds = Math.round(data.metadata?.duration || 0)
+
+  // utterances → 화자 구분 세그먼트
+  const utterances = data.results?.utterances || []
+  const segments = utterances.map((u: any) => ({
+    start: u.start,
+    end: u.end,
+    text: u.transcript,
+    speaker: u.speaker,
+  }))
+
+  // 화자 구분 텍스트 (요약 AI에 전달 시 화자별 발화 구분 가능)
+  let text: string
+  if (utterances.length > 0) {
+    text = utterances
+      .map((u: any) => `[화자 ${(u.speaker ?? 0) + 1}] ${u.transcript}`)
+      .join('\n')
+  } else {
+    text = channel?.transcript || ''
   }
+
+  return { text, segments, durationSeconds }
 }
 
 // ─── API key validation ─────────────────────────────────────────
 
 export async function validateApiKey(config: AIConfig): Promise<{ valid: boolean; error?: string }> {
   try {
+    if (config.provider === 'deepgram') {
+      // Deepgram: 프로젝트 목록 조회로 키 검증
+      const res = await fetch('https://api.deepgram.com/v1/projects', {
+        headers: { 'Authorization': `Token ${config.apiKey}` },
+      })
+      if (!res.ok) throw new Error(`Deepgram 키 검증 실패 (${res.status})`)
+      return { valid: true }
+    }
     await generateAIContent(config, 'Say "OK" in one word.')
     return { valid: true }
   } catch (err: any) {
@@ -202,6 +213,11 @@ export const CLAUDE_MODELS = [
   { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
   { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
   { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+]
+
+export const DEEPGRAM_MODELS = [
+  { value: 'nova-3', label: 'Nova-3 (최신, 한국어 최적)' },
+  { value: 'nova-2', label: 'Nova-2' },
 ]
 
 // ─── Evaluation report prompt builder ────────────────────────────

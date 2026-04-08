@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { transcribeAudio } from '@/lib/ai-client'
+import { transcribeAudio, DEEPGRAM_COST_PER_MIN } from '@/lib/ai-client'
 import { generateAIChat } from '@/lib/ai-client'
 import type { AIConfig } from '@/lib/ai-client'
 import { useAuth } from '@/hooks/useAuth'
@@ -27,12 +27,12 @@ export function useMeetingRecorder() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  // ─── OpenAI 키 가져오기 (Whisper 용) ────────────────────
-  async function getOpenAIKey(): Promise<string | null> {
+  // ─── Deepgram 키 가져오기 (STT 용) ──────────────────────
+  async function getDeepgramKey(): Promise<string | null> {
     const { data } = await supabase
       .from('ai_settings')
       .select('api_key')
-      .eq('provider', 'openai')
+      .eq('provider', 'deepgram')
       .limit(1)
       .single()
     return data?.api_key || null
@@ -64,7 +64,7 @@ export function useMeetingRecorder() {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
           : 'audio/webm',
-        audioBitsPerSecond: 32000, // 32kbps — Whisper 25MB 제한 대응 (약 1.5시간 녹음 가능)
+        audioBitsPerSecond: 128000, // 128kbps — Deepgram 2GB 제한 (약 30시간+)
       })
       mediaRecorderRef.current = mediaRecorder
 
@@ -145,24 +145,26 @@ export function useMeetingRecorder() {
     const { data: urlData } = supabase.storage.from('meeting-recordings').getPublicUrl(filePath)
     await supabase.from('meeting_records').update({ recording_url: urlData.publicUrl }).eq('id', meeting.id)
 
-    // 3. Whisper STT
+    // 3. Deepgram STT (화자분리 포함)
     setStatus('transcribing')
     await supabase.from('meeting_records').update({ status: 'transcribing' }).eq('id', meeting.id)
 
-    const openaiKey = await getOpenAIKey()
-    if (!openaiKey) {
-      setError('OpenAI API 키가 필요합니다. 관리자 설정에서 등록하세요.')
-      await supabase.from('meeting_records').update({ status: 'error', error_message: 'OpenAI API 키 없음' }).eq('id', meeting.id)
+    const deepgramKey = await getDeepgramKey()
+    if (!deepgramKey) {
+      setError('Deepgram API 키가 필요합니다. 관리자 설정에서 등록하세요.')
+      await supabase.from('meeting_records').update({ status: 'error', error_message: 'Deepgram API 키 없음' }).eq('id', meeting.id)
       setStatus('error')
       return
     }
 
     let transcription: string
-    let segments: { start: number; end: number; text: string }[]
+    let segments: { start: number; end: number; text: string; speaker?: number }[]
+    let sttDuration: number
     try {
-      const sttResult = await transcribeAudio(openaiKey, audioBlob, 'ko')
+      const sttResult = await transcribeAudio(deepgramKey, audioBlob, 'ko')
       transcription = sttResult.text
       segments = sttResult.segments
+      sttDuration = sttResult.durationSeconds
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'STT 실패'
       setError('음성 변환 실패: ' + msg)
@@ -174,6 +176,8 @@ export function useMeetingRecorder() {
     await supabase.from('meeting_records').update({
       transcription,
       transcription_segments: segments,
+      duration_seconds: sttDuration || durationSeconds,
+      stt_cost: Math.round((( sttDuration || durationSeconds) / 60) * DEEPGRAM_COST_PER_MIN * 10000) / 10000,
       status: 'summarizing',
     }).eq('id', meeting.id)
 

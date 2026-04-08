@@ -7,12 +7,12 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
-import { validateApiKey, GEMINI_MODELS, OPENAI_MODELS, CLAUDE_MODELS } from '@/lib/ai-client'
+import { validateApiKey, GEMINI_MODELS, OPENAI_MODELS, CLAUDE_MODELS, DEEPGRAM_MODELS } from '@/lib/ai-client'
 import { Bot, Key, CheckCircle, XCircle, Plus, Trash2, Settings2, Sparkles } from 'lucide-react'
 
 interface AISettingsRow {
   id: string
-  provider: 'gemini' | 'openai' | 'claude'
+  provider: 'gemini' | 'openai' | 'claude' | 'deepgram'
   api_key: string
   model: string
   is_active: boolean
@@ -31,14 +31,14 @@ interface AIFeatureSettingRow {
 }
 
 // 기능별 추천 AI 엔진
-const RECOMMENDED_PROVIDER: Record<string, 'gemini' | 'openai' | 'claude'> = {
+const RECOMMENDED_PROVIDER: Record<string, 'gemini' | 'openai' | 'claude' | 'deepgram'> = {
   resume_analysis: 'gemini',
   comprehensive_analysis: 'gemini',
   survey_generation: 'gemini',
   schedule_optimization: 'gemini',
   job_posting_ai: 'gemini',
   interview_transcription: 'gemini',
-  meeting_stt: 'openai',
+  meeting_stt: 'deepgram',
   evaluation_report: 'gemini',
   personality_analysis: 'gemini',
   employee_profile_ai: 'gemini',
@@ -55,12 +55,14 @@ const PROVIDER_LABELS: Record<string, string> = {
   gemini: 'Gemini',
   openai: 'OpenAI',
   claude: 'Claude',
+  deepgram: 'Deepgram',
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
   gemini: 'bg-blue-100 text-blue-700',
   openai: 'bg-green-100 text-green-700',
   claude: 'bg-purple-100 text-purple-700',
+  deepgram: 'bg-teal-100 text-teal-700',
 }
 
 export default function TabAI() {
@@ -71,7 +73,7 @@ export default function TabAI() {
   const [savingFeatures, setSavingFeatures] = useState(false)
 
   // Add/edit form
-  const [provider, setProvider] = useState<'gemini' | 'openai' | 'claude'>('gemini')
+  const [provider, setProvider] = useState<'gemini' | 'openai' | 'claude' | 'deepgram'>('gemini')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(GEMINI_MODELS[0].value)
   const [saving, setSaving] = useState(false)
@@ -95,7 +97,7 @@ export default function TabAI() {
 
   // Update model list when provider changes
   useEffect(() => {
-    const models = provider === 'gemini' ? GEMINI_MODELS : provider === 'claude' ? CLAUDE_MODELS : OPENAI_MODELS
+    const models = provider === 'gemini' ? GEMINI_MODELS : provider === 'claude' ? CLAUDE_MODELS : provider === 'deepgram' ? DEEPGRAM_MODELS : OPENAI_MODELS
     setModel(models[0].value)
     setValidationResult(null)
   }, [provider])
@@ -227,7 +229,7 @@ export default function TabAI() {
 
   if (loading) return <PageSpinner />
 
-  const modelOptions = provider === 'gemini' ? GEMINI_MODELS : provider === 'claude' ? CLAUDE_MODELS : OPENAI_MODELS
+  const modelOptions = provider === 'gemini' ? GEMINI_MODELS : provider === 'claude' ? CLAUDE_MODELS : provider === 'deepgram' ? DEEPGRAM_MODELS : OPENAI_MODELS
 
   return (
     <div className="space-y-6">
@@ -250,9 +252,10 @@ export default function TabAI() {
                 { value: 'gemini', label: 'Google Gemini' },
                 { value: 'openai', label: 'OpenAI' },
                 { value: 'claude', label: 'Anthropic Claude' },
+                { value: 'deepgram', label: 'Deepgram (STT)' },
               ]}
               value={provider}
-              onChange={(e) => setProvider(e.target.value as 'gemini' | 'openai' | 'claude')}
+              onChange={(e) => setProvider(e.target.value as 'gemini' | 'openai' | 'claude' | 'deepgram')}
             />
             <Select
               id="ai-model"
@@ -269,7 +272,7 @@ export default function TabAI() {
               type="password"
               value={apiKey}
               onChange={(e) => { setApiKey(e.target.value); setValidationResult(null) }}
-              placeholder={provider === 'gemini' ? 'AIza...' : provider === 'claude' ? 'sk-ant-...' : 'sk-...'}
+              placeholder={provider === 'gemini' ? 'AIza...' : provider === 'claude' ? 'sk-ant-...' : provider === 'deepgram' ? 'Deepgram API Key' : 'sk-...'}
             />
             {validationResult && (
               <div className={`mt-1.5 flex items-center gap-1.5 text-xs ${validationResult.valid ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -310,7 +313,7 @@ export default function TabAI() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-gray-900">
-                          {s.provider === 'gemini' ? 'Google Gemini' : s.provider === 'claude' ? 'Anthropic Claude' : 'OpenAI'}
+                          {s.provider === 'gemini' ? 'Google Gemini' : s.provider === 'claude' ? 'Anthropic Claude' : s.provider === 'deepgram' ? 'Deepgram (STT)' : 'OpenAI'}
                         </span>
                         <Badge variant={s.is_active ? 'success' : 'default'}>
                           {s.is_active ? '활성' : '비활성'}

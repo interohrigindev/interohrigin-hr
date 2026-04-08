@@ -10,7 +10,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { transcribeAudio } from '@/lib/ai-client'
+import { transcribeAudio, DEEPGRAM_COST_PER_MIN } from '@/lib/ai-client'
 import { useAuth } from '@/hooks/useAuth'
 
 interface MeetingRecord {
@@ -162,13 +162,13 @@ export default function MeetingNotes() {
       const mimeMap: Record<string, string> = { webm: 'audio/webm', m4a: 'audio/mp4', mp3: 'audio/mpeg', mp4: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac' }
       const audioBlob = new Blob([rawBlob], { type: mimeMap[ext] || rawBlob.type || 'audio/webm' })
 
-      // 2. Whisper STT (25MB 초과 시 자동 분할)
-      const { data: openaiCfg } = await supabase
-        .from('ai_settings').select('api_key').eq('provider', 'openai').limit(1).single()
-      const openaiKey = openaiCfg?.api_key
-      if (!openaiKey) throw new Error('OpenAI API 키가 없습니다. 관리자 설정에서 등록하세요.')
+      // 2. Deepgram STT (화자분리 포함)
+      const { data: deepgramCfg } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'deepgram').limit(1).single()
+      const deepgramKey = deepgramCfg?.api_key
+      if (!deepgramKey) throw new Error('Deepgram API 키가 없습니다. 관리자 설정에서 등록하세요.')
 
-      const sttResult = await transcribeAudio(openaiKey, audioBlob, 'ko')
+      const sttResult = await transcribeAudio(deepgramKey, audioBlob, 'ko')
 
       // 3. AI 요약
       await supabase.from('meeting_records').update({ status: 'summarizing' }).eq('id', recordId)
@@ -198,10 +198,12 @@ export default function MeetingNotes() {
       // 4. 완료
       await supabase.from('meeting_records').update({
         transcription: sttResult.text,
+        transcription_segments: sttResult.segments,
+        duration_seconds: sttResult.durationSeconds || undefined,
         summary,
         status: 'completed',
         error_message: null,
-        stt_cost: Math.round(((sttResult.segments?.slice(-1)[0]?.end || 0) / 60) * 0.006 * 1000) / 1000,
+        stt_cost: Math.round((sttResult.durationSeconds / 60) * DEEPGRAM_COST_PER_MIN * 10000) / 10000,
       }).eq('id', recordId)
 
       toast('재분석 완료', 'success')
@@ -250,16 +252,16 @@ export default function MeetingNotes() {
         status: 'transcribing',
       }).eq('id', meeting.id)
 
-      // 3. Whisper STT (자동 분할)
-      const { data: openaiCfg2 } = await supabase
-        .from('ai_settings').select('api_key').eq('provider', 'openai').limit(1).single()
-      const openaiKey2 = openaiCfg2?.api_key
-      if (!openaiKey2) throw new Error('OpenAI API 키가 없습니다. 관리자 설정에서 등록하세요.')
+      // 3. Deepgram STT (화자분리 포함)
+      const { data: deepgramCfg2 } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'deepgram').limit(1).single()
+      const deepgramKey2 = deepgramCfg2?.api_key
+      if (!deepgramKey2) throw new Error('Deepgram API 키가 없습니다. 관리자 설정에서 등록하세요.')
 
       const audioBlob = new Blob([await file.arrayBuffer()], { type: file.type || 'audio/webm' })
-      const sttResult = await transcribeAudio(openaiKey2, audioBlob, 'ko')
+      const sttResult = await transcribeAudio(deepgramKey2, audioBlob, 'ko')
 
-      const durationSeconds = Math.round(sttResult.segments?.slice(-1)[0]?.end || 0)
+      const durationSeconds = sttResult.durationSeconds
 
       // 4. AI 요약
       await supabase.from('meeting_records').update({ status: 'summarizing' }).eq('id', meeting.id)
@@ -289,11 +291,12 @@ export default function MeetingNotes() {
       // 5. 완료
       await supabase.from('meeting_records').update({
         transcription: sttResult.text,
+        transcription_segments: sttResult.segments,
         summary,
         duration_seconds: durationSeconds,
         status: 'completed',
         error_message: null,
-        stt_cost: Math.round((durationSeconds / 60) * 0.006 * 1000) / 1000,
+        stt_cost: Math.round((durationSeconds / 60) * DEEPGRAM_COST_PER_MIN * 10000) / 10000,
       }).eq('id', meeting.id)
 
       toast('파일 업로드 + 분석 완료', 'success')

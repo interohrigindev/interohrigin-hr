@@ -16,12 +16,18 @@
 | 종합 분석 | 이력서+질의서+면접 | 최종 추천, 상세 리포트 |
 | 평가 리포트 | 평가 데이터 | AI 종합 리포트 (report.tsx) |
 
-## Whisper API (OpenAI)
+## Deepgram Nova-3 (STT)
 
-- **용도**: 회의 녹음 음성→텍스트 변환 (STT)
-- **단가**: $0.006/분
-- **호출 위치**: `functions/api/transcribe.ts`
-- **설정 위치**: `src/components/settings/TabAI.tsx` → meeting_stt: 'openai'
+- **용도**: 회의 녹음 음성→텍스트 변환 (STT) + 화자분리
+- **모델**: Nova-3 (한국어 최적화, Whisper 대비 WER 27% 개선)
+- **단가**: $0.0043/분 (Whisper $0.006 대비 28% 저렴)
+- **파일 제한**: 2GB (기존 Whisper 25MB → 대폭 완화)
+- **호출 위치**: `src/lib/ai-client.ts` → `transcribeAudio()`
+- **설정 위치**: `src/components/settings/TabAI.tsx` → meeting_stt: 'deepgram'
+- **주요 기능**:
+  - 화자분리 (diarize): 발화자별 자동 구분
+  - 스마트 포맷팅: 숫자, 날짜, 통화 자동 변환
+  - 세그먼트 타임스탬프: 발화 구간별 시간 기록
 
 ## AI 규칙
 
