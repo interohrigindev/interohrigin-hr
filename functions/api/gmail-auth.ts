@@ -14,7 +14,7 @@ interface Env {
   GMAIL_CLIENT_SECRET: string
 }
 
-const SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.readonly'
+const SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/spreadsheets'
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   if (!env.GMAIL_CLIENT_ID || !env.GMAIL_CLIENT_SECRET) {
