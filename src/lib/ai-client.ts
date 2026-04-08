@@ -33,11 +33,12 @@ export async function getAIConfigForFeature(featureKey: string): Promise<AIConfi
     }
   }
 
-  // 2) fallback: 기본 활성 설정
+  // 2) fallback: 기본 활성 설정 (deepgram은 STT 전용이므로 텍스트 생성 fallback에서 제외)
   const { data: defaultSetting } = await supabase
     .from('ai_settings')
     .select('provider, api_key, model')
     .eq('is_active', true)
+    .neq('provider', 'deepgram')
     .limit(1)
     .single()
 

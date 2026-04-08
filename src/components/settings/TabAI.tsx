@@ -128,11 +128,22 @@ export default function TabAI() {
     }
     setSaving(true)
 
-    // Deactivate existing settings for this module
-    await supabase
-      .from('ai_settings')
-      .update({ is_active: false })
-      .eq('module', 'hr')
+    // Deepgram은 STT 전용이므로 다른 provider 비활성화 없이 독립 저장
+    // 텍스트 생성 provider(gemini/openai/claude) 저장 시에만 기존 텍스트 생성 설정 비활성화
+    if (provider !== 'deepgram') {
+      await supabase
+        .from('ai_settings')
+        .update({ is_active: false })
+        .eq('module', 'hr')
+        .neq('provider', 'deepgram')
+    } else {
+      // 기존 deepgram 설정만 비활성화
+      await supabase
+        .from('ai_settings')
+        .update({ is_active: false })
+        .eq('module', 'hr')
+        .eq('provider', 'deepgram')
+    }
 
     const { error } = await supabase
       .from('ai_settings')

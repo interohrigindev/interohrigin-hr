@@ -388,9 +388,31 @@ export default function FloatingAIAgent() {
               {/* 메시지 목록 */}
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
                 {messages.length === 0 && !sending && (
-                  <div className="text-center py-8">
-                    <Sparkles className="h-8 w-8 text-violet-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">무엇을 도와드릴까요?</p>
+                  <div className="space-y-3 py-4">
+                    <div className="text-center">
+                      <Sparkles className="h-7 w-7 text-violet-300 mx-auto mb-1.5" />
+                      <p className="text-sm font-medium text-gray-600">무엇을 도와드릴까요?</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">아래 질문을 선택하거나 직접 입력하세요</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {[
+                        { icon: '📊', text: '이번 분기 팀 성과를 분석해줘' },
+                        { icon: '📝', text: '회의 안건 초안 작성해줘' },
+                        { icon: '🔍', text: '경쟁사 동향을 조사해줘' },
+                        { icon: '💡', text: '신규 프로젝트 아이디어 브레인스토밍' },
+                        { icon: '📋', text: '업무 보고서 작성을 도와줘' },
+                        { icon: '🎯', text: '팀 OKR 수립을 도와줘' },
+                      ].map((q) => (
+                        <button
+                          key={q.text}
+                          onClick={() => { setInput(''); setView('chat'); sendMessage(q.text) }}
+                          className="flex items-center gap-2.5 px-3 py-2.5 bg-gray-50 hover:bg-violet-50 border border-gray-100 hover:border-violet-200 rounded-xl text-left transition-colors group"
+                        >
+                          <span className="text-base">{q.icon}</span>
+                          <span className="text-xs text-gray-600 group-hover:text-violet-700">{q.text}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {messages.map((msg) => (
