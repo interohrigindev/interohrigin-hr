@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Mic, Download, Clock, Users, ChevronDown, ChevronUp, Loader2, Trash2,
   FileText, AlertTriangle, CheckCircle, ListChecks, MessageSquare, Upload, RefreshCw,
+  Share2, UserPlus, X,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -107,6 +108,10 @@ export default function MeetingNotes() {
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const uploadInputRef = useRef<HTMLInputElement>(null)
+  const [shareDialog, setShareDialog] = useState<{ open: boolean; record: MeetingRecord | null }>({ open: false, record: null })
+  const [shareSearch, setShareSearch] = useState('')
+  const [selectedShareIds, setSelectedShareIds] = useState<string[]>([])
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => { fetchData() }, [])
 
@@ -357,10 +362,46 @@ export default function MeetingNotes() {
     return lines.join('\n')
   }
 
+  // ─── 회의록 공유 ─────────────────────────────────────────
+  function openShareDialog(record: MeetingRecord) {
+    setShareDialog({ open: true, record })
+    setSelectedShareIds(record.participant_ids || [])
+    setShareSearch('')
+  }
+
+  async function handleShare() {
+    if (!shareDialog.record) return
+    setSharing(true)
+    const { error } = await supabase
+      .from('meeting_records')
+      .update({ participant_ids: selectedShareIds })
+      .eq('id', shareDialog.record.id)
+
+    if (error) {
+      toast('공유 실패: ' + error.message, 'error')
+    } else {
+      toast('회의록이 공유되었습니다.', 'success')
+      fetchData()
+    }
+    setSharing(false)
+    setShareDialog({ open: false, record: null })
+  }
+
   if (loading) return <PageSpinner />
 
   const completedCount = records.filter((r) => r.status === 'completed').length
-  const totalDuration = records.reduce((sum, r) => sum + (r.duration_seconds || 0), 0)
+  // 내부 녹음: recorded_by가 현재 사용자이고 participant_ids가 빈 배열이 아닌 것 (앱에서 녹음)
+  // 외부 녹음: recording_url에 확장자가 webm이 아닌 것 또는 title이 파일명 패턴
+  const isExternalRecord = (r: MeetingRecord) => {
+    const url = r.recording_url || ''
+    const ext = url.split('.').pop()?.toLowerCase() || ''
+    return ext !== 'webm' && ext !== ''
+  }
+  const internalRecords = records.filter((r) => !isExternalRecord(r))
+  const externalRecords = records.filter((r) => isExternalRecord(r))
+  const internalDuration = internalRecords.reduce((sum, r) => sum + (r.duration_seconds || 0), 0)
+  const externalDuration = externalRecords.reduce((sum, r) => sum + (r.duration_seconds || 0), 0)
+  const totalDuration = internalDuration + externalDuration
 
   return (
     <div className="space-y-6">
@@ -407,11 +448,35 @@ export default function MeetingNotes() {
       </div>
 
       {/* 통계 카드 */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">전체 회의록</p><p className="text-2xl font-bold text-gray-900">{records.length}</p></CardContent></Card>
         <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">완료</p><p className="text-2xl font-bold text-green-600">{completedCount}</p></CardContent></Card>
-        <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">총 녹음 시간</p><p className="text-2xl font-bold text-blue-600">{Math.round(totalDuration / 60)}분</p></CardContent></Card>
-        <Card><CardContent className="py-3 px-4"><p className="text-[11px] text-gray-500">예상 STT 비용</p><p className="text-2xl font-bold text-amber-600">${(totalDuration / 60 * DEEPGRAM_COST_PER_MIN).toFixed(2)}</p><p className="text-[10px] text-gray-400">Deepgram $0.0043/분</p></CardContent></Card>
+        <Card>
+          <CardContent className="py-3 px-4">
+            <p className="text-[11px] text-gray-500">총 녹음 시간</p>
+            <p className="text-2xl font-bold text-blue-600">{Math.round(totalDuration / 60)}분</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[10px] text-gray-400">내부 {Math.round(internalDuration / 60)}분</span>
+              <span className="text-[10px] text-gray-400">외부 {Math.round(externalDuration / 60)}분</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-3 px-4">
+            <p className="text-[11px] text-gray-500">예상 STT 비용</p>
+            <p className="text-2xl font-bold text-amber-600">${(totalDuration / 60 * DEEPGRAM_COST_PER_MIN).toFixed(2)}</p>
+            <p className="text-[10px] text-gray-400">Deepgram $0.0043/분</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-3 px-4">
+            <p className="text-[11px] text-gray-500">녹음 구분</p>
+            <div className="flex items-center gap-2 mt-1">
+              <Badge variant="default" className="bg-blue-100 text-blue-700 text-[10px]">내부 {internalRecords.length}건</Badge>
+              <Badge variant="default" className="bg-amber-100 text-amber-700 text-[10px]">외부 {externalRecords.length}건</Badge>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* 회의록 목록 */}
@@ -614,7 +679,7 @@ export default function MeetingNotes() {
                       {/* 하단 버튼 */}
                       <div className="flex items-center justify-between pt-2 border-t">
                         <div className="flex items-center gap-2">
-                          {/* 재분석 — 에러 또는 완료 상태에서 모두 가능 */}
+                          {/* 재분석 */}
                           {(r.status === 'error' || r.status === 'completed') && r.recording_url && (
                             <Button
                               size="sm"
@@ -627,6 +692,16 @@ export default function MeetingNotes() {
                               ) : (
                                 <><RefreshCw className="h-3.5 w-3.5 mr-1" /> 재분석</>
                               )}
+                            </Button>
+                          )}
+                          {/* 공유 */}
+                          {r.status === 'completed' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openShareDialog(r)}
+                            >
+                              <Share2 className="h-3.5 w-3.5 mr-1" /> 공유
                             </Button>
                           )}
                         </div>
@@ -656,6 +731,87 @@ export default function MeetingNotes() {
             <Button variant="outline" onClick={() => setDeleteDialog({ open: false, id: null })}>취소</Button>
             <Button variant="danger" onClick={() => deleteDialog.id && handleDelete(deleteDialog.id)} disabled={deleting}>
               {deleting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 삭제 중...</> : '삭제'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* 공유 다이얼로그 */}
+      <Dialog open={shareDialog.open} onClose={() => setShareDialog({ open: false, record: null })} title="회의록 공유">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            회의록을 공유할 직원을 선택하세요. 선택된 직원은 이 회의록을 조회할 수 있습니다.
+          </p>
+
+          {/* 검색 */}
+          <div className="relative">
+            <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+              placeholder="이름으로 검색..."
+              value={shareSearch}
+              onChange={(e) => setShareSearch(e.target.value)}
+            />
+          </div>
+
+          {/* 선택된 직원 태그 */}
+          {selectedShareIds.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {selectedShareIds.map((id) => (
+                <span
+                  key={id}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-brand-100 text-brand-700 rounded-full text-xs"
+                >
+                  {getEmpName(id)}
+                  <button
+                    onClick={() => setSelectedShareIds((prev) => prev.filter((x) => x !== id))}
+                    className="hover:text-brand-900"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* 직원 목록 */}
+          <div className="max-h-48 overflow-y-auto border rounded-lg divide-y divide-gray-100">
+            {employees
+              .filter((e) => {
+                if (shareDialog.record && e.id === shareDialog.record.recorded_by) return false
+                if (!shareSearch) return true
+                return e.name.includes(shareSearch)
+              })
+              .map((e) => {
+                const isSelected = selectedShareIds.includes(e.id)
+                return (
+                  <button
+                    key={e.id}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-50 ${
+                      isSelected ? 'bg-brand-50' : ''
+                    }`}
+                    onClick={() => {
+                      setSelectedShareIds((prev) =>
+                        isSelected ? prev.filter((x) => x !== e.id) : [...prev, e.id]
+                      )
+                    }}
+                  >
+                    <span className={isSelected ? 'text-brand-700 font-medium' : 'text-gray-700'}>{e.name}</span>
+                    {isSelected && <CheckCircle className="h-4 w-4 text-brand-600" />}
+                  </button>
+                )
+              })}
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setShareDialog({ open: false, record: null })}>취소</Button>
+            <Button onClick={handleShare} disabled={sharing}>
+              {sharing ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 공유 중...</>
+              ) : (
+                <><Share2 className="h-4 w-4 mr-1" /> {selectedShareIds.length}명에게 공유</>
+              )}
             </Button>
           </div>
         </div>
