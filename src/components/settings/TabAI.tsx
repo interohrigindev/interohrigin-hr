@@ -128,22 +128,12 @@ export default function TabAI() {
     }
     setSaving(true)
 
-    // Deepgram은 STT 전용이므로 다른 provider 비활성화 없이 독립 저장
-    // 텍스트 생성 provider(gemini/openai/claude) 저장 시에만 기존 텍스트 생성 설정 비활성화
-    if (provider !== 'deepgram') {
-      await supabase
-        .from('ai_settings')
-        .update({ is_active: false })
-        .eq('module', 'hr')
-        .neq('provider', 'deepgram')
-    } else {
-      // 기존 deepgram 설정만 비활성화
-      await supabase
-        .from('ai_settings')
-        .update({ is_active: false })
-        .eq('module', 'hr')
-        .eq('provider', 'deepgram')
-    }
+    // 같은 provider의 기존 설정만 비활성화 (다른 provider는 그대로 유지)
+    await supabase
+      .from('ai_settings')
+      .update({ is_active: false })
+      .eq('module', 'hr')
+      .eq('provider', provider)
 
     const { error } = await supabase
       .from('ai_settings')
@@ -167,15 +157,10 @@ export default function TabAI() {
   }
 
   async function handleSetActive(id: string) {
-    // 활성화 대상의 provider 확인
+    // 같은 provider의 기존 설정만 비활성화, 다른 provider는 그대로 유지
     const target = settings.find((s) => s.id === id)
-    const isDeepgram = target?.provider === 'deepgram'
-
-    // Deepgram은 독립 활성화, 텍스트 생성 provider끼리만 상호 비활성화
-    if (isDeepgram) {
-      await supabase.from('ai_settings').update({ is_active: false }).eq('module', 'hr').eq('provider', 'deepgram')
-    } else {
-      await supabase.from('ai_settings').update({ is_active: false }).eq('module', 'hr').neq('provider', 'deepgram')
+    if (target) {
+      await supabase.from('ai_settings').update({ is_active: false }).eq('module', 'hr').eq('provider', target.provider)
     }
     const { error } = await supabase.from('ai_settings').update({ is_active: true }).eq('id', id)
     if (error) {
