@@ -2,6 +2,8 @@ import DOMPurify from 'dompurify'
 import { Copy, Check } from 'lucide-react'
 import { useState } from 'react'
 import type { AgentMessage } from '@/types/ai-agent'
+import DocumentCard from './DocumentCard'
+import type { DocumentResult, DocumentType } from '@/lib/google-workspace'
 
 function renderMarkdown(text: string): string {
   let html = text
@@ -76,6 +78,29 @@ export default function MessageBubble({ message }: { message: AgentMessage }) {
         </div>
       </div>
     )
+  }
+
+  // 문서 생성 결과 메시지 (google-workspace provider)
+  if (message.provider === 'google-workspace' && message.model) {
+    const urlMatch = message.content.match(/\[(.+?)\]\((.+?)\)/)
+    if (urlMatch) {
+      const docResult: DocumentResult = {
+        type: message.model as DocumentType,
+        id: '',
+        url: urlMatch[2],
+        title: urlMatch[1],
+      }
+      return (
+        <div className="flex items-start gap-2.5 animate-slide-up">
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shrink-0 mt-0.5">
+            <span className="text-white text-[10px] font-bold">IO</span>
+          </div>
+          <div className="w-72">
+            <DocumentCard doc={docResult} />
+          </div>
+        </div>
+      )
+    }
   }
 
   return (

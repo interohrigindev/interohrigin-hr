@@ -6,6 +6,7 @@ import type { AIConfig } from '@/lib/ai-client'
 import { routeMessage, getTaskLabel } from '@/lib/ai-router'
 import type { TaskType } from '@/lib/ai-router'
 import { getSystemPrompt } from '@/lib/ai-prompts'
+import { detectDocumentRequest, generateDocument } from '@/lib/document-generator'
 import { useAuth } from '@/hooks/useAuth'
 import type { AgentConversation, AgentMessage, AgentContextType } from '@/types/ai-agent'
 
@@ -228,6 +229,39 @@ export function useAIAgent() {
           provider: response.provider, model: response.model,
           created_at: new Date().toISOString(),
         }])
+      }
+
+      // 문서 생성 감지 → Google Workspace 연동
+      const docType = detectDocumentRequest(content)
+      if (docType && response.content.length > 50) {
+        try {
+          const titleMatch = content.match(/['\"](.+?)['\"]/) || content.match(/(.{2,20})\s*(만들어|작성|생성)/)
+          const docTitle = titleMatch?.[1] || '문서'
+          const docResult = await generateDocument(docType, docTitle, response.content)
+
+          // 문서 생성 결과를 별도 메시지로 추가
+          const docMsg = `📄 **${docType === 'slides' ? 'Google Slides' : 'Google Docs'}** 문서가 생성되었습니다!\n\n[${docResult.title}](${docResult.url})`
+          await supabase.from('agent_messages').insert({
+            conversation_id: convId,
+            role: 'assistant',
+            content: docMsg,
+            provider: 'google-workspace',
+            model: docType,
+          })
+          setMessages((prev) => [...prev, {
+            id: 'doc-' + Date.now(),
+            conversation_id: convId,
+            role: 'assistant',
+            content: docMsg,
+            provider: 'google-workspace',
+            model: docType,
+            created_at: new Date().toISOString(),
+          }])
+          console.log(`[Document] ${docType} 생성 완료:`, docResult.url)
+        } catch (docErr) {
+          console.error('[Document] 문서 생성 실패:', docErr)
+          // 문서 생성 실패해도 AI 응답은 이미 표시됨
+        }
       }
 
       // 첫 응답이면 자동 제목 생성
