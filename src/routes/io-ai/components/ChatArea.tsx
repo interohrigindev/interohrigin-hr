@@ -19,10 +19,13 @@ interface ChatAreaProps {
   sending: boolean
   lastError: string | null
   onSendMessage: (content: string) => void
+  onEditAndResend?: (messageId: string, newContent: string) => void
+  onRegenerateResponse?: () => void
 }
 
 export default function ChatArea({
   messages, sending, lastError, onSendMessage,
+  onEditAndResend, onRegenerateResponse,
 }: ChatAreaProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -82,8 +85,14 @@ export default function ChatArea({
         ) : (
           /* ─── 메시지 목록 ─── */
           <div className="max-w-3xl mx-auto px-6 py-6 space-y-5 pb-4">
-            {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
+            {messages.map((msg, idx) => (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                isLatest={idx === messages.length - 1}
+                onEdit={msg.role === 'user' ? onEditAndResend : undefined}
+                onRegenerate={msg.role === 'assistant' && idx === messages.length - 1 ? onRegenerateResponse : undefined}
+              />
             ))}
             {sending && <TypingIndicator />}
             {!sending && messages.length > 0 && messages[messages.length - 1]?.role === 'assistant' && (

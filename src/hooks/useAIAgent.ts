@@ -368,6 +368,61 @@ export function useAIAgent() {
     return (data || []) as AgentConversation[]
   }
 
+  // ─── 메시지 편집 후 재전송 ────────────────────────────────
+  async function editAndResend(messageId: string, newContent: string): Promise<{ error: string | null }> {
+    if (!activeConvId) return { error: '대화 없음' }
+
+    // 편집 대상 메시지 이후의 모든 메시지 삭제 (DB + 로컬)
+    const msgIndex = messages.findIndex((m) => m.id === messageId)
+    if (msgIndex < 0) return { error: '메시지를 찾을 수 없음' }
+
+    const msgsToDelete = messages.slice(msgIndex)
+    const idsToDelete = msgsToDelete.map((m) => m.id).filter((id) => !id.startsWith('temp-') && !id.startsWith('local-') && !id.startsWith('err-') && !id.startsWith('doc-'))
+
+    // DB에서 삭제
+    if (idsToDelete.length > 0) {
+      await supabase.from('agent_messages').delete().in('id', idsToDelete)
+    }
+
+    // 로컬 state 업데이트
+    setMessages((prev) => prev.slice(0, msgIndex))
+
+    // 새 내용으로 재전송
+    return sendMessage(newContent)
+  }
+
+  // ─── AI 응답 재생성 ──────────────────────────────────────
+  async function regenerateResponse(): Promise<{ error: string | null }> {
+    if (!activeConvId || messages.length === 0) return { error: '대화 없음' }
+
+    // 마지막 assistant 메시지 찾기
+    let lastAssistantIdx = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') { lastAssistantIdx = i; break }
+    }
+    if (lastAssistantIdx < 0) return { error: '응답 없음' }
+
+    // 마지막 user 메시지 찾기
+    let lastUserMsg: AgentMessage | null = null
+    for (let i = lastAssistantIdx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') { lastUserMsg = messages[i]; break }
+    }
+    if (!lastUserMsg) return { error: '질문 없음' }
+
+    // 마지막 assistant 이후 메시지 모두 삭제
+    const msgsToDelete = messages.slice(lastAssistantIdx)
+    const idsToDelete = msgsToDelete.map((m) => m.id).filter((id) => !id.startsWith('temp-') && !id.startsWith('local-') && !id.startsWith('err-') && !id.startsWith('doc-'))
+
+    if (idsToDelete.length > 0) {
+      await supabase.from('agent_messages').delete().in('id', idsToDelete)
+    }
+
+    setMessages((prev) => prev.slice(0, lastAssistantIdx))
+
+    // 같은 질문으로 재전송
+    return sendMessage(lastUserMsg.content)
+  }
+
   const activeConversation = conversations.find((c) => c.id === activeConvId) || null
 
   return {
@@ -380,6 +435,8 @@ export function useAIAgent() {
     startNewConversation,
     selectConversation,
     sendMessage,
+    editAndResend,
+    regenerateResponse,
     toggleBookmark,
     archiveConversation,
     deleteConversation,

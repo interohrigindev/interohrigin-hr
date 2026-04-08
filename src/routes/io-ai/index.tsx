@@ -10,6 +10,7 @@ export default function IOAIPage() {
   const {
     conversations, activeConversation, messages, sending, lastError,
     startNewConversation, selectConversation, sendMessage,
+    editAndResend, regenerateResponse,
     toggleBookmark, archiveConversation, deleteConversation, searchArchive,
   } = useAIAgent()
 
@@ -112,6 +113,8 @@ export default function IOAIPage() {
             sending={sending}
             lastError={lastError}
             onSendMessage={handleSendMessage}
+            onEditAndResend={(id, content) => editAndResend(id, content)}
+            onRegenerateResponse={() => regenerateResponse()}
           />
         </div>
       </div>
