@@ -11,6 +11,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { transcribeAudio, summarizeMeeting, DEEPGRAM_COST_PER_MIN } from '@/lib/ai-client'
+import { generateMeetingPdf } from '@/lib/pdf-meeting'
 import { useAuth } from '@/hooks/useAuth'
 
 interface MeetingRecord {
@@ -473,14 +474,34 @@ export default function MeetingNotes() {
                         <span className="text-[11px] text-gray-400">
                           {daysLeft > 0 ? `파일 보관: ${daysLeft}일 남음` : '보관 기간 만료'}
                         </span>
-                        {/* TXT 다운로드 */}
+                        {/* 다운로드 버튼들 */}
                         {(r.summary || r.transcription) && (
-                          <button
-                            onClick={() => downloadAsTextFile(`회의록_${r.title || r.id}.txt`, buildTranscriptText(r))}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-white border rounded text-xs text-gray-600 hover:bg-gray-50"
-                          >
-                            <FileText className="h-3 w-3" /> TXT 저장
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {r.summary && (
+                              <button
+                                onClick={() => generateMeetingPdf({
+                                  title: r.title || '제목 없음',
+                                  date: new Date(r.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }),
+                                  duration: formatDuration(r.duration_seconds),
+                                  recorder: getEmpName(r.recorded_by),
+                                  participants: r.participant_ids?.map((id) => getEmpName(id)).filter(Boolean) || [],
+                                  summary: r.summary,
+                                  actionItems: Array.isArray(r.action_items) ? r.action_items.map((a: any) => typeof a === 'string' ? a : a.task || JSON.stringify(a)) : [],
+                                  decisions: Array.isArray(r.decisions) ? r.decisions.map((d: any) => typeof d === 'string' ? d : d.decision || JSON.stringify(d)) : [],
+                                  transcription: r.transcription,
+                                })}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-brand-600 text-white rounded text-xs hover:bg-brand-700"
+                              >
+                                <Download className="h-3 w-3" /> PDF
+                              </button>
+                            )}
+                            <button
+                              onClick={() => downloadAsTextFile(`회의록_${r.title || r.id}.txt`, buildTranscriptText(r))}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-white border rounded text-xs text-gray-600 hover:bg-gray-50"
+                            >
+                              <FileText className="h-3 w-3" /> TXT
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -582,31 +603,33 @@ export default function MeetingNotes() {
                         </div>
                       )}
 
-                      {/* 에러 + 재분석 */}
-                      {r.status === 'error' && (
-                        <div className="space-y-2">
-                          {r.error_message && (
-                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                              <p className="text-sm text-red-700">{r.error_message}</p>
-                            </div>
-                          )}
-                          <Button
-                            size="sm"
-                            onClick={() => handleRetry(r.id)}
-                            disabled={retryingId === r.id}
-                          >
-                            {retryingId === r.id ? (
-                              <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 재분석 중...</>
-                            ) : (
-                              <><RefreshCw className="h-3.5 w-3.5 mr-1" /> 재분석</>
-                            )}
-                          </Button>
+                      {/* 에러 메시지 */}
+                      {r.error_message && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                          <p className="text-sm text-red-700">{r.error_message}</p>
                         </div>
                       )}
 
                       {/* 하단 버튼 */}
-                      <div className="flex justify-end pt-2 border-t">
+                      <div className="flex items-center justify-between pt-2 border-t">
+                        <div className="flex items-center gap-2">
+                          {/* 재분석 — 에러 또는 완료 상태에서 모두 가능 */}
+                          {(r.status === 'error' || r.status === 'completed') && r.recording_url && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRetry(r.id)}
+                              disabled={retryingId === r.id}
+                            >
+                              {retryingId === r.id ? (
+                                <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 재분석 중...</>
+                              ) : (
+                                <><RefreshCw className="h-3.5 w-3.5 mr-1" /> 재분석</>
+                              )}
+                            </Button>
+                          )}
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"
