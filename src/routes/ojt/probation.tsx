@@ -520,8 +520,36 @@ ${evalsSummary}
                                 {ev.leader_summary && <p className="text-xs text-gray-600 mt-1">리더 총평: {ev.leader_summary}</p>}
                                 {ev.strengths && <p className="text-xs text-blue-600 mt-1">강점: {ev.strengths}</p>}
                                 {ev.exec_one_liner && <p className="text-xs text-purple-600 mt-1">한줄 코멘트: {ev.exec_one_liner}</p>}
-                                {ev.comments && <p className="text-xs text-gray-500 mt-1">비고: {ev.comments}</p>}
+                                {ev.comments && <p className="text-xs text-gray-500 mt-1">총평: {ev.comments}</p>}
                                 {ev.ai_assessment && <p className="text-xs text-blue-600 mt-1">AI: {ev.ai_assessment}</p>}
+
+                                {/* 직원 공개 토글 + 답변 */}
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={async (e) => {
+                                        e.stopPropagation()
+                                        const newVal = !(ev as any).is_visible_to_employee
+                                        await supabase.from('probation_evaluations').update({ is_visible_to_employee: newVal }).eq('id', ev.id)
+                                        toast(newVal ? '직원에게 공개됨' : '공개 해제됨')
+                                        fetchData()
+                                      }}
+                                      className={`relative w-8 h-4 rounded-full transition-colors ${(ev as any).is_visible_to_employee ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                                    >
+                                      <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${(ev as any).is_visible_to_employee ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                    </button>
+                                    <span className="text-[10px] text-gray-500">{(ev as any).is_visible_to_employee ? '직원 공개' : '비공개'}</span>
+                                  </div>
+                                </div>
+                                {(ev as any).employee_response && (
+                                  <div className="mt-2 p-2 bg-violet-50 rounded-lg">
+                                    <p className="text-[10px] font-medium text-violet-600 mb-0.5">직원 답변</p>
+                                    <p className="text-xs text-violet-800">{(ev as any).employee_response}</p>
+                                    {(ev as any).responded_at && (
+                                      <p className="text-[9px] text-violet-400 mt-0.5">{new Date((ev as any).responded_at).toLocaleDateString('ko-KR')}</p>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             )
                           })}

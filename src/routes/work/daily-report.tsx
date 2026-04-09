@@ -567,6 +567,136 @@ ${completedText || '아직 없음'}
           />
         </CardContent>
       </Card>
+
+      {/* 상위자 코멘트 (리더/임원/대표 → 직원 피드백) */}
+      {report?.id && <ReportComments reportId={report.id} />}
     </div>
+  )
+}
+
+// ─── 상위자 코멘트 컴포넌트 ─────────────────────────────────────
+
+function ReportComments({ reportId }: { reportId: string }) {
+  const { profile, hasRole } = useAuth()
+  const { toast } = useToast()
+  const [comments, setComments] = useState<any[]>([])
+  const [newComment, setNewComment] = useState('')
+  const [sentiment, setSentiment] = useState<'positive' | 'negative' | 'neutral'>('neutral')
+  const [submitting, setSubmitting] = useState(false)
+
+  const canComment = hasRole('leader') || hasRole('director') || hasRole('division_head') || hasRole('ceo') || hasRole('admin')
+
+  useEffect(() => {
+    fetchComments()
+  }, [reportId])
+
+  async function fetchComments() {
+    const { data } = await supabase
+      .from('report_comments')
+      .select('*, author:employees!author_id(name, role)')
+      .eq('report_type', 'daily_report')
+      .eq('report_id', reportId)
+      .order('created_at', { ascending: true })
+    setComments(data || [])
+  }
+
+  async function handleSubmit() {
+    if (!newComment.trim() || !profile?.id) return
+    setSubmitting(true)
+    const { error } = await supabase.from('report_comments').insert({
+      report_type: 'daily_report',
+      report_id: reportId,
+      author_id: profile.id,
+      content: newComment.trim(),
+      sentiment,
+    })
+    if (error) {
+      toast('코멘트 저장 실패: ' + error.message, 'error')
+    } else {
+      toast('코멘트가 등록되었습니다.')
+      setNewComment('')
+      setSentiment('neutral')
+      fetchComments()
+    }
+    setSubmitting(false)
+  }
+
+  const SENTIMENT_CONFIG = {
+    positive: { label: 'P', color: 'bg-emerald-500 text-white', desc: '긍정' },
+    negative: { label: 'N', color: 'bg-red-500 text-white', desc: '부정' },
+    neutral: { label: '-', color: 'bg-gray-300 text-gray-700', desc: '중립' },
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">상위자 코멘트</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* 기존 코멘트 목록 */}
+        {comments.length > 0 && (
+          <div className="space-y-2">
+            {comments.map((c) => {
+              const cfg = SENTIMENT_CONFIG[c.sentiment as keyof typeof SENTIMENT_CONFIG] || SENTIMENT_CONFIG.neutral
+              return (
+                <div key={c.id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
+                  <span className={`w-6 h-6 rounded-full ${cfg.color} flex items-center justify-center text-xs font-bold shrink-0`}>
+                    {cfg.label}
+                  </span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-xs font-medium text-gray-800">{c.author?.name || '알 수 없음'}</span>
+                      <span className="text-[10px] text-gray-400">{new Date(c.created_at).toLocaleDateString('ko-KR')}</span>
+                    </div>
+                    <p className="text-sm text-gray-700">{c.content}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* 새 코멘트 입력 (리더 이상만) */}
+        {canComment && (
+          <div className="space-y-2 pt-2 border-t">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">평가:</span>
+              {(['positive', 'negative', 'neutral'] as const).map((s) => {
+                const cfg = SENTIMENT_CONFIG[s]
+                const isActive = sentiment === s
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setSentiment(s)}
+                    className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${
+                      isActive ? cfg.color + ' ring-2 ring-offset-1 ring-gray-400' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                    }`}
+                    title={cfg.desc}
+                  >
+                    {cfg.label}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={newComment}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewComment(e.target.value)}
+                placeholder="코멘트를 입력하세요..."
+                className="flex-1"
+                onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && handleSubmit()}
+              />
+              <Button size="sm" onClick={handleSubmit} disabled={submitting || !newComment.trim()}>
+                {submitting ? '저장 중...' : '등록'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {comments.length === 0 && !canComment && (
+          <p className="text-xs text-gray-400 text-center py-4">코멘트가 없습니다.</p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
