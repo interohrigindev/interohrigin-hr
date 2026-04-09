@@ -72,7 +72,6 @@ interface EmployeeBasic {
   id: string
   name: string
   department_id: string | null
-  job_type: string | null
   hire_date: string | null
   employment_type: string | null
   position: string | null
@@ -121,7 +120,7 @@ export default function ProbationManage() {
     setLoading(true)
     const [evalRes, empRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, name, department_id, job_type, hire_date, employment_type, position').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position').eq('is_active', true).order('name'),
     ])
 
     if (empRes.data) {
@@ -588,7 +587,7 @@ ${evalsSummary}
                 <div className="bg-brand-50 border border-brand-200 rounded-lg p-4 space-y-2">
                   <h3 className="text-lg font-bold text-brand-900">수습 평가_{emp.name}({STAGE_SHORT[selectedStage]})</h3>
                   <div className="grid grid-cols-3 gap-2 text-sm text-brand-800">
-                    <span>부서 / 직무 : {emp.job_type || '-'}</span>
+                    <span>부서 / 직급 : {emp.position || '-'}</span>
                     <span>입사 일자 : {formatDate(hireDate)}</span>
                     <span>수습 종료 일자 : {formatDate(endDate)}</span>
                   </div>
