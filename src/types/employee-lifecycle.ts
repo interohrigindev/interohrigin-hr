@@ -142,15 +142,15 @@ export interface MentorDailyReport {
 
 // ─── 수습 평가 ──────────────────────────────────────────────────
 export type ProbationStage = 'round1' | 'round2' | 'round3'
-export type ProbationEvaluatorRole = 'mentor' | 'leader' | 'executive' | 'ceo'
+export type ProbationEvaluatorRole = 'leader' | 'executive' | 'ceo'
 export type ContinuationRecommendation = 'continue' | 'warning' | 'terminate'
 
 export const PROBATION_CRITERIA = [
-  { key: 'understanding', label: '업무 이해도 & 숙련도', desc: '업무 프로세스 이해, 오류율, 처리 속도' },
-  { key: 'attitude', label: '업무 태도 & 협업', desc: '소통 능력, 피드백 수용, 협업 자세' },
-  { key: 'responsibility', label: '근태 & 책임감', desc: '규정 준수, 보고 체계, 책임감' },
-  { key: 'growth', label: '열정 & 성장 의지', desc: '자기주도성, 학습 태도, 적극성' },
-  { key: 'culture', label: '조직 문화 적응도', desc: '규칙 준수, 문화 적응, 예절, 기본자세' },
+  { key: 'understanding', label: '업무 이해도 & 숙련도', desc: '업무 프로세스를 이해하고 있는가 / 반복된 업무에서 오류 없이 처리하고 있는가' },
+  { key: 'attitude', label: '업무 태도 & 협업 자세', desc: '동료 및 상사와 원활하게 소통하는가 / 피드백을 수용하고 개선하려는 자세가 있는가' },
+  { key: 'responsibility', label: '근태 & 책임감', desc: '출퇴근, 일정 준수, 보고 체계 준수가 안정적인가' },
+  { key: 'growth', label: '열정 & 성장 의지', desc: '스스로 질문하고 배우려는 적극성이 있는가 / 새로운 업무에 도전하려는 태도가 보이는가' },
+  { key: 'culture', label: '조직 문화 적응도', desc: '회사 규정 및 문화에 잘 적응하고 있는가' },
 ] as const
 
 export type ProbationCriteriaKey = typeof PROBATION_CRITERIA[number]['key']

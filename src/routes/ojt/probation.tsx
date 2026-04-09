@@ -42,10 +42,9 @@ const STAGE_ORDER: Record<ProbationStage, number> = {
   round3: 3,
 }
 
-const EVALUATOR_ROLES: ProbationEvaluatorRole[] = ['mentor', 'leader', 'executive', 'ceo']
+const EVALUATOR_ROLES: ProbationEvaluatorRole[] = ['leader', 'executive', 'ceo']
 
 const EVALUATOR_LABELS: Record<ProbationEvaluatorRole, string> = {
-  mentor: '멘토',
   leader: '리더',
   executive: '임원',
   ceo: '대표',
@@ -73,6 +72,9 @@ interface EmployeeBasic {
   id: string
   name: string
   department_id: string | null
+  job_type: string | null
+  hire_date: string | null
+  employment_type: string | null
 }
 
 interface EvalWithEmployee extends ProbationEvaluation {
@@ -91,12 +93,11 @@ export default function ProbationManage() {
   const [evalDialogOpen, setEvalDialogOpen] = useState(false)
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [selectedStage, setSelectedStage] = useState<ProbationStage>('round1')
-  const [selectedRole, setSelectedRole] = useState<ProbationEvaluatorRole>('mentor')
+  const [selectedRole, setSelectedRole] = useState<ProbationEvaluatorRole>('leader')
   const [scores, setScores] = useState<Record<string, number>>({})
   const [comments, setComments] = useState('')
   const [praise, setPraise] = useState('')
   const [improvement, setImprovement] = useState('')
-  const [mentorSummary, setMentorSummary] = useState('')
   const [leaderSummary, setLeaderSummary] = useState('')
   const [execOneLiner, setExecOneLiner] = useState('')
   const [strengthsText, setStrengthsText] = useState('')
@@ -119,7 +120,7 @@ export default function ProbationManage() {
     setLoading(true)
     const [evalRes, empRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, name, department_id').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, department_id, job_type, hire_date, employment_type').eq('is_active', true).order('name'),
     ])
 
     if (empRes.data) setEmployees(empRes.data)
@@ -162,12 +163,11 @@ export default function ProbationManage() {
   function openNewEval() {
     setSelectedEmployeeId('')
     setSelectedStage('round1')
-    setSelectedRole('mentor')
+    setSelectedRole('leader')
     setScores(Object.fromEntries(PROBATION_CRITERIA.map((c) => [c.key, 15])))
     setComments('')
     setPraise('')
     setImprovement('')
-    setMentorSummary('')
     setLeaderSummary('')
     setExecOneLiner('')
     setStrengthsText('')
@@ -253,7 +253,7 @@ ${prevSummary}
       comments: comments || null,
       praise: praise || null,
       improvement: improvement || null,
-      mentor_summary: selectedRole === 'mentor' ? (mentorSummary || null) : null,
+      mentor_summary: null,
       leader_summary: selectedRole === 'leader' ? (leaderSummary || null) : null,
       exec_one_liner: (selectedRole === 'executive' || selectedRole === 'ceo') ? (execOneLiner || null) : null,
       strengths: (selectedRole === 'executive' || selectedRole === 'ceo') ? (strengthsText || null) : null,
@@ -366,8 +366,8 @@ ${evalsSummary}
         <Select
           value={filterEmployee}
           onChange={(e) => setFilterEmployee(e.target.value)}
-          options={[{ value: '', label: '전체 직원' }, ...employees.map((e) => ({ value: e.id, label: e.name }))]}
-          placeholder="직원 선택"
+          options={[{ value: '', label: '전체 직원' }, ...employees.filter((e) => e.employment_type === 'probation').map((e) => ({ value: e.id, label: e.name }))]}
+          placeholder="수습 직원 선택"
         />
       </div>
 
@@ -545,8 +545,8 @@ ${evalsSummary}
               label="직원 *"
               value={selectedEmployeeId}
               onChange={(e) => setSelectedEmployeeId(e.target.value)}
-              options={employees.map((e) => ({ value: e.id, label: e.name }))}
-              placeholder="직원 선택"
+              options={employees.filter((e) => e.employment_type === 'probation').map((e) => ({ value: e.id, label: e.name }))}
+              placeholder="수습 직원 선택"
             />
             <Select
               label="평가 회차 *"
@@ -625,7 +625,7 @@ ${evalsSummary}
           />
 
           {/* Role-specific comments */}
-          {(selectedRole === 'mentor' || selectedRole === 'leader') && (
+          {selectedRole === 'leader' && (
             <>
               <Textarea
                 label="칭찬할 점"
@@ -643,13 +643,13 @@ ${evalsSummary}
               />
             </>
           )}
-          {selectedRole === 'mentor' && (
+          {selectedRole === 'leader' && (
             <Textarea
-              label="멘토 총평"
-              value={mentorSummary}
-              onChange={(e) => setMentorSummary(e.target.value)}
+              label="리더 총평"
+              value={leaderSummary}
+              onChange={(e) => setLeaderSummary(e.target.value)}
               rows={2}
-              placeholder="멘토로서의 종합 의견..."
+              placeholder="리더로서의 종합 의견..."
             />
           )}
           {selectedRole === 'leader' && (

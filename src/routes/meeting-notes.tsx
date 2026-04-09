@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
+import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { transcribeAudio, summarizeMeeting, DEEPGRAM_COST_PER_MIN } from '@/lib/ai-client'
@@ -108,6 +109,13 @@ export default function MeetingNotes() {
   const [retryingId, setRetryingId] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const uploadInputRef = useRef<HTMLInputElement>(null)
+  // 업로드 설정 다이얼로그
+  const [uploadDialog, setUploadDialog] = useState<{ open: boolean; file: File | null }>({ open: false, file: null })
+  const [uploadTitle, setUploadTitle] = useState('')
+  const [uploadDate, setUploadDate] = useState('')
+  const [uploadTime, setUploadTime] = useState('')
+  const [uploadParticipants, setUploadParticipants] = useState<string[]>([])
+  const [uploadSearch, setUploadSearch] = useState('')
   const [shareDialog, setShareDialog] = useState<{ open: boolean; record: MeetingRecord | null }>({ open: false, record: null })
   const [shareSearch, setShareSearch] = useState('')
   const [selectedShareIds, setSelectedShareIds] = useState<string[]>([])
@@ -231,24 +239,45 @@ export default function MeetingNotes() {
     }
   }
 
-  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  // 파일 선택 → 업로드 설정 다이얼로그 열기
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (!file || !profile?.id) return
+    if (!file) return
     e.target.value = ''
 
+    const now = new Date()
+    setUploadTitle(file.name.replace(/\.[^.]+$/, '') || '외부 녹음 파일')
+    setUploadDate(now.toISOString().slice(0, 10))
+    setUploadTime(now.toTimeString().slice(0, 5))
+    setUploadParticipants([])
+    setUploadSearch('')
+    setUploadDialog({ open: true, file })
+  }
+
+  // 다이얼로그에서 확인 → 실제 업로드 실행
+  async function handleFileUpload() {
+    const file = uploadDialog.file
+    if (!file || !profile?.id) return
+
+    setUploadDialog({ open: false, file: null })
     setUploading(true)
     let meetingId: string | null = null
     try {
       // 1. DB 레코드 생성
-      const title = file.name.replace(/\.[^.]+$/, '') || '외부 녹음 파일'
+      const title = uploadTitle.trim() || file.name.replace(/\.[^.]+$/, '') || '외부 녹음 파일'
+      const meetingDate = uploadDate && uploadTime
+        ? `${uploadDate}T${uploadTime}:00`
+        : new Date().toISOString()
+
       const { data: meeting, error: dbErr } = await supabase
         .from('meeting_records')
         .insert({
           title,
           recorded_by: profile.id,
-          participant_ids: [],
+          participant_ids: uploadParticipants,
           file_size_bytes: file.size,
           status: 'uploaded',
+          created_at: meetingDate,
         })
         .select().single()
       if (dbErr || !meeting) throw new Error('회의 생성 실패: ' + (dbErr?.message || ''))
@@ -416,7 +445,7 @@ export default function MeetingNotes() {
             type="file"
             accept="audio/*,video/*,.m4a,.mp3,.wav,.ogg,.webm,.mp4"
             className="hidden"
-            onChange={handleFileUpload}
+            onChange={handleFileSelect}
           />
           <Button
             variant="outline"
@@ -812,6 +841,101 @@ export default function MeetingNotes() {
               ) : (
                 <><Share2 className="h-4 w-4 mr-1" /> {selectedShareIds.length}명에게 공유</>
               )}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* 업로드 설정 다이얼로그 */}
+      <Dialog open={uploadDialog.open} onClose={() => setUploadDialog({ open: false, file: null })} title="녹음 파일 업로드">
+        <div className="space-y-4">
+          {uploadDialog.file && (
+            <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+              <FileText className="h-4 w-4 text-gray-400" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-700 truncate">{uploadDialog.file.name}</p>
+                <p className="text-[10px] text-gray-400">{(uploadDialog.file.size / 1024 / 1024).toFixed(1)} MB</p>
+              </div>
+            </div>
+          )}
+
+          <Input
+            id="upload-title"
+            label="회의명"
+            value={uploadTitle}
+            onChange={(e) => setUploadTitle(e.target.value)}
+            placeholder="예: 1분기 경영 전략 회의"
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">회의 날짜</label>
+              <input
+                type="date"
+                value={uploadDate}
+                onChange={(e) => setUploadDate(e.target.value)}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">시간</label>
+              <input
+                type="time"
+                value={uploadTime}
+                onChange={(e) => setUploadTime(e.target.value)}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* 참석자 선택 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">참석자</label>
+            <div className="relative mb-2">
+              <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+                placeholder="이름으로 검색..."
+                value={uploadSearch}
+                onChange={(e) => setUploadSearch(e.target.value)}
+              />
+            </div>
+            {uploadParticipants.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {uploadParticipants.map((id) => (
+                  <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-brand-100 text-brand-700 rounded-full text-xs">
+                    {employees.find((e) => e.id === id)?.name || id}
+                    <button onClick={() => setUploadParticipants((prev) => prev.filter((x) => x !== id))} className="hover:text-brand-900">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="max-h-36 overflow-y-auto border rounded-lg divide-y divide-gray-100">
+              {employees
+                .filter((e) => !uploadSearch || e.name.includes(uploadSearch))
+                .map((e) => {
+                  const isSelected = uploadParticipants.includes(e.id)
+                  return (
+                    <button
+                      key={e.id}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-50 ${isSelected ? 'bg-brand-50' : ''}`}
+                      onClick={() => setUploadParticipants((prev) => isSelected ? prev.filter((x) => x !== e.id) : [...prev, e.id])}
+                    >
+                      <span className={isSelected ? 'text-brand-700 font-medium' : 'text-gray-700'}>{e.name}</span>
+                      {isSelected && <CheckCircle className="h-4 w-4 text-brand-600" />}
+                    </button>
+                  )
+                })}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setUploadDialog({ open: false, file: null })}>취소</Button>
+            <Button onClick={handleFileUpload} disabled={!uploadTitle.trim()}>
+              <Upload className="h-4 w-4 mr-1" /> 업로드 및 분석
             </Button>
           </div>
         </div>

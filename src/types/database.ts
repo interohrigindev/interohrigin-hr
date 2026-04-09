@@ -7,7 +7,7 @@ export type EmployeeRole =
   | 'ceo'
   | 'admin'
 
-export type EmploymentType = 'full_time' | 'contract' | 'intern' | 'part_time'
+export type EmploymentType = 'full_time' | 'contract' | 'intern' | 'part_time' | 'probation'
 
 export interface Employee {
   id: string

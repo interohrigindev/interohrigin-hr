@@ -42,6 +42,7 @@ const EMPLOYMENT_TYPE_OPTIONS = [
   { value: 'contract', label: '계약직' },
   { value: 'intern', label: '인턴' },
   { value: 'part_time', label: '파트타임' },
+  { value: 'probation', label: '수습' },
 ]
 
 const MBTI_OPTIONS = [
