@@ -358,7 +358,7 @@ ${evalsSummary}
 
       {/* Info banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-        5개 항목 × 20점 (100점 만점) | 3회차 (2주/6주/10주) | 4인 평가 (멘토/리더/임원/대표)
+        5개 항목 × 20점 (100점 만점) | 3회차 (2주/6주/10주) | 3인 평가 (리더/임원/대표)
       </div>
 
       {/* Filter */}
@@ -532,195 +532,181 @@ ${evalsSummary}
         </div>
       )}
 
-      {/* ─── New Evaluation Dialog ───────────────────────────────── */}
-      <Dialog
-        open={evalDialogOpen}
-        onClose={() => setEvalDialogOpen(false)}
-        title="수습 평가 작성"
-        className="max-w-2xl max-h-[85vh] overflow-y-auto"
-      >
-        <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-3">
-            <Select
-              label="직원 *"
-              value={selectedEmployeeId}
-              onChange={(e) => setSelectedEmployeeId(e.target.value)}
-              options={employees.filter((e) => e.employment_type === 'probation').map((e) => ({ value: e.id, label: e.name }))}
-              placeholder="수습 직원 선택"
-            />
-            <Select
-              label="평가 회차 *"
-              value={selectedStage}
-              onChange={(e) => setSelectedStage(e.target.value as ProbationStage)}
-              options={STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }))}
-            />
-            <Select
-              label="평가자 역할 *"
-              value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value as ProbationEvaluatorRole)}
-              options={EVALUATOR_ROLES.map((r) => ({ value: r, label: EVALUATOR_LABELS[r] }))}
-            />
-          </div>
-
-          {/* Score inputs (0~20 per criterion) */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold text-gray-900">평가 항목 (각 20점 만점, 총 100점)</p>
-              <span className="text-sm font-bold text-brand-600">
-                총점: {getTotalScore(scores)}/100
-              </span>
+      {/* ─── 인라인 평가 폼 ───────────────────────────────────────── */}
+      {evalDialogOpen && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>수습 평가 작성</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => setEvalDialogOpen(false)}>닫기</Button>
             </div>
-            <div className="space-y-3">
-              {PROBATION_CRITERIA.map((c) => {
-                const val = scores[c.key] || 0
-                const grade = getProbationGrade(val)
-                return (
-                  <div key={c.key} className="bg-gray-50 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <div>
-                        <span className="text-sm font-medium text-gray-800">{c.label}</span>
-                        <span className="text-xs text-gray-500 ml-2">{c.desc}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${PROBATION_GRADE_CONFIG[grade].bg}`}>
-                          {grade}
-                        </span>
-                        <span className="text-sm font-bold text-brand-600 w-12 text-right">{val}점</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="range"
-                        min={0}
-                        max={MAX_SCORE_PER_ITEM}
-                        value={val}
-                        onChange={(e) => updateScore(c.key, parseInt(e.target.value))}
-                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-500"
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        max={MAX_SCORE_PER_ITEM}
-                        value={val}
-                        onChange={(e) => updateScore(c.key, parseInt(e.target.value) || 0)}
-                        className="w-14 text-center text-sm border rounded px-1 py-0.5"
-                      />
-                    </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* 직원/회차/역할 선택 */}
+            <div className="grid grid-cols-3 gap-3">
+              <Select
+                label="직원 *"
+                value={selectedEmployeeId}
+                onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                options={employees.filter((e) => e.employment_type === 'probation').map((e) => ({ value: e.id, label: e.name }))}
+                placeholder="수습 직원 선택"
+              />
+              <Select
+                label="평가 회차 *"
+                value={selectedStage}
+                onChange={(e) => setSelectedStage(e.target.value as ProbationStage)}
+                options={STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }))}
+              />
+              <Select
+                label="평가자 역할 *"
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value as ProbationEvaluatorRole)}
+                options={EVALUATOR_ROLES.map((r) => ({ value: r, label: EVALUATOR_LABELS[r] }))}
+              />
+            </div>
+
+            {/* 직원 정보 카드 + 회차별 안내 멘트 */}
+            {selectedEmployeeId && (() => {
+              const emp = employees.find((e) => e.id === selectedEmployeeId)
+              if (!emp) return null
+              const hireDate = emp.hire_date ? new Date(emp.hire_date) : null
+              const endDate = hireDate ? new Date(hireDate.getTime() + 90 * 24 * 60 * 60 * 1000) : null
+              const formatDate = (d: Date | null) => d ? `${d.getFullYear().toString().slice(2)}년 ${d.getMonth() + 1}월 ${d.getDate()}일` : '-'
+
+              const STAGE_INTROS: Record<ProbationStage, string> = {
+                round1: '본 평가는 1회차(입사 2주 차) 평가입니다.\n실무 성과보다는 조직 적응력, 기본 태도, 업무 파악 노력에 초점을 맞춰 평가해 주시기 바랍니다.',
+                round2: '본 평가는 2회차(입사 6주 차) 평가입니다.\n초기 적응 단계를 넘어, 실질적인 업무 지시에 대한 이해도와 실행력, 그리고 직무 수행의 안정성에 초점을 맞춰 평가해 주시기 바랍니다.',
+                round3: '본 평가는 3회차(입사 10주 차) 최종 평가입니다.\n수습 기간을 마무리하며, 해당 직무를 독립적으로 수행할 수 있는 역량을 갖추었는지, 그리고 정규직 전환에 적합한지에 초점을 맞춰 종합적으로 평가해 주시기 바랍니다.',
+              }
+
+              return (
+                <div className="bg-brand-50 border border-brand-200 rounded-lg p-4 space-y-2">
+                  <h3 className="text-lg font-bold text-brand-900">수습 평가_{emp.name}({STAGE_SHORT[selectedStage]})</h3>
+                  <div className="grid grid-cols-3 gap-2 text-sm text-brand-800">
+                    <span>부서 / 직무 : {emp.job_type || '-'}</span>
+                    <span>입사 일자 : {formatDate(hireDate)}</span>
+                    <span>수습 종료 일자 : {formatDate(endDate)}</span>
                   </div>
-                )
-              })}
-            </div>
-          </div>
+                  <p className="text-sm text-brand-700 whitespace-pre-line mt-2">{STAGE_INTROS[selectedStage]}</p>
+                </div>
+              )
+            })()}
 
-          {/* Recommendation */}
-          <Select
-            label="수습 지속 권고"
-            value={recommendation}
-            onChange={(e) => setRecommendation(e.target.value as ContinuationRecommendation)}
-            options={[
-              { value: 'continue', label: '계속 근무 권고' },
-              { value: 'warning', label: '경고/주의' },
-              { value: 'terminate', label: '수습 종료 권고' },
-            ]}
-          />
-
-          {/* Role-specific comments */}
-          {selectedRole === 'leader' && (
-            <>
-              <Textarea
-                label="칭찬할 점"
-                value={praise}
-                onChange={(e) => setPraise(e.target.value)}
-                rows={2}
-                placeholder="이 직원의 잘하고 있는 부분..."
-              />
-              <Textarea
-                label="보완 점"
-                value={improvement}
-                onChange={(e) => setImprovement(e.target.value)}
-                rows={2}
-                placeholder="개선이 필요한 부분..."
-              />
-            </>
-          )}
-          {selectedRole === 'leader' && (
-            <Textarea
-              label="리더 총평"
-              value={leaderSummary}
-              onChange={(e) => setLeaderSummary(e.target.value)}
-              rows={2}
-              placeholder="리더로서의 종합 의견..."
-            />
-          )}
-          {selectedRole === 'leader' && (
-            <Textarea
-              label="리더 총평"
-              value={leaderSummary}
-              onChange={(e) => setLeaderSummary(e.target.value)}
-              rows={2}
-              placeholder="리더로서의 종합 의견..."
-            />
-          )}
-          {(selectedRole === 'executive' || selectedRole === 'ceo') && (
-            <>
-              <Textarea
-                label="강점"
-                value={strengthsText}
-                onChange={(e) => setStrengthsText(e.target.value)}
-                rows={2}
-                placeholder="이 직원의 강점..."
-              />
-              <Textarea
-                label="보완점"
-                value={improvement}
-                onChange={(e) => setImprovement(e.target.value)}
-                rows={2}
-                placeholder="보완이 필요한 부분..."
-              />
-              <Textarea
-                label={`${EVALUATOR_LABELS[selectedRole]} 한줄 코멘트`}
-                value={execOneLiner}
-                onChange={(e) => setExecOneLiner(e.target.value)}
-                rows={1}
-                placeholder="한줄 코멘트..."
-              />
-            </>
-          )}
-
-          {/* General comments */}
-          <Textarea
-            label="비고"
-            value={comments}
-            onChange={(e) => setComments(e.target.value)}
-            rows={2}
-            placeholder="기타 참고 사항..."
-          />
-
-          {/* AI Assessment */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">AI 평가</span>
-              <Button variant="outline" size="sm" onClick={generateAIAssessment} disabled={generatingAI}>
-                {generatingAI ? (
-                  <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 분석 중...</>
-                ) : (
-                  <><Sparkles className="h-3 w-3 mr-1" /> AI 평가 생성</>
-                )}
-              </Button>
-            </div>
-            {aiAssessment && (
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800 whitespace-pre-wrap">{aiAssessment}</p>
+            {/* 평가 가이드 */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <p className="text-xs font-semibold text-gray-700 mb-2">{'<평가 가이드>'} 각 항목별 점수 (20점 만점 / 총 100점 만점)</p>
+              <div className="grid grid-cols-5 gap-2 text-[11px] text-gray-600">
+                <span><strong className="text-brand-700">S</strong> 20~18점 기대 상회</span>
+                <span><strong className="text-blue-700">A</strong> 17~14점 기대 충족</span>
+                <span><strong className="text-emerald-700">B</strong> 13~10점 보완 필요</span>
+                <span><strong className="text-amber-700">C</strong> 9~6점 기대 미달</span>
+                <span><strong className="text-red-700">D</strong> 5~0점 수행 어려움</span>
               </div>
-            )}
-          </div>
+            </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button variant="outline" onClick={() => setEvalDialogOpen(false)}>취소</Button>
-            <Button onClick={handleSaveEval}>평가 저장</Button>
-          </div>
-        </div>
-      </Dialog>
+            {/* 점수 입력 — 1~20 클릭 선택 */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-gray-900">평가 항목</p>
+                <span className="text-sm font-bold text-brand-600">총점: {getTotalScore(scores)}/100</span>
+              </div>
+              <div className="space-y-4">
+                {PROBATION_CRITERIA.map((c, idx) => {
+                  const val = scores[c.key] || 0
+                  const grade = getProbationGrade(val)
+                  return (
+                    <div key={c.key} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <span className="text-sm font-semibold text-gray-900">{idx + 1}. {c.label}</span>
+                          <p className="text-xs text-gray-500 mt-0.5">{c.desc}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${PROBATION_GRADE_CONFIG[grade].bg}`}>{grade}</span>
+                          <span className="text-sm font-bold text-brand-600">{val}점</span>
+                        </div>
+                      </div>
+                      {/* 1~20 클릭 버튼 */}
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
+                          const isSelected = val === n
+                          let bg = 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          if (isSelected) {
+                            if (n >= 18) bg = 'bg-brand-600 text-white'
+                            else if (n >= 14) bg = 'bg-blue-600 text-white'
+                            else if (n >= 10) bg = 'bg-emerald-600 text-white'
+                            else if (n >= 6) bg = 'bg-amber-600 text-white'
+                            else bg = 'bg-red-600 text-white'
+                          }
+                          return (
+                            <button
+                              key={n}
+                              onClick={() => updateScore(c.key, n)}
+                              className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${bg}`}
+                            >
+                              {n}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 수습 지속 권고 */}
+            <Select
+              label="수습 지속 권고"
+              value={recommendation}
+              onChange={(e) => setRecommendation(e.target.value as ContinuationRecommendation)}
+              options={[
+                { value: 'continue', label: '계속 근무 권고' },
+                { value: 'warning', label: '경고/주의' },
+                { value: 'terminate', label: '수습 종료 권고' },
+              ]}
+            />
+
+            {/* 총평 — 회차별 안내 통합 */}
+            <Textarea
+              label={selectedStage === 'round3'
+                ? '총평 (최종 면담 직전이므로 가장 구체적인 피드백 요구)'
+                : '총평'}
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              rows={4}
+              placeholder={selectedStage === 'round3'
+                ? '칭찬할 점 혹은 보완할 점이 있다면 같이 적어주세요. (최종 면담 직전이므로 가장 구체적인 피드백 요구)'
+                : '수습 직원의 총평을 적어주세요 =) 칭찬할 점 혹은 보완할 점이 있다면 포함하여 적어주세요.'}
+            />
+
+            {/* AI 평가 (3회차에서만 자동 표시) */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">AI 평가 (참고용)</span>
+                <Button variant="outline" size="sm" onClick={generateAIAssessment} disabled={generatingAI}>
+                  {generatingAI ? (
+                    <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 분석 중...</>
+                  ) : (
+                    <><Sparkles className="h-3 w-3 mr-1" /> AI 평가 생성</>
+                  )}
+                </Button>
+              </div>
+              {aiAssessment && (
+                <div className="p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800 whitespace-pre-wrap">{aiAssessment}</p>
+                </div>
+              )}
+            </div>
+
+            {/* 저장 버튼 */}
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button variant="outline" onClick={() => setEvalDialogOpen(false)}>취소</Button>
+              <Button onClick={handleSaveEval}>평가 저장</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ─── Trend Analysis Dialog ───────────────────────────────── */}
       <Dialog
