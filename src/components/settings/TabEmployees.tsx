@@ -452,17 +452,36 @@ export default function TabEmployees() {
   }
 
   async function handleDeleteEmployee(emp: Employee) {
-    if (!confirm(`${emp.name}님을 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 관련 평가 데이터도 모두 삭제됩니다.`)) return
+    const msg = emp.is_active
+      ? `${emp.name}님을 퇴사 처리하시겠습니까?\n비활성화되며, 퇴사 후 관리가 가능합니다.`
+      : `${emp.name}님을 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`
 
-    const { error } = await supabase.rpc('delete_employee', {
-      p_employee_id: emp.id,
-    })
+    if (!confirm(msg)) return
 
-    if (error) {
-      toast('삭제 실패: ' + error.message, 'error')
+    if (emp.is_active) {
+      // 퇴사 처리 (비활성화)
+      const { error } = await supabase.from('employees').update({
+        is_active: false,
+      }).eq('id', emp.id)
+
+      if (error) {
+        toast('퇴사 처리 실패: ' + error.message, 'error')
+      } else {
+        toast(`${emp.name}님이 퇴사 처리되었습니다`)
+        fetchData()
+      }
     } else {
-      toast(`${emp.name}님이 삭제되었습니다`)
-      fetchData()
+      // 이미 비활성인 경우 완전 삭제 시도
+      const { error } = await supabase.rpc('delete_employee', {
+        p_employee_id: emp.id,
+      })
+
+      if (error) {
+        toast('삭제 실패: ' + error.message, 'error')
+      } else {
+        toast(`${emp.name}님이 삭제되었습니다`)
+        fetchData()
+      }
     }
   }
 
@@ -761,7 +780,7 @@ export default function TabEmployees() {
                             <button
                               onClick={() => handleDeleteEmployee(emp)}
                               className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                              title="삭제"
+                              title={emp.is_active ? '퇴사 처리' : '삭제'}
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>

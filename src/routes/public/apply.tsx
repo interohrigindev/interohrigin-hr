@@ -50,7 +50,9 @@ export default function PublicApply() {
   const [step, setStep] = useState<PageStep>('detail')
   const [submitting, setSubmitting] = useState(false)
 
-  const isAgency = source === 'agency' || source === 'headhunter'
+  const [agencyGate, setAgencyGate] = useState(false)
+  const [agencyConfirmed, setAgencyConfirmed] = useState(false)
+  const isAgency = source === 'agency' || source === 'headhunter' || agencyConfirmed
   const [form, setForm] = useState({ name: '', email: '', phone: '', cover_letter_text: '', agency_name: '', agency_contact: '', agency_email: '' })
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [coverLetterFile, setCoverLetterFile] = useState<File | null>(null)
@@ -332,13 +334,70 @@ export default function PublicApply() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
           <h2 className="text-lg font-bold text-gray-900 mb-2">이 포지션에 관심이 있으신가요?</h2>
           <p className="text-sm text-gray-500 mb-5">아래 버튼을 눌러 지원서를 작성해주세요.</p>
-          <button
-            onClick={() => setStep('apply')}
-            className="inline-flex items-center gap-2 bg-brand-600 text-white rounded-xl px-8 py-3.5 font-semibold text-base hover:bg-brand-700 transition-colors shadow-lg shadow-brand-600/20"
-          >
-            지원하기 <ChevronRight className="h-5 w-5" />
-          </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => setStep('apply')}
+              className="inline-flex items-center gap-2 bg-brand-600 text-white rounded-xl px-8 py-3.5 font-semibold text-base hover:bg-brand-700 transition-colors shadow-lg shadow-brand-600/20"
+            >
+              지원하기 <ChevronRight className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setAgencyGate(true)}
+              className="inline-flex items-center gap-2 bg-white text-gray-700 border-2 border-gray-300 rounded-xl px-6 py-3 font-medium text-sm hover:border-brand-400 hover:text-brand-700 transition-colors"
+            >
+              <Building2 className="h-4 w-4" /> 파견업체 / 헤드헌터
+            </button>
+          </div>
         </div>
+
+        {/* 파견업체 인증 게이트 */}
+        {agencyGate && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+              <div className="text-center">
+                <Building2 className="h-10 w-10 text-brand-600 mx-auto mb-2" />
+                <h3 className="text-lg font-bold text-gray-900">파견업체 / 헤드헌터 입장</h3>
+                <p className="text-sm text-gray-500 mt-1">업체 정보를 입력하시면 후보자 추천 페이지로 이동합니다.</p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">업체명 *</label>
+                  <input type="text" value={form.agency_name} onChange={(e) => updateForm('agency_name', e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none" placeholder="파견업체 / 헤드헌팅 회사명" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">담당자명 *</label>
+                  <input type="text" value={form.agency_contact} onChange={(e) => updateForm('agency_contact', e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none" placeholder="담당자 이름" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">담당자 연락처 (이메일) *</label>
+                  <input type="email" value={form.agency_email} onChange={(e) => updateForm('agency_email', e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none" placeholder="agency@company.com" />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setAgencyGate(false)}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                  취소
+                </button>
+                <button
+                  onClick={() => {
+                    if (!form.agency_name.trim() || !form.agency_contact.trim() || !form.agency_email.trim()) return
+                    setAgencyConfirmed(true)
+                    setAgencyGate(false)
+                    setStep('apply')
+                  }}
+                  disabled={!form.agency_name.trim() || !form.agency_contact.trim() || !form.agency_email.trim()}
+                  className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-medium hover:bg-brand-700 disabled:opacity-40 transition-colors">
+                  입장하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 하단 정보 */}
         <p className="text-xs text-gray-400 text-center pb-4">
