@@ -124,7 +124,11 @@ export default function ProbationManage() {
       supabase.from('employees').select('id, name, department_id, job_type, hire_date, employment_type, position').eq('is_active', true).order('name'),
     ])
 
-    if (empRes.data) setEmployees(empRes.data)
+    if (empRes.data) {
+      console.log('[Probation] employees loaded:', empRes.data.length)
+      console.log('[Probation] 수습 직원:', empRes.data.filter((e: any) => e.employment_type === 'probation' || (e.position ?? '').includes('수습')).map((e: any) => `${e.name}(pos=${e.position},type=${e.employment_type})`))
+      setEmployees(empRes.data)
+    }
 
     if (evalRes.data && empRes.data) {
       const enriched: EvalWithEmployee[] = (evalRes.data as ProbationEvaluation[]).map((ev) => ({
