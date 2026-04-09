@@ -365,6 +365,60 @@ ${evalsSummary}
         5개 항목 × 20점 (100점 만점) | 3회차 (2주/6주/10주) | 3인 평가 (리더/임원/대표)
       </div>
 
+      {/* 수습 직원 평가 일정 알림 */}
+      {(() => {
+        const probEmps = employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
+        if (probEmps.length === 0) return null
+
+        const today = new Date()
+        const alerts: { name: string; round: string; daysLeft: number; overdue: boolean }[] = []
+
+        for (const emp of probEmps) {
+          if (!emp.hire_date) continue
+          const hire = new Date(emp.hire_date)
+          const round1 = new Date(hire.getTime() + 14 * 24 * 60 * 60 * 1000)
+          const round2 = new Date(hire.getTime() + 42 * 24 * 60 * 60 * 1000)
+          const round3 = new Date(hire.getTime() + 70 * 24 * 60 * 60 * 1000)
+
+          const empEvals = evaluations.filter((ev) => ev.employee_id === emp.id)
+          const hasRound = (stage: string) => empEvals.some((ev) => ev.stage === stage)
+
+          const rounds = [
+            { stage: 'round1', label: '1회차', date: round1 },
+            { stage: 'round2', label: '2회차', date: round2 },
+            { stage: 'round3', label: '3회차', date: round3 },
+          ]
+
+          for (const r of rounds) {
+            if (hasRound(r.stage)) continue
+            const diff = Math.ceil((r.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+            if (diff <= 7) {
+              alerts.push({ name: emp.name, round: r.label, daysLeft: diff, overdue: diff < 0 })
+            }
+          }
+        }
+
+        if (alerts.length === 0) return null
+
+        return (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <span className="text-sm font-semibold text-amber-800">평가 예정 알림</span>
+            </div>
+            <div className="space-y-1">
+              {alerts.map((a, i) => (
+                <p key={i} className={`text-xs ${a.overdue ? 'text-red-600 font-medium' : 'text-amber-700'}`}>
+                  {a.overdue
+                    ? `⚠️ ${a.name} — ${a.round} 평가 ${Math.abs(a.daysLeft)}일 초과`
+                    : `📋 ${a.name} — ${a.round} 평가 ${a.daysLeft === 0 ? '오늘' : `${a.daysLeft}일 후`}`}
+                </p>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Filter */}
       <div className="flex gap-4">
         <Select

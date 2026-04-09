@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { ProjectUpdate, ProjectStatus, StageStatus } from '@/types/project-board'
 import type { Task, TaskPriority, TaskStatus } from '@/types/work'
+import AllocationChart from '@/components/projects/AllocationChart'
 import { STAGE_STATUS_COLORS, STAGE_STATUS_DOT, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from '@/types/project-board'
 
 const STATUS_OPTIONS: StageStatus[] = ['시작전', '진행중', '완료', '홀딩']
@@ -602,6 +603,18 @@ export default function ProjectDetailPage() {
 
       {activeTab === 'tasks' && (
         <div className="space-y-3">
+          {/* 업무 할당 차트 */}
+          {linkedTasks.length > 0 && (
+            <AllocationChart
+              tasks={linkedTasks.map((t) => ({
+                assignee_id: t.assignee_id,
+                assignee_name: employees.find((e) => e.id === t.assignee_id)?.name || '미배정',
+                status: t.status,
+              }))}
+              employees={employees}
+            />
+          )}
+
           <Button size="sm" onClick={() => setShowTaskForm(true)}>
             <Plus className="h-4 w-4 mr-1" /> 작업 추가
           </Button>
