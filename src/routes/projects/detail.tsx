@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import DOMPurify from 'dompurify'
 import {
   ArrowLeft, Plus, Send, FileText, Bell,
   BarChart3, CheckCircle, Loader2, AlertTriangle, ListChecks,
   Pencil, X, ChevronUp, ChevronDown, Trash2, ChevronRight, Download,
+  Users,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -21,7 +22,6 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { ProjectUpdate, ProjectStatus, StageStatus } from '@/types/project-board'
 import type { Task, TaskPriority, TaskStatus } from '@/types/work'
-import AllocationChart from '@/components/projects/AllocationChart'
 import { STAGE_STATUS_COLORS, STAGE_STATUS_DOT, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from '@/types/project-board'
 
 const STATUS_OPTIONS: StageStatus[] = ['시작전', '진행중', '완료', '홀딩']
@@ -37,6 +37,7 @@ export default function ProjectDetailPage() {
     addStage, removeStage, updateStageName, reorderStages,
     addUpdate, fetchUpdates, updateRequestStatus,
     updateProject, deleteProject, canDeleteProject,
+    refresh,
   } = useProjectBoard()
 
   const project = projects.find((p) => p.id === id)
@@ -84,6 +85,9 @@ export default function ProjectDetailPage() {
   })
 
   // Pipeline editing
+  const [assigneeDropdownStageId, setAssigneeDropdownStageId] = useState<string | null>(null)
+  const assigneeDropdownRef = useRef<HTMLDivElement>(null)
+  const [allocationTab, setAllocationTab] = useState<string>('all') // 'all' | stage.id
   const [pipelineEditMode, setPipelineEditMode] = useState(false)
   const [editingNames, setEditingNames] = useState<Record<string, string>>({})
   const [newStageName, setNewStageName] = useState('')
@@ -108,6 +112,18 @@ export default function ProjectDetailPage() {
   }, [id])
 
   useEffect(() => { loadTasks() }, [loadTasks])
+
+  // Close assignee dropdown on outside click
+  useEffect(() => {
+    if (!assigneeDropdownStageId) return
+    const handler = (e: MouseEvent) => {
+      if (assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(e.target as Node)) {
+        setAssigneeDropdownStageId(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [assigneeDropdownStageId])
 
   async function handleAddTask() {
     if (!taskTitle.trim() || !profile?.id || !id) return
@@ -455,11 +471,14 @@ export default function ProjectDetailPage() {
             </div>
           ) : (
             /* ── 기본 보기 ── */
+            <>
             <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${Math.min(stages.length, 7)}, minmax(0, 1fr))` }}>
               {stages.map((stage) => {
                 const today = new Date()
                 const deadline = stage.deadline ? new Date(stage.deadline) : null
                 const isOverdue = deadline && stage.status !== '완료' && deadline < today
+                const assigneeIds = stage.stage_assignee_ids || []
+                const assigneeNames = assigneeIds.map((aid) => employees.find((e) => e.id === aid)?.name).filter(Boolean) as string[]
 
                 return (
                   <div key={stage.id} className={`p-2 rounded-lg border ${isOverdue ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
@@ -485,10 +504,216 @@ export default function ProjectDetailPage() {
                         <AlertTriangle className="h-2.5 w-2.5" /> 지연
                       </span>
                     )}
+                    {/* 담당자 표시 + 지정 */}
+                    <div className="relative mt-1.5 pt-1.5 border-t border-gray-100">
+                      <button
+                        onClick={() => setAssigneeDropdownStageId(assigneeDropdownStageId === stage.id ? null : stage.id)}
+                        className="w-full flex items-center gap-1 text-[10px] text-gray-500 hover:text-brand-600 transition-colors"
+                      >
+                        <Users className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">
+                          {assigneeNames.length > 0
+                            ? assigneeNames.length <= 2
+                              ? assigneeNames.join(', ')
+                              : `${assigneeNames[0]} 외 ${assigneeNames.length - 1}명`
+                            : '담당자 지정'}
+                        </span>
+                      </button>
+                      {assigneeDropdownStageId === stage.id && (
+                        <div ref={assigneeDropdownRef} className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-1.5 w-44 max-h-48 overflow-y-auto">
+                          {employees.map((emp) => (
+                            <button
+                              key={emp.id}
+                              onClick={async (e) => {
+                                e.stopPropagation()
+                                const currentIds = stage.stage_assignee_ids || []
+                                const newIds = currentIds.includes(emp.id)
+                                  ? currentIds.filter((eid) => eid !== emp.id)
+                                  : [...currentIds, emp.id]
+                                await supabase.from('pipeline_stages').update({ stage_assignee_ids: newIds }).eq('id', stage.id)
+                                toast('담당자가 변경되었습니다', 'success')
+                                refresh()
+                              }}
+                              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-[11px] hover:bg-gray-100 ${
+                                assigneeIds.includes(emp.id) ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                              }`}
+                            >
+                              <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                {emp.name[0]}
+                              </div>
+                              {emp.name}
+                              {assigneeIds.includes(emp.id) && <span className="ml-auto text-blue-500 text-[10px]">✓</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )
               })}
             </div>
+
+            {/* 파이프라인 인력 할당 현황 — 탭 + 차트 */}
+            {stages.some((s) => (s.stage_assignee_ids || []).length > 0) && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                {/* 탭 헤더 */}
+                <div className="flex items-center gap-1 mb-3 overflow-x-auto pb-1">
+                  <Users className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                  <button
+                    onClick={() => setAllocationTab('all')}
+                    className={`px-2.5 py-1 text-[11px] font-medium rounded-full whitespace-nowrap transition-colors ${
+                      allocationTab === 'all' ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >전체 할당</button>
+                  {stages.map((s) => {
+                    const count = (s.stage_assignee_ids || []).length
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => setAllocationTab(s.id)}
+                        className={`px-2.5 py-1 text-[11px] font-medium rounded-full whitespace-nowrap transition-colors ${
+                          allocationTab === s.id ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {s.stage_name}{count > 0 && <span className="ml-1 opacity-70">({count})</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* 탭 콘텐츠 */}
+                {(() => {
+                  const COLORS = ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#6366F1', '#14B8A6', '#F97316', '#0EA5E9']
+
+                  if (allocationTab === 'all') {
+                    // 전체: 인원별 할당 슬롯 수를 기준으로 100% 분배
+                    const totalSlots = stages.reduce((sum, s) => sum + (s.stage_assignee_ids || []).length, 0)
+                    if (totalSlots === 0) return <p className="text-xs text-gray-400">할당된 담당자가 없습니다.</p>
+                    const empSlots: Record<string, { name: string; count: number }> = {}
+                    stages.forEach((s) => (s.stage_assignee_ids || []).forEach((id) => {
+                      const emp = employees.find((e) => e.id === id)
+                      if (!emp) return
+                      if (!empSlots[id]) empSlots[id] = { name: emp.name, count: 0 }
+                      empSlots[id].count++
+                    }))
+                    const items = Object.entries(empSlots)
+                      .map(([id, { name, count }]) => ({ id, name, count, pct: Math.round((count / totalSlots) * 100) }))
+                      .sort((a, b) => b.count - a.count)
+
+                    return (
+                      <div className="flex items-start gap-5">
+                        {/* 도넛 차트 (CSS) */}
+                        <div className="shrink-0">
+                          <div className="relative w-28 h-28">
+                            <svg viewBox="0 0 36 36" className="w-28 h-28 -rotate-90">
+                              {(() => {
+                                let offset = 0
+                                return items.map((item, i) => {
+                                  const dash = (item.count / totalSlots) * 100
+                                  const el = (
+                                    <circle
+                                      key={item.id}
+                                      cx="18" cy="18" r="14"
+                                      fill="none"
+                                      stroke={COLORS[i % COLORS.length]}
+                                      strokeWidth="5"
+                                      strokeDasharray={`${dash} ${100 - dash}`}
+                                      strokeDashoffset={-offset}
+                                    />
+                                  )
+                                  offset += dash
+                                  return el
+                                })
+                              })()}
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                              <span className="text-lg font-bold text-gray-800">{items.length}</span>
+                              <span className="text-[9px] text-gray-400">명 참여</span>
+                            </div>
+                          </div>
+                        </div>
+                        {/* 범례 + 바 */}
+                        <div className="flex-1 space-y-1.5 min-w-0">
+                          {items.map((item, i) => (
+                            <div key={item.id} className="flex items-center gap-2">
+                              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                              <span className="text-[11px] font-medium text-gray-800 w-14 truncate">{item.name}</span>
+                              <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0">
+                                <div className="h-2 rounded-full transition-all" style={{ width: `${item.pct}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                              </div>
+                              <span className="text-[11px] font-bold text-gray-700 w-10 text-right">{item.pct}%</span>
+                              <span className="text-[10px] text-gray-400 w-16 text-right">{item.count}/{totalSlots} 단계</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  // 개별 단계 탭
+                  const stage = stages.find((s) => s.id === allocationTab)
+                  if (!stage) return null
+                  const ids = stage.stage_assignee_ids || []
+                  if (ids.length === 0) return <p className="text-xs text-gray-400">이 단계에 할당된 담당자가 없습니다.</p>
+                  const pctEach = Math.round(100 / ids.length)
+                  const assignees = ids.map((id) => employees.find((e) => e.id === id)).filter(Boolean) as { id: string; name: string }[]
+
+                  return (
+                    <div className="flex items-start gap-5">
+                      {/* 도넛 차트 */}
+                      <div className="shrink-0">
+                        <div className="relative w-28 h-28">
+                          <svg viewBox="0 0 36 36" className="w-28 h-28 -rotate-90">
+                            {assignees.map((emp, i) => {
+                              const dash = 100 / ids.length
+                              const offset = i * dash
+                              return (
+                                <circle
+                                  key={emp.id}
+                                  cx="18" cy="18" r="14"
+                                  fill="none"
+                                  stroke={COLORS[i % COLORS.length]}
+                                  strokeWidth="5"
+                                  strokeDasharray={`${dash} ${100 - dash}`}
+                                  strokeDashoffset={-offset}
+                                />
+                              )
+                            })}
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="text-lg font-bold text-gray-800">{ids.length}</span>
+                            <span className="text-[9px] text-gray-400">명 배정</span>
+                          </div>
+                        </div>
+                      </div>
+                      {/* 범례 */}
+                      <div className="flex-1 space-y-1.5 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            stage.status === '완료' ? 'bg-emerald-100 text-emerald-700' :
+                            stage.status === '진행중' ? 'bg-blue-100 text-blue-700' :
+                            stage.status === '홀딩' ? 'bg-amber-100 text-amber-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>{stage.status}</span>
+                          {stage.deadline && <span className="text-[10px] text-gray-400">마감: {stage.deadline}</span>}
+                        </div>
+                        {assignees.map((emp, i) => (
+                          <div key={emp.id} className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                            <span className="text-[11px] font-medium text-gray-800 w-14 truncate">{emp.name}</span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0">
+                              <div className="h-2 rounded-full transition-all" style={{ width: `${pctEach}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                            </div>
+                            <span className="text-[11px] font-bold text-gray-700 w-10 text-right">{pctEach}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -603,18 +828,6 @@ export default function ProjectDetailPage() {
 
       {activeTab === 'tasks' && (
         <div className="space-y-3">
-          {/* 업무 할당 차트 */}
-          {linkedTasks.length > 0 && (
-            <AllocationChart
-              tasks={linkedTasks.map((t) => ({
-                assignee_id: t.assignee_id,
-                assignee_name: employees.find((e) => e.id === t.assignee_id)?.name || '미배정',
-                status: t.status,
-              }))}
-              employees={employees}
-            />
-          )}
-
           <Button size="sm" onClick={() => setShowTaskForm(true)}>
             <Plus className="h-4 w-4 mr-1" /> 작업 추가
           </Button>

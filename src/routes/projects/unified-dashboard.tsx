@@ -988,7 +988,7 @@ export default function UnifiedDashboard() {
                     const isFav = favorites.has(p.id)
                     const priorityInfo = getPriorityInfo(p.priority)
                     const sortedStages = [...p.stages].sort((a, b) => a.stage_order - b.stage_order)
-                    const isEditingAssignee = editingField?.projectId === p.id && editingField.field === 'assignee'
+                    const isEditingAssignee = editingField?.projectId === p.id && editingField.field === 'assignee' && !editingField.stageId
                     const isEditingPriority = editingField?.projectId === p.id && editingField.field === 'priority'
                     const isEditingDate = editingField?.projectId === p.id && editingField.field === 'launch_date'
 
@@ -1209,14 +1209,14 @@ export default function UnifiedDashboard() {
                                         {allEmployees.map((emp) => (
                                           <button
                                             key={emp.id}
-                                            onClick={async () => {
+                                            onClick={async (e) => {
+                                              e.stopPropagation()
                                               const currentIds = stage.stage_assignee_ids || []
                                               const newIds = currentIds.includes(emp.id)
                                                 ? currentIds.filter((id) => id !== emp.id)
                                                 : [...currentIds, emp.id]
                                               await supabase.from('pipeline_stages').update({ stage_assignee_ids: newIds }).eq('id', stage.id)
-                                              toast('담당자가 변경되었습니다')
-                                              setEditingField(null)
+                                              // 드롭다운 유지한 채 데이터 갱신 (복수 담당자 선택 가능)
                                               refresh()
                                             }}
                                             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs hover:bg-gray-100 ${
