@@ -31,10 +31,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 인증 상태 변경 리스너
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         setUser(session?.user ?? null)
         if (session?.user) {
           fetchProfile(session.user.id)
+          // 로그인 시 자동 출근 기록
+          if (event === 'SIGNED_IN') {
+            recordClockIn(session.user.id)
+          }
         } else {
           setProfile(null)
           setLoading(false)
@@ -44,6 +48,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // 로그인 시 자동 출근 기록 (당일 기록이 없으면 생성)
+  async function recordClockIn(userId: string) {
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data: existing } = await supabase
+        .from('attendance_records')
+        .select('id')
+        .eq('employee_id', userId)
+        .eq('date', today)
+        .maybeSingle()
+
+      if (!existing) {
+        await supabase.from('attendance_records').insert({
+          employee_id: userId,
+          date: today,
+          clock_in: new Date().toISOString(),
+          clock_in_method: 'web_login',
+          status: 'normal',
+        })
+        console.log('[Attendance] 출근 기록 생성:', today)
+      }
+    } catch (err) {
+      console.warn('[Attendance] 출근 기록 실패:', err)
+    }
+  }
 
   async function fetchProfile(userId: string) {
     const { data, error } = await supabase

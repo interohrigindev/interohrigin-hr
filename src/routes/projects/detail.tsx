@@ -660,10 +660,26 @@ export default function ProjectDetailPage() {
           <div className="space-y-1">
             {linkedTasks.length === 0 ? (
               <p className="text-center py-8 text-gray-400">이 프로젝트에 연결된 작업이 없습니다</p>
-            ) : linkedTasks.map((task) => {
+            ) : [...linkedTasks]
+              .sort((a, b) => {
+                // 완료된 건 맨 아래
+                if (a.status === 'done' && b.status !== 'done') return 1
+                if (a.status !== 'done' && b.status === 'done') return -1
+                // 긴급 → 마감 임박 순서
+                const priorityOrder: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 }
+                const pDiff = (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2)
+                if (pDiff !== 0) return pDiff
+                // 마감일 빠른 순
+                if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date)
+                if (a.due_date) return -1
+                return 1
+              })
+              .map((task) => {
               const priorityColor = task.priority === 'urgent' ? 'bg-red-100 text-red-700' : task.priority === 'high' ? 'bg-amber-100 text-amber-700' : task.priority === 'normal' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
               const statusIcon = task.status === 'done' ? '✅' : task.status === 'in_progress' ? '🔄' : '⬜'
               const isOverdue = task.status !== 'done' && task.due_date && new Date(task.due_date) < new Date()
+              const daysUntilDue = task.due_date && task.status !== 'done' ? Math.ceil((new Date(task.due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null
+              const isUrgentSoon = daysUntilDue !== null && daysUntilDue >= 0 && daysUntilDue <= 3
               const assigneeName = employees.find((e) => e.id === task.assignee_id)?.name
               const isExpanded = expandedTasks.has(task.id)
 
@@ -681,8 +697,8 @@ export default function ProjectDetailPage() {
                     <Badge className={`text-[10px] ${priorityColor}`}>{task.priority}</Badge>
                     {assigneeName && <span className="text-xs text-gray-500">{assigneeName}</span>}
                     {task.due_date && (
-                      <span className={`text-[10px] ${isOverdue ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
-                        {task.due_date.slice(5)}
+                      <span className={`text-[10px] ${isOverdue ? 'text-red-600 font-bold' : isUrgentSoon ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
+                        {isOverdue ? `⚠️ ${Math.abs(daysUntilDue!)}일 지연` : isUrgentSoon ? `🔥 D-${daysUntilDue}` : task.due_date.slice(5)}
                       </span>
                     )}
                     <button onClick={() => toggleExpandTask(task.id)} className="p-1 rounded hover:bg-gray-100 shrink-0 transition-colors">
