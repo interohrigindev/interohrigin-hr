@@ -50,7 +50,8 @@ export default function PublicApply() {
   const [step, setStep] = useState<PageStep>('detail')
   const [submitting, setSubmitting] = useState(false)
 
-  const [form, setForm] = useState({ name: '', email: '', phone: '', cover_letter_text: '' })
+  const isAgency = source === 'agency' || source === 'headhunter'
+  const [form, setForm] = useState({ name: '', email: '', phone: '', cover_letter_text: '', agency_name: '', agency_contact: '', agency_email: '' })
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [coverLetterFile, setCoverLetterFile] = useState<File | null>(null)
   const [error, setError] = useState('')
@@ -70,6 +71,9 @@ export default function PublicApply() {
     setError('')
     if (!form.name.trim() || !form.email.trim()) { setError('이름과 이메일은 필수입니다.'); return }
     if (!resumeFile) { setError('이력서를 업로드해주세요.'); return }
+    if (isAgency && (!form.agency_name.trim() || !form.agency_contact.trim() || !form.agency_email.trim())) {
+      setError('업체명, 담당자명, 담당자 이메일은 필수입니다.'); return
+    }
 
     setSubmitting(true)
     try {
@@ -97,7 +101,9 @@ export default function PublicApply() {
         p_email: form.email,
         p_phone: form.phone || null,
         p_source_channel: source,
-        p_source_detail: ref || null,
+        p_source_detail: isAgency
+          ? JSON.stringify({ agency: form.agency_name, contact: form.agency_contact, email: form.agency_email })
+          : (ref || null),
         p_resume_url: resumePath,
         p_cover_letter_url: coverLetterPath,
         p_cover_letter_text: form.cover_letter_text || null,
@@ -129,8 +135,14 @@ export default function PublicApply() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md text-center">
           <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-gray-900 mb-2">지원이 완료되었습니다!</h1>
-          <p className="text-gray-500">{form.name}님, 지원해주셔서 감사합니다.<br />검토 후 별도로 연락드리겠습니다.</p>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">
+            {isAgency ? '후보자 추천이 완료되었습니다!' : '지원이 완료되었습니다!'}
+          </h1>
+          <p className="text-gray-500">
+            {isAgency
+              ? `${form.agency_name} 담당자님, 후보자 ${form.name}님의 추천이 접수되었습니다. 사전질의서 링크가 후보자 이메일로 발송될 예정입니다.`
+              : `${form.name}님, 지원해주셔서 감사합니다. 검토 후 별도로 연락드리겠습니다.`}
+          </p>
         </div>
       </div>
     )
@@ -152,12 +164,46 @@ export default function PublicApply() {
           </div>
 
           <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg p-6 space-y-5">
-            <h2 className="text-lg font-semibold text-gray-900">지원서 작성</h2>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {isAgency ? '후보자 추천 (파견/헤드헌터)' : '지원서 작성'}
+            </h2>
+
+            {isAgency && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                파견업체/헤드헌터를 통한 후보자 추천입니다. 후보자 정보와 함께 업체 정보를 입력해주세요.
+              </div>
+            )}
 
             {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">{error}</div>}
 
+            {/* 파견업체 정보 (agency/headhunter일 때만) */}
+            {isAgency && (
+              <div className="bg-gray-50 rounded-xl p-4 space-y-3 border border-gray-200">
+                <p className="text-sm font-semibold text-gray-700">업체 정보</p>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">업체명 *</label>
+                  <input type="text" value={form.agency_name} onChange={(e) => updateForm('agency_name', e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none" placeholder="파견업체/헤드헌팅 회사명" required />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">담당자명 *</label>
+                    <input type="text" value={form.agency_contact} onChange={(e) => updateForm('agency_contact', e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none" placeholder="담당자 이름" required />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">담당자 이메일 *</label>
+                    <input type="email" value={form.agency_email} onChange={(e) => updateForm('agency_email', e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none" placeholder="agency@company.com" required />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <p className="text-sm font-semibold text-gray-700">{isAgency ? '후보자 정보' : ''}</p>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">이름 *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{isAgency ? '후보자 이름' : '이름'} *</label>
               <input type="text" value={form.name} onChange={(e) => updateForm('name', e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none" placeholder="홍길동" required />
             </div>
@@ -197,7 +243,7 @@ export default function PublicApply() {
 
             <button type="submit" disabled={submitting}
               className="w-full bg-brand-600 text-white rounded-lg py-3 font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
-              {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> 제출 중...</> : '지원서 제출'}
+              {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> 제출 중...</> : isAgency ? '후보자 추천 제출' : '지원서 제출'}
             </button>
 
             <p className="text-xs text-gray-400 text-center">제출하신 개인정보는 채용 목적으로만 사용되며, 채용 절차 종료 후 파기됩니다.</p>
