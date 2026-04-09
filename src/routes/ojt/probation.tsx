@@ -75,6 +75,7 @@ interface EmployeeBasic {
   job_type: string | null
   hire_date: string | null
   employment_type: string | null
+  position: string | null
 }
 
 interface EvalWithEmployee extends ProbationEvaluation {
@@ -120,7 +121,7 @@ export default function ProbationManage() {
     setLoading(true)
     const [evalRes, empRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, name, department_id, job_type, hire_date, employment_type').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, department_id, job_type, hire_date, employment_type, position').eq('is_active', true).order('name'),
     ])
 
     if (empRes.data) setEmployees(empRes.data)
@@ -366,7 +367,7 @@ ${evalsSummary}
         <Select
           value={filterEmployee}
           onChange={(e) => setFilterEmployee(e.target.value)}
-          options={[{ value: '', label: '전체 직원' }, ...employees.filter((e) => e.employment_type === 'probation').map((e) => ({ value: e.id, label: e.name }))]}
+          options={[{ value: '', label: '전체 직원' }, ...employees.filter((e) => e.employment_type === 'probation' || (e.position && e.position.includes('수습'))).map((e) => ({ value: e.id, label: e.name }))]}
           placeholder="수습 직원 선택"
         />
       </div>
@@ -548,7 +549,7 @@ ${evalsSummary}
                 label="직원 *"
                 value={selectedEmployeeId}
                 onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                options={employees.filter((e) => e.employment_type === 'probation').map((e) => ({ value: e.id, label: e.name }))}
+                options={employees.filter((e) => e.employment_type === 'probation' || (e.position && e.position.includes('수습'))).map((e) => ({ value: e.id, label: e.name }))}
                 placeholder="수습 직원 선택"
               />
               <Select
