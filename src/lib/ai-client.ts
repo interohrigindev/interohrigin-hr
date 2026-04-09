@@ -137,6 +137,9 @@ export async function transcribeAudio(
     punctuate: 'true',
   })
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000) // 5분 타임아웃
+
   const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
     method: 'POST',
     headers: {
@@ -144,7 +147,8 @@ export async function transcribeAudio(
       'Content-Type': audioBlob.type || 'audio/webm',
     },
     body: audioBlob,
-  })
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout))
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as Record<string, any>

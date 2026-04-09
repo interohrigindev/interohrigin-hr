@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  Mic, Download, Clock, Users, ChevronDown, ChevronUp, Loader2, Trash2,
+  Mic, MicOff, Download, Clock, Users, ChevronDown, ChevronUp, Loader2, Trash2,
   FileText, AlertTriangle, CheckCircle, ListChecks, MessageSquare, Upload, RefreshCw,
-  Share2, UserPlus, X,
+  Share2, UserPlus, X, Square,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -120,6 +120,249 @@ export default function MeetingNotes() {
   const [shareSearch, setShareSearch] = useState('')
   const [selectedShareIds, setSelectedShareIds] = useState<string[]>([])
   const [sharing, setSharing] = useState(false)
+
+  // ─── 내부 녹음 상태 ─────────────────────────────────────────
+  const CHUNK_DURATION_MS = 30 * 60 * 1000 // 30분
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingElapsed, setRecordingElapsed] = useState(0) // 초
+  const [recordingChunks, setRecordingChunks] = useState<{ part: number; blob: Blob; duration: number }[]>([])
+  const [recordingTitle, setRecordingTitle] = useState('')
+  const [recordingParticipants, setRecordingParticipants] = useState<string[]>([])
+  const [showRecordSetup, setShowRecordSetup] = useState(false)
+  const [recordingProcessing, setRecordingProcessing] = useState(false)
+  const [recordingSearch, setRecordingSearch] = useState('')
+  const [sttProgress, setSttProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 })
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const chunkDataRef = useRef<Blob[]>([])
+  const chunkStartRef = useRef(0)
+  const chunkPartRef = useRef(1)
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const chunkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 백그라운드 STT 결과 저장
+  const sttResultsRef = useRef<Map<number, { text: string; segments: any[]; durationSeconds: number }>>(new Map())
+
+  // 청크 완성 시 백그라운드 STT 실행
+  const runBackgroundStt = useCallback(async (partNum: number, blob: Blob) => {
+    try {
+      const { data: cfg } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'deepgram').limit(1).single()
+      if (!cfg?.api_key) return
+      const result = await transcribeAudio(cfg.api_key, blob, 'ko')
+      sttResultsRef.current.set(partNum, result)
+      setSttProgress((prev) => ({ ...prev, done: prev.done + 1 }))
+    } catch {
+      // STT 실패해도 녹음은 계속 — 나중에 재처리
+    }
+  }, [])
+
+  // 녹음 시작
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaStreamRef.current = stream
+      chunkPartRef.current = 1
+      sttResultsRef.current = new Map()
+      setRecordingChunks([])
+      setRecordingElapsed(0)
+      setSttProgress({ done: 0, total: 0 })
+
+      const startChunk = () => {
+        chunkDataRef.current = []
+        chunkStartRef.current = Date.now()
+        const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+        mediaRecorderRef.current = recorder
+
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunkDataRef.current.push(e.data)
+        }
+
+        recorder.onstop = () => {
+          const blob = new Blob(chunkDataRef.current, { type: 'audio/webm' })
+          const duration = Math.round((Date.now() - chunkStartRef.current) / 1000)
+          if (blob.size > 0 && duration > 1) {
+            const partNum = chunkPartRef.current
+            setRecordingChunks((prev) => [...prev, { part: partNum, blob, duration }])
+            // 즉시 백그라운드 STT 시작
+            setSttProgress((prev) => ({ ...prev, total: prev.total + 1 }))
+            runBackgroundStt(partNum, blob)
+            chunkPartRef.current++
+          }
+        }
+
+        recorder.start(1000) // 1초마다 ondataavailable
+
+        // 30분 후 자동 분할
+        chunkTimerRef.current = setTimeout(() => {
+          if (recorder.state === 'recording') {
+            recorder.stop()
+            // 다음 청크 바로 시작 (끊김 최소화)
+            setTimeout(() => {
+              if (mediaStreamRef.current && mediaStreamRef.current.active) {
+                startChunk()
+              }
+            }, 50)
+          }
+        }, CHUNK_DURATION_MS)
+      }
+
+      startChunk()
+      setIsRecording(true)
+
+      // 경과 시간 타이머
+      const startTime = Date.now()
+      elapsedTimerRef.current = setInterval(() => {
+        setRecordingElapsed(Math.floor((Date.now() - startTime) / 1000))
+      }, 1000)
+
+      toast('녹음이 시작되었습니다.', 'success')
+    } catch {
+      toast('마이크 접근 권한이 필요합니다.', 'error')
+    }
+  }, [toast, runBackgroundStt])
+
+  // 녹음 중지
+  const stopRecording = useCallback(() => {
+    if (chunkTimerRef.current) { clearTimeout(chunkTimerRef.current); chunkTimerRef.current = null }
+    if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop())
+      mediaStreamRef.current = null
+    }
+    setIsRecording(false)
+  }, [])
+
+  // 녹음 완료 후 업로드 + 분석 처리 (백그라운드 STT 결과 활용)
+  const processRecordingChunks = useCallback(async () => {
+    if (!profile?.id || recordingChunks.length === 0) return
+    setRecordingProcessing(true)
+    const title = recordingTitle.trim() || `내부 녹음 ${new Date().toLocaleDateString('ko-KR')}`
+    const now = new Date().toISOString()
+    let meetingId: string | null = null
+
+    try {
+      // 1. DB 레코드 생성
+      const totalSize = recordingChunks.reduce((s, c) => s + c.blob.size, 0)
+      const totalDuration = recordingChunks.reduce((s, c) => s + c.duration, 0)
+      const { data: meeting, error: dbErr } = await supabase
+        .from('meeting_records')
+        .insert({
+          title,
+          recorded_by: profile.id,
+          participant_ids: recordingParticipants,
+          file_size_bytes: totalSize,
+          duration_seconds: totalDuration,
+          status: 'transcribing',
+          created_at: now,
+        })
+        .select().single()
+      if (dbErr || !meeting) throw new Error('회의 생성 실패: ' + (dbErr?.message || ''))
+      meetingId = meeting.id
+
+      // 2. Deepgram API 키 확보
+      const { data: deepgramCfg } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'deepgram').limit(1).single()
+      const deepgramKey = deepgramCfg?.api_key
+      if (!deepgramKey) throw new Error('Deepgram API 키가 없습니다.')
+
+      const allTranscripts: string[] = []
+      const allSegments: any[] = []
+      let totalSttDuration = 0
+      let firstUploadUrl = ''
+
+      for (let i = 0; i < recordingChunks.length; i++) {
+        const chunk = recordingChunks[i]
+        const suffix = recordingChunks.length > 1 ? `_part${chunk.part}` : ''
+        const filePath = `${profile.id}/${meeting.id}${suffix}.webm`
+
+        // Storage 업로드
+        await supabase.storage
+          .from('meeting-recordings')
+          .upload(filePath, chunk.blob, { contentType: 'audio/webm' })
+        if (i === 0) {
+          const { data: urlData } = supabase.storage.from('meeting-recordings').getPublicUrl(filePath)
+          firstUploadUrl = urlData.publicUrl
+        }
+
+        // 백그라운드 STT 결과가 이미 있으면 재사용, 없으면 지금 실행
+        let sttResult = sttResultsRef.current.get(chunk.part)
+        if (!sttResult) {
+          sttResult = await transcribeAudio(deepgramKey, chunk.blob, 'ko')
+        }
+
+        const timeOffset = i > 0 ? recordingChunks.slice(0, i).reduce((s, c) => s + c.duration, 0) : 0
+        allTranscripts.push(sttResult.text)
+        allSegments.push(...sttResult.segments.map((seg: any) => ({
+          ...seg,
+          start: seg.start + timeOffset,
+          end: seg.end + timeOffset,
+        })))
+        totalSttDuration += sttResult.durationSeconds
+      }
+
+      const fullText = allTranscripts.join('\n\n--- 파트 구분 ---\n\n')
+
+      // STT 결과 저장
+      await supabase.from('meeting_records').update({
+        recording_url: firstUploadUrl,
+        transcription: fullText,
+        transcription_segments: allSegments,
+        duration_seconds: totalSttDuration || totalDuration,
+        stt_cost: Math.round((totalSttDuration / 60) * DEEPGRAM_COST_PER_MIN * 10000) / 10000,
+        status: 'summarizing',
+      }).eq('id', meeting.id)
+
+      // 3. AI 요약 (전체 텍스트)
+      const { data: geminiCfg } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'gemini').limit(1).single()
+      const geminiKey = geminiCfg?.api_key
+
+      let summary = ''
+      let actionItems: string[] = []
+      let decisions: string[] = []
+      if (geminiKey && fullText) {
+        const result = await summarizeMeeting(geminiKey, title, fullText)
+        summary = result.summary
+        actionItems = result.actionItems
+        decisions = result.decisions
+      }
+
+      await supabase.from('meeting_records').update({
+        summary, action_items: actionItems, decisions,
+        status: 'completed', error_message: null,
+      }).eq('id', meeting.id)
+
+      toast('녹음 업로드 + 분석 완료!', 'success')
+      setRecordingChunks([])
+      setRecordingTitle('')
+      setRecordingParticipants([])
+      setSttProgress({ done: 0, total: 0 })
+      sttResultsRef.current = new Map()
+      setShowRecordSetup(false)
+      fetchData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '처리 실패'
+      toast(msg, 'error')
+      if (meetingId) {
+        await supabase.from('meeting_records').update({ status: 'error', error_message: msg }).eq('id', meetingId)
+      }
+      fetchData()
+    } finally {
+      setRecordingProcessing(false)
+    }
+  }, [profile, recordingChunks, recordingTitle, recordingParticipants, toast])
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current)
+      if (chunkTimerRef.current) clearTimeout(chunkTimerRef.current)
+      if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach((t) => t.stop())
+    }
+  }, [])
 
   useEffect(() => { fetchData() }, [])
 
@@ -447,16 +690,34 @@ export default function MeetingNotes() {
             className="hidden"
             onChange={handleFileSelect}
           />
+          {!isRecording ? (
+            <Button
+              size="sm"
+              onClick={startRecording}
+              disabled={uploading || recordingProcessing}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              <Mic className="h-3.5 w-3.5 mr-1" /> 녹음 시작
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => { stopRecording(); setShowRecordSetup(true) }}
+              className="bg-gray-800 hover:bg-gray-900 text-white animate-pulse"
+            >
+              <Square className="h-3.5 w-3.5 mr-1" /> 녹음 중지
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
             onClick={() => uploadInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || isRecording}
           >
             {uploading ? (
               <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 분석 중...</>
             ) : (
-              <><Upload className="h-3.5 w-3.5 mr-1" /> 녹음 파일 업로드</>
+              <><Upload className="h-3.5 w-3.5 mr-1" /> 파일 업로드</>
             )}
           </Button>
           <div className="flex items-center gap-3 text-sm text-gray-500">
@@ -466,6 +727,52 @@ export default function MeetingNotes() {
           </div>
         </div>
       </div>
+
+      {/* 녹음 진행 상태 바 */}
+      {isRecording && (
+        <div className="flex items-center gap-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+            </span>
+            <span className="text-sm font-bold text-red-700">녹음 중</span>
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-3 text-sm text-red-600">
+              <span className="font-mono font-bold text-lg">
+                {String(Math.floor(recordingElapsed / 3600)).padStart(2, '0')}:
+                {String(Math.floor((recordingElapsed % 3600) / 60)).padStart(2, '0')}:
+                {String(recordingElapsed % 60).padStart(2, '0')}
+              </span>
+              <span className="text-xs text-red-500">
+                파트 {Math.floor(recordingElapsed / (30 * 60)) + 1} 녹음 중
+                {recordingChunks.length > 0 && ` · ${recordingChunks.length}개 파트 저장`}
+                {sttProgress.total > 0 && (
+                  <span className="ml-1 text-green-600">
+                    · STT {sttProgress.done}/{sttProgress.total} 완료
+                  </span>
+                )}
+              </span>
+            </div>
+            {/* 30분 구간 진행률 */}
+            <div className="mt-1.5 h-1.5 bg-red-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-red-500 rounded-full transition-all"
+                style={{ width: `${((recordingElapsed % (30 * 60)) / (30 * 60)) * 100}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-red-400 mt-0.5">30분마다 자동 분할 저장</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => { stopRecording(); setShowRecordSetup(true) }}
+            className="bg-gray-800 hover:bg-gray-900 text-white shrink-0"
+          >
+            <Square className="h-3.5 w-3.5 mr-1" /> 녹음 종료
+          </Button>
+        </div>
+      )}
 
       {/* 14일 보관 안내 */}
       <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -936,6 +1243,102 @@ export default function MeetingNotes() {
             <Button variant="outline" onClick={() => setUploadDialog({ open: false, file: null })}>취소</Button>
             <Button onClick={handleFileUpload} disabled={!uploadTitle.trim()}>
               <Upload className="h-4 w-4 mr-1" /> 업로드 및 분석
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* 녹음 완료 → 설정 다이얼로그 */}
+      <Dialog open={showRecordSetup && !isRecording && recordingChunks.length > 0} onClose={() => setShowRecordSetup(false)} title="녹음 완료 — 저장 설정">
+        <div className="space-y-4">
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-green-700">
+                <CheckCircle className="h-4 w-4" />
+                <span className="font-medium">
+                  {recordingChunks.length}개 파트 · 총 {Math.round(recordingChunks.reduce((s, c) => s + c.duration, 0) / 60)}분 녹음
+                </span>
+              </div>
+              {sttProgress.total > 0 && (
+                <span className="text-xs font-medium text-blue-600">
+                  STT 사전 처리: {sttProgress.done}/{sttProgress.total} 완료
+                  {sttProgress.done === sttProgress.total && ' ✓'}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {recordingChunks.map((c) => {
+                const hasStt = sttResultsRef.current.has(c.part)
+                return (
+                  <Badge key={c.part} variant="default" className={`text-[10px] ${hasStt ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                    파트 {c.part}: {Math.round(c.duration / 60)}분 ({(c.blob.size / 1024 / 1024).toFixed(1)}MB)
+                    {hasStt && ' · STT ✓'}
+                  </Badge>
+                )
+              })}
+            </div>
+          </div>
+
+          <Input
+            id="record-title"
+            label="회의명 *"
+            value={recordingTitle}
+            onChange={(e) => setRecordingTitle(e.target.value)}
+            placeholder="예: 주간 팀 미팅"
+          />
+
+          {/* 참석자 선택 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">참석자</label>
+            <div className="relative mb-2">
+              <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+                placeholder="이름으로 검색..."
+                value={recordingSearch}
+                onChange={(e) => setRecordingSearch(e.target.value)}
+              />
+            </div>
+            {recordingParticipants.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {recordingParticipants.map((id) => (
+                  <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-brand-100 text-brand-700 rounded-full text-xs">
+                    {employees.find((e) => e.id === id)?.name || id}
+                    <button onClick={() => setRecordingParticipants((prev) => prev.filter((x) => x !== id))} className="hover:text-brand-900">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="max-h-36 overflow-y-auto border rounded-lg divide-y divide-gray-100">
+              {employees
+                .filter((e) => !recordingSearch || e.name.includes(recordingSearch))
+                .map((e) => {
+                  const isSelected = recordingParticipants.includes(e.id)
+                  return (
+                    <button
+                      key={e.id}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-50 ${isSelected ? 'bg-brand-50' : ''}`}
+                      onClick={() => setRecordingParticipants((prev) => isSelected ? prev.filter((x) => x !== e.id) : [...prev, e.id])}
+                    >
+                      <span className={isSelected ? 'text-brand-700 font-medium' : 'text-gray-700'}>{e.name}</span>
+                      {isSelected && <CheckCircle className="h-4 w-4 text-brand-600" />}
+                    </button>
+                  )
+                })}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => { setShowRecordSetup(false); setRecordingChunks([]) }}>취소 (녹음 삭제)</Button>
+            <Button onClick={processRecordingChunks} disabled={recordingProcessing || !recordingTitle.trim()}>
+              {recordingProcessing ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
+              ) : (
+                <><Upload className="h-4 w-4 mr-1" /> 저장 및 분석</>
+              )}
             </Button>
           </div>
         </div>
