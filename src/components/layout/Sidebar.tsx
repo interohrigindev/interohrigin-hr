@@ -112,6 +112,12 @@ const standaloneItems: NavItem[] = [
     hideForRoles: ['employee', 'leader'] as EmployeeRole[],
   },
   {
+    to: '/employee-signal',
+    label: '직원 신호등',
+    icon: <Users className="h-5 w-5" />,
+    hideForRoles: ['employee', 'leader'] as EmployeeRole[],
+  },
+  {
     to: '/bulletin',
     label: '게시판',
     icon: <FileText className="h-5 w-5" />,
