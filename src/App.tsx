@@ -49,6 +49,9 @@ import MessengerPage from '@/routes/messenger/index'
 // IO AI
 import IOAIPage from '@/routes/io-ai/index'
 
+// CEO 리포트
+import CEOReport from '@/routes/ceo-report'
+
 // 프로젝트 & 업무 (통합)
 import UnifiedDashboard from '@/routes/projects/unified-dashboard'
 import ProjectBoardPage from '@/routes/projects/index'
@@ -206,6 +209,9 @@ function App() {
 
               {/* IO AI */}
               <Route path="io-ai" element={<IOAIPage />} />
+
+              {/* CEO 리포트 */}
+              <Route path="ceo-report" element={<CEOReport />} />
 
               {/* 사내 메신저 (하위호환) */}
               <Route path="messenger" element={<MessengerPage />} />

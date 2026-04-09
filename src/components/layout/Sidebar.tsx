@@ -106,6 +106,12 @@ const standaloneItems: NavItem[] = [
     icon: <Sparkles className="h-5 w-5" />,
   },
   {
+    to: '/ceo-report',
+    label: 'CEO 리포트',
+    icon: <BarChart3 className="h-5 w-5" />,
+    hideForRoles: ['employee', 'leader'] as EmployeeRole[],
+  },
+  {
     to: '/bulletin',
     label: '게시판',
     icon: <FileText className="h-5 w-5" />,
