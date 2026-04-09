@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2 } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -610,6 +610,76 @@ ${fileInfo}
     setResendingSurvey(false)
   }
 
+  // 사전질의서 인쇄
+  function handlePrintSurvey() {
+    if (!candidate || !candidate.pre_survey_data) return
+    const surveyData = candidate.pre_survey_data as {
+      answers?: Record<string, string>
+      meta?: { birth_date?: string; mbti?: string; hanja_name?: string; blood_type?: string }
+      completed_at?: string
+    }
+
+    const metaRows: string[] = []
+    if (surveyData.meta?.birth_date) metaRows.push(`<td><strong>생년월일</strong><br/>${surveyData.meta.birth_date}</td>`)
+    if (surveyData.meta?.mbti) metaRows.push(`<td><strong>MBTI</strong><br/>${surveyData.meta.mbti}</td>`)
+    if (surveyData.meta?.hanja_name) metaRows.push(`<td><strong>한자 이름</strong><br/>${surveyData.meta.hanja_name}</td>`)
+    if (surveyData.meta?.blood_type) metaRows.push(`<td><strong>혈액형</strong><br/>${surveyData.meta.blood_type}형</td>`)
+
+    let qaHtml = ''
+    if (surveyData.answers && Object.keys(surveyData.answers).length > 0) {
+      if (surveyQuestions.length > 0) {
+        qaHtml = surveyQuestions.map((q, i) => {
+          const ans = surveyData.answers?.[q.id] || '미응답'
+          return `<div class="qa"><p class="q">Q${i + 1}. ${q.question}${q.required ? ' <span style="color:red">*</span>' : ''}</p><p class="a">${ans}</p></div>`
+        }).join('')
+      } else {
+        qaHtml = Object.entries(surveyData.answers).map(([, answer], i) =>
+          `<div class="qa"><p class="q">질문 ${i + 1}</p><p class="a">${answer}</p></div>`
+        ).join('')
+      }
+    }
+
+    let insightHtml = ''
+    if (candidate.pre_survey_analysis && (candidate.pre_survey_analysis as Record<string, unknown>).survey_insights) {
+      insightHtml = `<div class="insight"><p class="insight-title">AI 질의서 분석 인사이트</p><p>${(candidate.pre_survey_analysis as Record<string, unknown>).survey_insights}</p></div>`
+    }
+
+    const completedAt = surveyData.completed_at ? `<p class="completed">응답 완료: ${formatDate(surveyData.completed_at, 'yyyy.MM.dd HH:mm')}</p>` : ''
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>사전질의서 - ${candidate.name}</title>
+<style>
+  @page { margin: 20mm; }
+  body { font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; color: #1a1a1a; line-height: 1.6; max-width: 700px; margin: 0 auto; }
+  h1 { font-size: 20px; border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: #666; margin-bottom: 24px; }
+  .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  .meta-table td { border: 1px solid #ddd; padding: 10px 14px; text-align: center; font-size: 13px; }
+  .meta-table strong { display: block; font-size: 11px; color: #666; margin-bottom: 2px; }
+  .qa { background: #f8f8f8; border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; }
+  .q { font-size: 12px; font-weight: 600; color: #444; margin: 0 0 4px 0; }
+  .a { font-size: 14px; margin: 0; white-space: pre-wrap; }
+  .insight { background: #f0f7ff; border: 1px solid #c8ddf5; border-radius: 6px; padding: 12px 16px; margin-top: 20px; }
+  .insight-title { font-size: 12px; font-weight: 600; color: #2563eb; margin: 0 0 4px 0; }
+  .insight p:last-child { font-size: 13px; margin: 0; }
+  .completed { font-size: 11px; color: #999; text-align: right; margin-top: 16px; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head><body>
+  <h1>사전 질의서</h1>
+  <p class="sub">${candidate.name} · ${candidate.email || ''}</p>
+  ${metaRows.length > 0 ? `<table class="meta-table"><tr>${metaRows.join('')}</tr></table>` : ''}
+  ${qaHtml}
+  ${insightHtml}
+  ${completedAt}
+</body></html>`
+
+    const printWindow = window.open('', '_blank')
+    if (printWindow) {
+      printWindow.document.write(html)
+      printWindow.document.close()
+      printWindow.onload = () => printWindow.print()
+    }
+  }
+
   // 사전질의서 포함 AI 재분석
   async function runSurveyInclusiveAnalysis() {
     if (!candidate || !candidate.pre_survey_data) return
@@ -926,6 +996,9 @@ ${surveyText || '응답 없음'}
                     <ClipboardList className="h-4 w-4" /> 사전 질의서 응답
                   </CardTitle>
                   <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={handlePrintSurvey}>
+                      <Printer className="h-3 w-3 mr-1" /> 인쇄
+                    </Button>
                     <Button size="sm" variant="outline" onClick={handleResendSurvey} disabled={resendingSurvey}>
                       {resendingSurvey ? (
                         <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 발송 중...</>
