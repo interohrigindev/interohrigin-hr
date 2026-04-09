@@ -367,7 +367,7 @@ ${evalsSummary}
         <Select
           value={filterEmployee}
           onChange={(e) => setFilterEmployee(e.target.value)}
-          options={[{ value: '', label: '전체 직원' }, ...employees.filter((e) => e.employment_type === 'probation' || (e.position && e.position.includes('수습'))).map((e) => ({ value: e.id, label: e.name }))]}
+          options={[{ value: '', label: '전체 직원' }, ...employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습')).map((e) => ({ value: e.id, label: e.name }))]}
           placeholder="수습 직원 선택"
         />
       </div>
@@ -549,7 +549,7 @@ ${evalsSummary}
                 label="직원 *"
                 value={selectedEmployeeId}
                 onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                options={employees.filter((e) => e.employment_type === 'probation' || (e.position && e.position.includes('수습'))).map((e) => ({ value: e.id, label: e.name }))}
+                options={employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습')).map((e) => ({ value: e.id, label: e.name }))}
                 placeholder="수습 직원 선택"
               />
               <Select
