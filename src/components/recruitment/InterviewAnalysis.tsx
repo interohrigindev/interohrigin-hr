@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   Video, Mic, Upload, Loader2, Sparkles, ChevronDown, ChevronUp,
-  Clock, MessageSquare, CheckCircle, Trash2, AlertTriangle, FileVideo, FileAudio,
+  Clock, MessageSquare, CheckCircle, Trash2, AlertTriangle, FileVideo, FileAudio, FileText,
   Cloud, Download, Play,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -228,12 +228,27 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         body: JSON.stringify({ driveFileId: driveFile.id }),
       })
 
+      // Google Docs(Gemini 회의록)인 경우 → 텍스트 기반 분석
+      const contentType = res.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) {
+        const result = await res.json()
+        if (result.type === 'document' && result.text) {
+          // 회의록 텍스트로 바로 분석 진행
+          setDriveFiles((prev) => { const next = { ...prev }; delete next[key]; return next })
+          setDriveDownloading(null)
+          await handleAnalyzeFromMeetingNotes(group, result.text, driveFile.name)
+          return
+        }
+        if (!res.ok) throw new Error(result.error || '다운로드 실패')
+      }
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: '다운로드 실패' }))
         throw new Error(err.error || '다운로드 실패')
       }
 
       const blob = await res.blob()
+
       const dotIdx = driveFile.name.lastIndexOf('.')
       const ext = dotIdx > 0 && dotIdx > driveFile.name.length - 6
         ? driveFile.name.slice(dotIdx + 1).replace(/[^a-zA-Z0-9]/g, '')
@@ -276,6 +291,118 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
       toast('파일 가져오기 실패: ' + err.message, 'error')
     }
     setDriveDownloading(null)
+  }
+
+  // Gemini 회의록 텍스트 기반 면접 분석
+  async function handleAnalyzeFromMeetingNotes(group: InterviewGroup, meetingText: string, fileName: string) {
+    const groupKey = group.schedule?.id || 'new'
+    setAnalyzingId(groupKey)
+
+    try {
+      const aiConfig = await getAIConfigForFeature('interview_transcription')
+      if (!aiConfig) { toast('AI 설정이 필요합니다.', 'error'); setAnalyzingId(null); return }
+
+      // 이전 에러 레코드 삭제
+      if (group.analysis?.status === 'error') {
+        await supabase.from('interview_analyses').delete().eq('id', group.analysis.id)
+      }
+
+      // 지원자 컨텍스트 수집
+      const [candRes, analysisRes, talentRes, prevAnalysesRes] = await Promise.all([
+        supabase.from('candidates').select('*, job_postings(title, description, requirements)').eq('id', candidateId).single(),
+        supabase.from('resume_analysis').select('ai_summary, strengths, weaknesses, recommendation').eq('candidate_id', candidateId).order('created_at', { ascending: false }).limit(1).single(),
+        supabase.from('talent_profiles').select('name, traits, skills, values').eq('is_active', true),
+        supabase.from('interview_analyses').select('interview_type, ai_summary, overall_score, strengths, concerns').eq('candidate_id', candidateId).eq('status', 'completed'),
+      ])
+
+      const cand = candRes.data
+      const context: Record<string, string> = {}
+      if (cand?.job_postings) {
+        const jp = cand.job_postings as any
+        if (jp.title) context.postingTitle = jp.title
+        if (jp.requirements) context.postingRequirements = `${jp.description || ''}\n\n자격요건:\n${jp.requirements || ''}`
+      }
+      if (analysisRes.data) {
+        const ra = analysisRes.data
+        context.resumeSummary = `${ra.ai_summary || ''}\n강점: ${(ra.strengths || []).join(', ')}\n약점: ${(ra.weaknesses || []).join(', ')}`
+      }
+      if (cand?.pre_survey_data) {
+        const survey = cand.pre_survey_data as any
+        if (survey.answers) context.surveyAnswers = Object.entries(survey.answers).map(([k, v]) => `${k}: ${v}`).join('\n')
+      }
+      if (talentRes.data && talentRes.data.length > 0) {
+        context.talentProfiles = talentRes.data.map((t: any) =>
+          `${t.name}: 특성=${(t.traits || []).join(',')}, 역량=${(t.skills || []).join(',')}, 가치=${(t.values || []).join(',')}`
+        ).join('\n')
+      }
+      if (prevAnalysesRes.data && prevAnalysesRes.data.length > 0) {
+        context.previousAnalysis = prevAnalysesRes.data.map((a: any) =>
+          `${a.interview_type === 'video' ? '화상' : '대면'}면접 (${a.overall_score}점): ${a.ai_summary || ''}`
+        ).join('\n')
+      }
+
+      // 분석 레코드 생성 (recording_id 없이)
+      const { data: analysisRecord, error: createErr } = await supabase
+        .from('interview_analyses')
+        .insert({
+          candidate_id: candidateId,
+          schedule_id: group.schedule?.id || null,
+          interview_type: group.type,
+          status: 'transcribing',
+          ai_provider: aiConfig.provider,
+          ai_model: aiConfig.model,
+        })
+        .select().single()
+      if (createErr) throw createErr
+
+      // /api/transcribe 호출 (텍스트 모드)
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meetingNotesText: meetingText,
+          apiKey: aiConfig.apiKey,
+          model: aiConfig.model,
+          candidateName,
+          interviewType: group.type,
+          context,
+        }),
+      })
+
+      let result: any
+      try { result = JSON.parse(await res.text()) } catch {
+        await supabase.from('interview_analyses').update({ status: 'error', error_message: '서버 응답 파싱 실패' }).eq('id', analysisRecord.id)
+        throw new Error('서버 응답 파싱 실패')
+      }
+
+      if (!res.ok || !result.success) {
+        const errMsg = result.error || '분석 실패'
+        await supabase.from('interview_analyses').update({ status: 'error', error_message: errMsg }).eq('id', analysisRecord.id)
+        throw new Error(errMsg)
+      }
+
+      const a = result.analysis
+      await supabase.from('interview_analyses').update({
+        transcription: a.transcription || meetingText,
+        ai_summary: a.overall_impression,
+        key_answers: a.key_answers || [],
+        communication_score: a.communication_score,
+        expertise_score: a.expertise_score,
+        attitude_score: a.attitude_score,
+        overall_score: a.overall_score,
+        strengths: a.strengths || [],
+        concerns: a.concerns || [],
+        overall_impression: a.overall_impression,
+        status: 'completed',
+        analyzed_at: new Date().toISOString(),
+      }).eq('id', analysisRecord.id)
+
+      toast('회의록 기반 면접 분석이 완료되었습니다.', 'success')
+      fetchData()
+    } catch (err: any) {
+      toast('분석 오류: ' + err.message, 'error')
+    }
+    setAnalyzingId(null)
   }
 
   /* ─── 파일 업로드 (화상/대면 공통) ─────────────── */
@@ -777,40 +904,56 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
                       {driveFiles[key]?.length > 0 && (
                         <div className="p-3 bg-blue-50 rounded-lg space-y-2">
                           <p className="text-xs font-medium text-blue-700">
-                            Google Drive 녹화 파일 ({driveFiles[key].length}개)
+                            Google Drive 파일 ({driveFiles[key].length}개)
                           </p>
                           <p className="text-[10px] text-blue-500">
-                            녹화 파일은 회의 종료 후 2~5분 뒤에 Google Drive에 저장됩니다.
+                            녹화 파일 또는 Gemini 회의록을 선택하여 분석하세요.
                           </p>
-                          {driveFiles[key].map((file) => (
-                            <div
-                              key={file.id}
-                              className="flex items-center justify-between p-2 bg-white rounded border border-blue-100"
-                            >
-                              <div className="flex items-center gap-2 text-sm min-w-0">
-                                <FileVideo className="h-4 w-4 text-blue-500 shrink-0" />
-                                <span className="truncate">{file.name}</span>
-                                <span className="text-xs text-gray-400 shrink-0">
-                                  ({Math.round(parseInt(file.size) / 1024 / 1024)}MB)
-                                </span>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() => handleFetchFromDrive(group, file)}
-                                disabled={!!driveDownloading}
+                          {driveFiles[key].map((file) => {
+                            const isDoc = file.mimeType === 'application/vnd.google-apps.document'
+                            return (
+                              <div
+                                key={file.id}
+                                className={`flex items-center justify-between p-2 bg-white rounded border ${isDoc ? 'border-purple-200' : 'border-blue-100'}`}
                               >
-                                {driveDownloading === key ? (
-                                  <>
-                                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 가져오는 중...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Download className="h-3.5 w-3.5 mr-1" /> 가져오기
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                          ))}
+                                <div className="flex items-center gap-2 text-sm min-w-0">
+                                  {isDoc ? (
+                                    <FileText className="h-4 w-4 text-purple-500 shrink-0" />
+                                  ) : (
+                                    <FileVideo className="h-4 w-4 text-blue-500 shrink-0" />
+                                  )}
+                                  <span className="truncate">{file.name}</span>
+                                  {isDoc ? (
+                                    <span className="text-[10px] text-purple-500 shrink-0 bg-purple-50 px-1.5 py-0.5 rounded">회의록</span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 shrink-0">
+                                      ({Math.round(parseInt(file.size) / 1024 / 1024)}MB)
+                                    </span>
+                                  )}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleFetchFromDrive(group, file)}
+                                  disabled={!!driveDownloading || !!analyzingId}
+                                >
+                                  {(driveDownloading === key || analyzingId === key) ? (
+                                    <>
+                                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                                      {analyzingId === key ? '분석 중...' : '가져오는 중...'}
+                                    </>
+                                  ) : isDoc ? (
+                                    <>
+                                      <FileText className="h-3.5 w-3.5 mr-1" /> 회의록으로 분석
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Download className="h-3.5 w-3.5 mr-1" /> 가져오기
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                     </div>

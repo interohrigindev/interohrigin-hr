@@ -20,7 +20,8 @@ interface CandidateContext {
 }
 
 interface TranscribeRequestBody {
-  recordingUrl: string       // Supabase Storage signed URL
+  recordingUrl?: string       // Supabase Storage signed URL (영상 분석 시)
+  meetingNotesText?: string   // Gemini 회의록 텍스트 (텍스트 기반 분석 시)
   apiKey: string             // Gemini API key
   model?: string             // Gemini model (default: gemini-2.5-flash)
   candidateName: string
@@ -86,13 +87,74 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
   try {
     const body: TranscribeRequestBody = await request.json()
-    const { recordingUrl, apiKey, candidateName, interviewType, context } = body
+    const { recordingUrl, meetingNotesText, apiKey, candidateName, interviewType, context } = body
     const model = body.model || 'gemini-2.5-flash'
 
-    if (!recordingUrl || !apiKey) {
-      return jsonResponse({ error: 'recordingUrl, apiKey 필수' }, 400)
+    if (!apiKey) {
+      return jsonResponse({ error: 'apiKey 필수' }, 400)
     }
 
+    if (!recordingUrl && !meetingNotesText) {
+      return jsonResponse({ error: 'recordingUrl 또는 meetingNotesText 필수' }, 400)
+    }
+
+    // ─── 텍스트 기반 분석 (Gemini 회의록) ───────────────────────
+    if (meetingNotesText) {
+      const typeLabel = interviewType === 'video' ? '화상면접' : '대면면접'
+      let candidateContext = `지원자: ${candidateName}\n면접 유형: ${typeLabel}`
+      if (context) {
+        if (context.postingTitle) candidateContext += `\n지원 직무: ${context.postingTitle}`
+        if (context.postingRequirements) candidateContext += `\n직무 요건:\n${context.postingRequirements}`
+        if (context.talentProfiles) candidateContext += `\n인재상:\n${context.talentProfiles}`
+        if (context.resumeSummary) candidateContext += `\n이력서 분석 요약:\n${context.resumeSummary}`
+        if (context.surveyAnswers) candidateContext += `\n사전 질의서 응답:\n${context.surveyAnswers}`
+        if (context.previousAnalysis) candidateContext += `\n이전 면접 분석:\n${context.previousAnalysis}`
+      }
+
+      const textPrompt = `${candidateContext}\n\n위 지원자 정보를 참고하여, 아래 Google Meet Gemini 회의록 내용을 기반으로 면접을 분석하세요.\n회의록에 기록된 질의응답을 최대한 활용하여 평가해주세요.\n\n[Google Meet 회의록]\n${meetingNotesText}\n\n${ANALYSIS_PROMPT}`
+
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+      const geminiRes = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: textPrompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 16384, responseMimeType: 'application/json' },
+        }),
+      })
+
+      if (!geminiRes.ok) {
+        const errData = await geminiRes.json().catch(() => ({})) as any
+        return jsonResponse({ error: `Gemini API 오류: ${errData?.error?.message || geminiRes.status}` }, geminiRes.status)
+      }
+
+      const geminiData = await geminiRes.json() as any
+      const finishReason = geminiData.candidates?.[0]?.finishReason
+      if (finishReason === 'SAFETY' || finishReason === 'RECITATION') {
+        return jsonResponse({ error: `Gemini 안전 필터에 의해 차단되었습니다 (${finishReason})` }, 400)
+      }
+
+      const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      if (!rawText.trim()) {
+        return jsonResponse({ error: 'Gemini가 빈 응답을 반환했습니다.' }, 500)
+      }
+
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(rawText)
+      } catch {
+        const cleaned = rawText.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+        if (!jsonMatch) return jsonResponse({ error: '분석 결과 파싱 실패', raw: rawText.slice(0, 500) }, 500)
+        try { parsed = JSON.parse(jsonMatch[0].replace(/,\s*([\]}])/g, '$1')) } catch (e: any) {
+          return jsonResponse({ error: `JSON 파싱 실패: ${e.message}`, raw: rawText.slice(0, 500) }, 500)
+        }
+      }
+
+      return jsonResponse({ success: true, analysis: parsed, source: 'meeting_notes' })
+    }
+
+    // ─── 영상/음성 기반 분석 (기존 로직) ────────────────────────
     // 1. 녹음/녹화 파일 다운로드
     const fileRes = await fetch(recordingUrl)
     if (!fileRes.ok) {
@@ -128,12 +190,32 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
     const contextPrompt = `${candidateContext}\n\n위 지원자 정보를 참고하여, 지원 직무와 인재상에 부합하는지를 중점적으로 평가하세요.\n\n${ANALYSIS_PROMPT}`
 
     // MIME 타입 매핑 (Gemini 호환)
-    let mimeType = contentType
-    if (mimeType.includes('webm')) mimeType = 'audio/webm'
-    else if (mimeType.includes('mp4') || mimeType.includes('m4a')) mimeType = 'audio/mp4'
-    else if (mimeType.includes('mpeg') || mimeType.includes('mp3')) mimeType = 'audio/mpeg'
-    else if (mimeType.includes('wav')) mimeType = 'audio/wav'
-    else if (mimeType.includes('ogg')) mimeType = 'audio/ogg'
+    // URL 경로에서 확장자 추출 (Storage 헤더의 MIME이 부정확할 수 있음)
+    const urlPath = new URL(recordingUrl).pathname
+    const fileExt = urlPath.split('.').pop()?.toLowerCase() || ''
+    const extMimeMap: Record<string, string> = {
+      webm: 'audio/webm', mp4: 'video/mp4', m4a: 'audio/mp4',
+      mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg',
+      mov: 'video/mp4', avi: 'video/mp4', flac: 'audio/flac',
+    }
+
+    let mimeType = extMimeMap[fileExt] || contentType
+    // contentType 기반 보정 (확장자 매핑이 안 된 경우)
+    if (!extMimeMap[fileExt]) {
+      if (mimeType.includes('webm')) mimeType = 'audio/webm'
+      else if (mimeType.includes('mp4') || mimeType.includes('m4a')) mimeType = 'audio/mp4'
+      else if (mimeType.includes('mpeg') || mimeType.includes('mp3')) mimeType = 'audio/mpeg'
+      else if (mimeType.includes('wav')) mimeType = 'audio/wav'
+      else if (mimeType.includes('ogg')) mimeType = 'audio/ogg'
+    }
+
+    // Gemini가 지원하지 않는 MIME 타입 차단
+    const supportedMimes = ['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/flac', 'video/mp4', 'video/webm']
+    if (!supportedMimes.some((s) => mimeType.startsWith(s.split('/')[0]) && mimeType.includes(s.split('/')[1]))) {
+      return jsonResponse({
+        error: `지원하지 않는 파일 형식입니다 (${contentType}). 오디오/비디오 파일(webm, mp4, mp3, wav 등)만 업로드하세요.`,
+      }, 400)
+    }
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
     const geminiRes = await fetch(geminiUrl, {

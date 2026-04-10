@@ -75,8 +75,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     )
 
     // Google Drive API v3 파일 검색
-    // Meet 녹화는 MP4로 저장되며, "Meet Recordings" 폴더에 위치
-    let query = "mimeType='video/mp4' AND trashed=false"
+    // Meet 녹화(mp4/webm) + Gemini 회의록(Google Docs) 모두 검색
+    let query = "(mimeType='video/mp4' OR mimeType='video/webm' OR mimeType='video/x-matroska' OR mimeType='audio/webm' OR mimeType='audio/mp4' OR mimeType='application/vnd.google-apps.document') AND trashed=false"
     if (meetingTitle) {
       // 작은따옴표 이스케이프
       const escaped = meetingTitle.replace(/'/g, "\\'")
@@ -158,7 +158,20 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     const meta = (await metaRes.json()) as { name: string; size: string; mimeType: string }
 
-    // 파일 다운로드 (스트리밍)
+    // Google Docs(Gemini 회의록)인 경우 → 텍스트로 내보내기
+    if (meta.mimeType === 'application/vnd.google-apps.document') {
+      const exportRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${driveFileId}/export?mimeType=text/plain`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      )
+      if (!exportRes.ok) {
+        return jsonResponse({ error: 'Google Docs 텍스트 내보내기 실패' }, exportRes.status)
+      }
+      const text = await exportRes.text()
+      return jsonResponse({ success: true, type: 'document', text, fileName: meta.name })
+    }
+
+    // 오디오/비디오 파일 다운로드 (스트리밍)
     const fileRes = await fetch(
       `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
