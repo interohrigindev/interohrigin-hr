@@ -497,6 +497,33 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
       const storagePath = recording.recording_url.split('/interview-recordings/').pop()
       if (!storagePath) throw new Error('파일 경로 오류')
 
+      // 파일 확장자 확인 — 문서 파일(.docx 등)이면 텍스트 추출 후 텍스트 기반 분석
+      const fileExt = decodeURIComponent(storagePath).split('.').pop()?.toLowerCase() || ''
+      const docExts = ['docx', 'doc', 'txt', 'pdf']
+      if (docExts.includes(fileExt)) {
+        // Supabase에서 파일 다운로드 → 텍스트 추출
+        const { data: fileData } = await supabase.storage.from('interview-recordings').download(decodeURIComponent(storagePath))
+        if (fileData) {
+          let textContent = ''
+          if (fileExt === 'txt') {
+            textContent = await fileData.text()
+          } else if (fileExt === 'docx' || fileExt === 'doc') {
+            const raw = new TextDecoder('utf-8', { fatal: false }).decode(await fileData.arrayBuffer())
+            const matches = raw.match(/<w:t[^>]*>([^<]*)<\/w:t>/g)
+            textContent = matches ? matches.map((m) => m.replace(/<[^>]+>/g, '')).join(' ') : await fileData.text()
+          } else {
+            textContent = await fileData.text()
+          }
+
+          if (textContent.trim()) {
+            setAnalyzingId(null)
+            await handleAnalyzeFromMeetingNotes(group, textContent, storagePath)
+            return
+          }
+        }
+        throw new Error('문서 파일에서 텍스트를 추출할 수 없습니다. Google Drive에서 회의록을 다시 가져와주세요.')
+      }
+
       const { data: signedData, error: signedError } = await supabase.storage
         .from('interview-recordings')
         .createSignedUrl(decodeURIComponent(storagePath), 3600)
