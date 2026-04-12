@@ -361,61 +361,86 @@ ${evalsSummary}
       </div>
 
       {/* Info banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-base text-blue-800">
         5개 항목 × 20점 (100점 만점) | 3회차 (2주/6주/10주) | 3인 평가 (리더/임원/대표)
       </div>
 
-      {/* 수습 직원 평가 일정 알림 */}
+      {/* 수습 직원 평가 일정 테이블 */}
       {(() => {
         const probEmps = employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
         if (probEmps.length === 0) return null
 
         const today = new Date()
-        const alerts: { name: string; round: string; daysLeft: number; overdue: boolean }[] = []
-
-        for (const emp of probEmps) {
-          if (!emp.hire_date) continue
-          const hire = new Date(emp.hire_date)
-          const round1 = new Date(hire.getTime() + 14 * 24 * 60 * 60 * 1000)
-          const round2 = new Date(hire.getTime() + 42 * 24 * 60 * 60 * 1000)
-          const round3 = new Date(hire.getTime() + 70 * 24 * 60 * 60 * 1000)
-
-          const empEvals = evaluations.filter((ev) => ev.employee_id === emp.id)
-          const hasRound = (stage: string) => empEvals.some((ev) => ev.stage === stage)
-
-          const rounds = [
-            { stage: 'round1', label: '1회차', date: round1 },
-            { stage: 'round2', label: '2회차', date: round2 },
-            { stage: 'round3', label: '3회차', date: round3 },
-          ]
-
-          for (const r of rounds) {
-            if (hasRound(r.stage)) continue
-            const diff = Math.ceil((r.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-            if (diff <= 7) {
-              alerts.push({ name: emp.name, round: r.label, daysLeft: diff, overdue: diff < 0 })
-            }
-          }
-        }
-
-        if (alerts.length === 0) return null
+        const formatDate = (d: Date | null) => d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}` : '-'
 
         return (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <span className="text-sm font-semibold text-amber-800">평가 예정 알림</span>
-            </div>
-            <div className="space-y-1">
-              {alerts.map((a, i) => (
-                <p key={i} className={`text-xs ${a.overdue ? 'text-red-600 font-medium' : 'text-amber-700'}`}>
-                  {a.overdue
-                    ? `⚠️ ${a.name} — ${a.round} 평가 ${Math.abs(a.daysLeft)}일 초과`
-                    : `📋 ${a.name} — ${a.round} 평가 ${a.daysLeft === 0 ? '오늘' : `${a.daysLeft}일 후`}`}
-                </p>
-              ))}
-            </div>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                평가 예정 현황
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-gray-200 text-gray-600">
+                      <th className="text-left py-2.5 px-3 font-semibold">성함</th>
+                      <th className="text-left py-2.5 px-3 font-semibold">소속</th>
+                      <th className="text-left py-2.5 px-3 font-semibold">직무</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">수습 연봉</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">입사일</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">1회차 평가</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">2회차 평가</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">3회차 평가</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">수습 종료일</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {probEmps.map((emp) => {
+                      const hire = emp.hire_date ? new Date(emp.hire_date) : null
+                      const endDate = hire ? new Date(hire.getTime() + 90 * 24 * 60 * 60 * 1000) : null
+                      const empEvals = evaluations.filter((ev) => ev.employee_id === emp.id)
+
+                      const roundDates = hire ? [
+                        new Date(hire.getTime() + 14 * 24 * 60 * 60 * 1000),
+                        new Date(hire.getTime() + 42 * 24 * 60 * 60 * 1000),
+                        new Date(hire.getTime() + 70 * 24 * 60 * 60 * 1000),
+                      ] : [null, null, null]
+
+                      const getRoundCell = (stage: string, roundDate: Date | null) => {
+                        const stageEvals = empEvals.filter((ev) => ev.stage === stage)
+                        if (stageEvals.length > 0) {
+                          const avg = stageEvals.reduce((sum, ev) => sum + getTotalScore(ev.scores as Record<string, number>), 0) / stageEvals.length
+                          return <span className="text-sm font-bold text-emerald-600">{avg.toFixed(0)}점 완료</span>
+                        }
+                        if (!roundDate) return <span className="text-gray-400">-</span>
+                        const diff = Math.ceil((roundDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                        if (diff < 0) return <span className="text-red-600 font-bold">D+{Math.abs(diff)} 초과</span>
+                        if (diff <= 7) return <span className="text-amber-600 font-semibold">D-{diff}</span>
+                        return <span className="text-gray-400">예정</span>
+                      }
+
+                      return (
+                        <tr key={emp.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-2.5 px-3 font-semibold text-gray-900">{emp.name}</td>
+                          <td className="py-2.5 px-3 text-gray-600">{emp.department_id ? (employees.find(e => e.department_id === emp.department_id)?.department_id || '-') : '-'}</td>
+                          <td className="py-2.5 px-3 text-gray-600">{emp.position || '-'}</td>
+                          <td className="py-2.5 px-3 text-center text-gray-400">-</td>
+                          <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(hire)}</td>
+                          <td className="py-2.5 px-3 text-center">{getRoundCell('round1', roundDates[0])}</td>
+                          <td className="py-2.5 px-3 text-center">{getRoundCell('round2', roundDates[1])}</td>
+                          <td className="py-2.5 px-3 text-center">{getRoundCell('round3', roundDates[2])}</td>
+                          <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(endDate)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         )
       })()}
 
@@ -450,7 +475,7 @@ ${evalsSummary}
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <CardTitle className="text-base">{name}</CardTitle>
+                      <CardTitle className="text-lg">{name}</CardTitle>
                       {latestRec && (
                         <Badge variant={RECOMMENDATION_VARIANTS[latestRec]}>
                           {RECOMMENDATION_LABELS[latestRec]}
@@ -475,12 +500,12 @@ ${evalsSummary}
                       return (
                         <div
                           key={stage}
-                          className={`flex-1 text-center py-2 rounded text-xs font-medium ${
+                          className={`flex-1 text-center py-2.5 rounded text-sm font-semibold ${
                             hasEvals ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'
                           }`}
                         >
                           <div>{STAGE_SHORT[stage]}</div>
-                          {hasEvals && <div className="text-[10px] mt-0.5">평균 {avg.toFixed(1)}점</div>}
+                          {hasEvals && <div className="text-xs mt-0.5">평균 {avg.toFixed(1)}점</div>}
                         </div>
                       )
                     })}
@@ -488,7 +513,7 @@ ${evalsSummary}
 
                   {/* Visual progress chart - avg score per round */}
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-xs font-medium text-gray-500 mb-3">회차별 평균 점수 추이 (100점 만점)</p>
+                    <p className="text-sm font-semibold text-gray-600 mb-3">회차별 평균 점수 추이 (100점 만점)</p>
                     <div className="flex items-end gap-2 h-24">
                       {STAGES.filter((s) => stageGrouped.has(s)).map((stage) => {
                         const avg = getAvgScoreForStage(evals, stage)
@@ -496,14 +521,14 @@ ${evalsSummary}
                         const color = avg >= 85 ? 'bg-emerald-500' : avg >= 70 ? 'bg-brand-500' : avg >= 50 ? 'bg-amber-500' : 'bg-red-500'
                         return (
                           <div key={stage} className="flex-1 flex flex-col items-center gap-1">
-                            <span className="text-xs font-medium text-gray-700">{avg.toFixed(1)}</span>
+                            <span className="text-sm font-bold text-gray-700">{avg.toFixed(1)}</span>
                             <div className="w-full bg-gray-200 rounded-t relative" style={{ height: '80px' }}>
                               <div
                                 className={`absolute bottom-0 left-0 right-0 rounded-t ${color} transition-all duration-500`}
                                 style={{ height: `${heightPercent}%` }}
                               />
                             </div>
-                            <span className="text-[10px] text-gray-500">{STAGE_SHORT[stage]}</span>
+                            <span className="text-xs text-gray-500">{STAGE_SHORT[stage]}</span>
                           </div>
                         )
                       })}
@@ -520,34 +545,48 @@ ${evalsSummary}
                         <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b">
                           <div className="flex items-center gap-2">
                             <Badge variant="primary">{STAGE_SHORT[stage]}</Badge>
-                            <span className="text-sm font-medium text-gray-700">평균 {stageAvg.toFixed(1)}/100</span>
+                            <span className="text-base font-semibold text-gray-700">평균 {stageAvg.toFixed(1)}/100</span>
                           </div>
-                          <span className="text-xs text-gray-500">{stageEvals.length}명 평가</span>
+                          <span className="text-sm text-gray-500">{stageEvals.length}명 평가</span>
                         </div>
-                        <div className="divide-y">
+                        <div className="divide-y divide-gray-200">
                           {stageEvals.map((ev) => {
                             const s = ev.scores as Record<string, number>
                             const total = getTotalScore(s)
                             const rec = ev.continuation_recommendation as ContinuationRecommendation | null
                             const RecIcon = rec ? RECOMMENDATION_ICONS[rec] : null
+                            const evaluatorName = employees.find((e) => e.id === ev.evaluator_id)?.name || ''
+                            const roleColorMap: Record<string, string> = {
+                              mentor: 'border-l-purple-500 bg-purple-50/30',
+                              leader: 'border-l-blue-500 bg-blue-50/30',
+                              executive: 'border-l-emerald-500 bg-emerald-50/30',
+                              ceo: 'border-l-amber-500 bg-amber-50/30',
+                            }
+                            const roleBadgeMap: Record<string, string> = {
+                              mentor: 'bg-purple-100 text-purple-800',
+                              leader: 'bg-blue-100 text-blue-800',
+                              executive: 'bg-emerald-100 text-emerald-800',
+                              ceo: 'bg-amber-100 text-amber-800',
+                            }
                             return (
-                              <div key={ev.id} className="p-3">
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant="info">
+                              <div key={ev.id} className={`p-4 border-l-4 ${roleColorMap[ev.evaluator_role] || 'border-l-gray-300'}`}>
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center gap-3">
+                                    <span className={`text-sm font-bold px-3 py-1 rounded-full ${roleBadgeMap[ev.evaluator_role] || 'bg-gray-100 text-gray-700'}`}>
                                       {EVALUATOR_LABELS[ev.evaluator_role as ProbationEvaluatorRole] || ev.evaluator_role}
-                                    </Badge>
-                                    <span className="text-sm font-bold text-gray-800">{total}/100</span>
+                                    </span>
+                                    {evaluatorName && <span className="text-sm text-gray-600">{evaluatorName}</span>}
+                                    <span className="text-base font-bold text-gray-800">{total}/100</span>
                                     {rec && RecIcon && (
-                                      <span className={`flex items-center gap-1 text-xs ${RECOMMENDATION_VARIANTS[rec] === 'success' ? 'text-emerald-600' : RECOMMENDATION_VARIANTS[rec] === 'warning' ? 'text-amber-600' : 'text-red-600'}`}>
-                                        <RecIcon className="h-3 w-3" />
+                                      <span className={`flex items-center gap-1 text-sm font-medium ${RECOMMENDATION_VARIANTS[rec] === 'success' ? 'text-emerald-600' : RECOMMENDATION_VARIANTS[rec] === 'warning' ? 'text-amber-600' : 'text-red-600'}`}>
+                                        <RecIcon className="h-4 w-4" />
                                         {RECOMMENDATION_LABELS[rec]}
                                       </span>
                                     )}
                                   </div>
                                 </div>
                                 {/* 5 criteria scores */}
-                                <div className="grid grid-cols-5 gap-2 mb-2">
+                                <div className="grid grid-cols-5 gap-3 mb-3">
                                   {PROBATION_CRITERIA.map((c) => {
                                     const val = s[c.key] || 0
                                     const grade = getProbationGrade(val)
@@ -560,7 +599,7 @@ ${evalsSummary}
                                           size="sm"
                                           color={val >= 16 ? 'emerald' : val >= 13 ? 'brand' : val >= 10 ? 'amber' : 'red'}
                                         />
-                                        <span className={`text-[10px] font-medium ${PROBATION_GRADE_CONFIG[grade].bg} px-1 rounded mt-0.5 inline-block`}>
+                                        <span className={`text-xs font-semibold ${PROBATION_GRADE_CONFIG[grade].bg} px-1.5 py-0.5 rounded mt-1 inline-block`}>
                                           {grade}
                                         </span>
                                       </div>
@@ -568,17 +607,17 @@ ${evalsSummary}
                                   })}
                                 </div>
                                 {/* Comments */}
-                                {ev.praise && <p className="text-xs text-emerald-600 mt-1">칭찬: {ev.praise}</p>}
-                                {ev.improvement && <p className="text-xs text-amber-600 mt-1">보완: {ev.improvement}</p>}
-                                {ev.mentor_summary && <p className="text-xs text-gray-600 mt-1">멘토 총평: {ev.mentor_summary}</p>}
-                                {ev.leader_summary && <p className="text-xs text-gray-600 mt-1">리더 총평: {ev.leader_summary}</p>}
-                                {ev.strengths && <p className="text-xs text-blue-600 mt-1">강점: {ev.strengths}</p>}
-                                {ev.exec_one_liner && <p className="text-xs text-purple-600 mt-1">한줄 코멘트: {ev.exec_one_liner}</p>}
-                                {ev.comments && <p className="text-xs text-gray-500 mt-1">총평: {ev.comments}</p>}
-                                {ev.ai_assessment && <p className="text-xs text-blue-600 mt-1">AI: {ev.ai_assessment}</p>}
+                                {ev.praise && <p className="text-sm text-emerald-600 mt-1.5">칭찬: {ev.praise}</p>}
+                                {ev.improvement && <p className="text-sm text-amber-600 mt-1.5">보완: {ev.improvement}</p>}
+                                {ev.mentor_summary && <p className="text-sm text-gray-600 mt-1.5">멘토 총평: {ev.mentor_summary}</p>}
+                                {ev.leader_summary && <p className="text-sm text-gray-600 mt-1.5">리더 총평: {ev.leader_summary}</p>}
+                                {ev.strengths && <p className="text-sm text-blue-600 mt-1.5">강점: {ev.strengths}</p>}
+                                {ev.exec_one_liner && <p className="text-sm text-purple-600 mt-1.5">한줄 코멘트: {ev.exec_one_liner}</p>}
+                                {ev.comments && <p className="text-sm text-gray-500 mt-1.5">총평: {ev.comments}</p>}
+                                {ev.ai_assessment && <p className="text-sm text-blue-600 mt-1.5">AI: {ev.ai_assessment}</p>}
 
                                 {/* 직원 공개 토글 + 답변 */}
-                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
                                   <div className="flex items-center gap-2">
                                     <button
                                       onClick={async (e) => {
@@ -588,19 +627,19 @@ ${evalsSummary}
                                         toast(newVal ? '직원에게 공개됨' : '공개 해제됨')
                                         fetchData()
                                       }}
-                                      className={`relative w-8 h-4 rounded-full transition-colors ${(ev as any).is_visible_to_employee ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                                      className={`relative w-9 h-5 rounded-full transition-colors ${(ev as any).is_visible_to_employee ? 'bg-emerald-500' : 'bg-gray-300'}`}
                                     >
-                                      <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${(ev as any).is_visible_to_employee ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${(ev as any).is_visible_to_employee ? 'translate-x-4' : 'translate-x-0.5'}`} />
                                     </button>
-                                    <span className="text-[10px] text-gray-500">{(ev as any).is_visible_to_employee ? '직원 공개' : '비공개'}</span>
+                                    <span className="text-sm text-gray-500">{(ev as any).is_visible_to_employee ? '직원 공개' : '비공개'}</span>
                                   </div>
                                 </div>
                                 {(ev as any).employee_response && (
-                                  <div className="mt-2 p-2 bg-violet-50 rounded-lg">
-                                    <p className="text-[10px] font-medium text-violet-600 mb-0.5">직원 답변</p>
-                                    <p className="text-xs text-violet-800">{(ev as any).employee_response}</p>
+                                  <div className="mt-2.5 p-3 bg-violet-50 rounded-lg">
+                                    <p className="text-xs font-semibold text-violet-600 mb-1">직원 답변</p>
+                                    <p className="text-sm text-violet-800">{(ev as any).employee_response}</p>
                                     {(ev as any).responded_at && (
-                                      <p className="text-[9px] text-violet-400 mt-0.5">{new Date((ev as any).responded_at).toLocaleDateString('ko-KR')}</p>
+                                      <p className="text-xs text-violet-400 mt-1">{new Date((ev as any).responded_at).toLocaleDateString('ko-KR')}</p>
                                     )}
                                   </div>
                                 )}
@@ -679,14 +718,34 @@ ${evalsSummary}
             })()}
 
             {/* 평가 가이드 */}
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-              <p className="text-xs font-semibold text-gray-700 mb-2">{'<평가 가이드>'} 각 항목별 점수 (20점 만점 / 총 100점 만점)</p>
-              <div className="grid grid-cols-5 gap-2 text-[11px] text-gray-600">
-                <span><strong className="text-brand-700">S</strong> 20~18점 기대 상회</span>
-                <span><strong className="text-blue-700">A</strong> 17~14점 기대 충족</span>
-                <span><strong className="text-emerald-700">B</strong> 13~10점 보완 필요</span>
-                <span><strong className="text-amber-700">C</strong> 9~6점 기대 미달</span>
-                <span><strong className="text-red-700">D</strong> 5~0점 수행 어려움</span>
+            <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-5">
+              <p className="text-base font-bold text-gray-800 mb-3">{'<평가 가이드>'} 각 항목별 점수 (20점 만점 / 총 100점 만점)</p>
+              <div className="grid grid-cols-5 gap-3">
+                <div className="bg-brand-50 border border-brand-200 rounded-lg p-3 text-center">
+                  <span className="text-lg font-bold text-brand-700">S</span>
+                  <p className="text-sm text-gray-700 mt-1">20~18점</p>
+                  <p className="text-sm font-medium text-brand-600">기대 상회</p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                  <span className="text-lg font-bold text-blue-700">A</span>
+                  <p className="text-sm text-gray-700 mt-1">17~14점</p>
+                  <p className="text-sm font-medium text-blue-600">기대 충족</p>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
+                  <span className="text-lg font-bold text-emerald-700">B</span>
+                  <p className="text-sm text-gray-700 mt-1">13~10점</p>
+                  <p className="text-sm font-medium text-emerald-600">보완 필요</p>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+                  <span className="text-lg font-bold text-amber-700">C</span>
+                  <p className="text-sm text-gray-700 mt-1">9~6점</p>
+                  <p className="text-sm font-medium text-amber-600">기대 미달</p>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                  <span className="text-lg font-bold text-red-700">D</span>
+                  <p className="text-sm text-gray-700 mt-1">5~0점</p>
+                  <p className="text-sm font-medium text-red-600">수행 어려움</p>
+                </div>
               </div>
             </div>
 
