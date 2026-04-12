@@ -294,7 +294,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
   }
 
   // Gemini 회의록 텍스트 기반 면접 분석
-  async function handleAnalyzeFromMeetingNotes(group: InterviewGroup, meetingText: string, fileName: string) {
+  async function handleAnalyzeFromMeetingNotes(group: InterviewGroup, meetingText: string, _fileName: string) {
     const groupKey = group.schedule?.id || 'new'
     setAnalyzingId(groupKey)
 

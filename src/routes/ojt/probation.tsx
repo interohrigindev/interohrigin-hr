@@ -569,10 +569,10 @@ ${evalsSummary}
                               ceo: 'bg-amber-100 text-amber-800',
                             }
                             return (
-                              <div key={ev.id} className={`p-4 border-l-4 ${roleColorMap[ev.evaluator_role] || 'border-l-gray-300'}`}>
+                              <div key={ev.id} className={`p-4 border-l-4 ${roleColorMap[ev.evaluator_role || ''] || 'border-l-gray-300'}`}>
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-3">
-                                    <span className={`text-sm font-bold px-3 py-1 rounded-full ${roleBadgeMap[ev.evaluator_role] || 'bg-gray-100 text-gray-700'}`}>
+                                    <span className={`text-sm font-bold px-3 py-1 rounded-full ${roleBadgeMap[ev.evaluator_role || ''] || 'bg-gray-100 text-gray-700'}`}>
                                       {EVALUATOR_LABELS[ev.evaluator_role as ProbationEvaluatorRole] || ev.evaluator_role}
                                     </span>
                                     {evaluatorName && <span className="text-sm text-gray-600">{evaluatorName}</span>}
