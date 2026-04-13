@@ -514,23 +514,23 @@ ${evalsSummary}
                   </div>
 
                   {/* Visual progress chart - avg score per round */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm font-semibold text-gray-600 mb-3">회차별 평균 점수 추이 (100점 만점)</p>
-                    <div className="flex items-end gap-2 h-24">
+                  <div className="bg-gray-50 rounded-lg p-5">
+                    <p className="text-sm font-semibold text-gray-600 mb-4">회차별 평균 점수 추이 (100점 만점)</p>
+                    <div className="flex items-end gap-4" style={{ height: '140px' }}>
                       {STAGES.filter((s) => stageGrouped.has(s)).map((stage) => {
                         const avg = getAvgScoreForStage(evals, stage)
                         const heightPercent = avg
                         const color = avg >= 85 ? 'bg-emerald-500' : avg >= 70 ? 'bg-brand-500' : avg >= 50 ? 'bg-amber-500' : 'bg-red-500'
                         return (
-                          <div key={stage} className="flex-1 flex flex-col items-center gap-1">
+                          <div key={stage} className="flex-1 flex flex-col items-center gap-1.5">
                             <span className="text-sm font-bold text-gray-700">{avg.toFixed(1)}</span>
-                            <div className="w-full bg-gray-200 rounded-t relative" style={{ height: '80px' }}>
+                            <div className="w-full bg-gray-200 rounded-t relative" style={{ height: '100px' }}>
                               <div
                                 className={`absolute bottom-0 left-0 right-0 rounded-t ${color} transition-all duration-500`}
                                 style={{ height: `${heightPercent}%` }}
                               />
                             </div>
-                            <span className="text-xs text-gray-500">{STAGE_SHORT[stage]}</span>
+                            <span className="text-sm text-gray-500 font-medium">{STAGE_SHORT[stage]}</span>
                           </div>
                         )
                       })}
