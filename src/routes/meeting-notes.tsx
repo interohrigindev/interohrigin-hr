@@ -122,6 +122,13 @@ export default function MeetingNotes() {
   const [meetSearching, setMeetSearching] = useState(false)
   const [meetFiles, setMeetFiles] = useState<{ id: string; name: string; size: string; mimeType: string; createdTime: string }[]>([])
   const [meetImporting, setMeetImporting] = useState(false)
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
+  // Meet 가져오기 설정 다이얼로그
+  const [meetSetupOpen, setMeetSetupOpen] = useState(false)
+  const [meetSelectedFile, setMeetSelectedFile] = useState<{ id: string; name: string; mimeType: string } | null>(null)
+  const [meetTitle, setMeetTitle] = useState('')
+  const [meetParticipants, setMeetParticipants] = useState<string[]>([])
+  const [meetParticipantSearch, setMeetParticipantSearch] = useState('')
 
   const [shareDialog, setShareDialog] = useState<{ open: boolean; record: MeetingRecord | null }>({ open: false, record: null })
   const [shareSearch, setShareSearch] = useState('')
@@ -663,10 +670,27 @@ export default function MeetingNotes() {
     setMeetSearching(false)
   }
 
-  async function handleMeetImport(file: { id: string; name: string; mimeType: string }) {
-    if (!profile?.id || meetImporting) return
+  // 파일 선택 → 설정 다이얼로그 열기
+  function handleMeetFileSelect(file: { id: string; name: string; mimeType: string }) {
+    const cleanTitle = file.name
+      .replace(/- Gemini가 작성한 회의록$/i, '')
+      .replace(/- Recording$/i, '')
+      .replace(/\s*-\s*\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}\s+UTC\s*/g, ' ')
+      .trim() || 'Google Meet 회의록'
+    setMeetSelectedFile(file)
+    setMeetTitle(cleanTitle)
+    setMeetParticipants([])
+    setMeetParticipantSearch('')
+    setMeetImportOpen(false)
+    setMeetSetupOpen(true)
+  }
+
+  // 설정 확인 → 실제 처리
+  async function handleMeetImportConfirm() {
+    if (!profile?.id || meetImporting || !meetSelectedFile) return
     setMeetImporting(true)
-    setMeetImportOpen(false) // 즉시 다이얼로그 닫아서 중복 클릭 방지
+    setMeetSetupOpen(false)
+    const file = meetSelectedFile
     try {
       // 1. Drive에서 파일 가져오기
       const res = await fetch('/api/drive-recordings', {
@@ -692,11 +716,7 @@ export default function MeetingNotes() {
       }
 
       // 2. DB 레코드 생성
-      const title = file.name
-        .replace(/- Gemini가 작성한 회의록$/i, '')
-        .replace(/- Recording$/i, '')
-        .replace(/\s*-\s*\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}\s+UTC\s*/g, ' ')
-        .trim() || 'Google Meet 회의록'
+      const title = meetTitle.trim() || 'Google Meet 회의록'
       const now = new Date().toISOString()
 
       const { data: meeting, error: dbErr } = await supabase
@@ -704,7 +724,7 @@ export default function MeetingNotes() {
         .insert({
           title,
           recorded_by: profile.id,
-          participant_ids: [],
+          participant_ids: meetParticipants,
           status: 'summarizing',
           created_at: now,
         })
@@ -746,8 +766,12 @@ export default function MeetingNotes() {
         toast('회의록 텍스트 저장 완료. AI 요약은 잠시 후 재분석하세요.', 'success')
       }
       setMeetImportOpen(false)
+      setMeetSetupOpen(false)
+      setMeetSelectedFile(null)
       setMeetFiles([])
       setMeetSearchQuery('')
+      setMeetTitle('')
+      setMeetParticipants([])
       fetchData()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '가져오기 실패'
@@ -830,31 +854,44 @@ export default function MeetingNotes() {
               <Square className="h-3.5 w-3.5 mr-1" /> 녹음 중지
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => uploadInputRef.current?.click()}
-            disabled={uploading || isRecording}
-          >
-            {uploading ? (
-              <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 분석 중...</>
-            ) : (
-              <><Upload className="h-3.5 w-3.5 mr-1" /> 파일 업로드</>
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setUploadMenuOpen(!uploadMenuOpen)}
+              disabled={uploading || isRecording || meetImporting}
+            >
+              {uploading || meetImporting ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 처리 중...</>
+              ) : (
+                <><Upload className="h-3.5 w-3.5 mr-1" /> 파일 업로드 <ChevronDown className="h-3 w-3 ml-1" /></>
+              )}
+            </Button>
+            {uploadMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-30 overflow-hidden">
+                <button
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                  onClick={() => { setUploadMenuOpen(false); uploadInputRef.current?.click() }}
+                >
+                  <Upload className="h-4 w-4 text-gray-500" />
+                  <div>
+                    <p className="font-medium">내 파일에서 올리기</p>
+                    <p className="text-xs text-gray-400">녹음/녹화 파일 업로드</p>
+                  </div>
+                </button>
+                <button
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 text-left border-t border-gray-100"
+                  onClick={() => { setUploadMenuOpen(false); setMeetImportOpen(true) }}
+                >
+                  <Video className="h-4 w-4 text-blue-500" />
+                  <div>
+                    <p className="font-medium text-blue-700">Google Meet 가져오기</p>
+                    <p className="text-xs text-blue-400">회의록 자동 가져오기 (무료)</p>
+                  </div>
+                </button>
+              </div>
             )}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setMeetImportOpen(true)}
-            disabled={uploading || isRecording || meetImporting}
-            className="border-blue-300 text-blue-700 hover:bg-blue-50"
-          >
-            {meetImporting ? (
-              <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 가져오는 중...</>
-            ) : (
-              <><Video className="h-3.5 w-3.5 mr-1" /> Meet 회의록</>
-            )}
-          </Button>
+          </div>
           <div className="flex items-center gap-3 text-sm text-gray-500">
             <span>총 {records.length}건</span>
             <span>완료 {completedCount}건</span>
@@ -1528,7 +1565,7 @@ export default function MeetingNotes() {
                     </div>
                     <Button
                       size="sm"
-                      onClick={() => handleMeetImport(file)}
+                      onClick={() => handleMeetFileSelect(file)}
                       disabled={meetImporting || !isDoc}
                       className={isDoc ? '' : 'opacity-50'}
                     >
@@ -1551,6 +1588,81 @@ export default function MeetingNotes() {
               검색 버튼을 눌러 Google Drive에서 회의록을 찾으세요.
             </p>
           )}
+        </div>
+      </Dialog>
+
+      {/* Meet 가져오기 설정 다이얼로그 (회의명 + 참석자) */}
+      <Dialog open={meetSetupOpen} onClose={() => setMeetSetupOpen(false)} title="회의록 설정">
+        <div className="space-y-4">
+          {meetSelectedFile && (
+            <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
+              <Video className="h-4 w-4 text-blue-500" />
+              <p className="text-sm text-blue-700 truncate">{meetSelectedFile.name}</p>
+            </div>
+          )}
+
+          <Input
+            id="meet-title"
+            label="회의명"
+            value={meetTitle}
+            onChange={(e) => setMeetTitle(e.target.value)}
+            placeholder="예: 주간 팀 미팅"
+          />
+
+          {/* 참석자 선택 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">참석자</label>
+            <div className="relative mb-2">
+              <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+                placeholder="이름으로 검색..."
+                value={meetParticipantSearch}
+                onChange={(e) => setMeetParticipantSearch(e.target.value)}
+              />
+            </div>
+            {meetParticipants.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {meetParticipants.map((id) => (
+                  <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-brand-100 text-brand-700 rounded-full text-xs">
+                    {employees.find((e) => e.id === id)?.name || id}
+                    <button onClick={() => setMeetParticipants((prev) => prev.filter((x) => x !== id))} className="hover:text-brand-900">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="max-h-36 overflow-y-auto border rounded-lg divide-y divide-gray-100">
+              {employees
+                .filter((e) => !meetParticipantSearch || e.name.includes(meetParticipantSearch))
+                .map((e) => {
+                  const isSelected = meetParticipants.includes(e.id)
+                  return (
+                    <button
+                      key={e.id}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-50 ${isSelected ? 'bg-brand-50' : ''}`}
+                      onClick={() => setMeetParticipants((prev) => isSelected ? prev.filter((x) => x !== e.id) : [...prev, e.id])}
+                    >
+                      <span className={isSelected ? 'text-brand-700 font-medium' : 'text-gray-700'}>{e.name}</span>
+                      {isSelected && <CheckCircle className="h-4 w-4 text-brand-600" />}
+                    </button>
+                  )
+                })}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setMeetSetupOpen(false)}>취소</Button>
+            <Button onClick={handleMeetImportConfirm} disabled={meetImporting || !meetTitle.trim()}>
+              {meetImporting ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 가져오는 중...</>
+              ) : (
+                <><Video className="h-4 w-4 mr-1" /> 가져오기 및 요약</>
+              )}
+            </Button>
+          </div>
         </div>
       </Dialog>
     </div>
