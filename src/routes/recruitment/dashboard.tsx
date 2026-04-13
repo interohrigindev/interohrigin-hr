@@ -47,15 +47,15 @@ export default function RecruitmentDashboard() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [initialized, setInitialized] = useState(false)
   const [showRejected, setShowRejected] = useState(false)
-  const [showHiredOnly, setShowHiredOnly] = useState(false)
+  const [activeStatCard, setActiveStatCard] = useState<string | null>(null)
 
   if (statsLoading || candLoading || postLoading) return <PageSpinner />
 
   const statCards = [
-    { label: '진행중 공고', value: stats.openPostings, icon: Briefcase, color: 'text-brand-600' },
-    { label: '총 지원자', value: stats.totalCandidates, icon: Users, color: 'text-blue-600' },
-    { label: '분석 완료', value: stats.analyzedCandidates, icon: BarChart3, color: 'text-amber-600' },
-    { label: '합격자', value: stats.hiredCandidates, icon: CheckCircle, color: 'text-green-600' },
+    { key: 'openPostings', label: '진행중 공고', value: stats.openPostings, icon: Briefcase, color: 'text-brand-600', ring: 'ring-brand-400' },
+    { key: 'totalCandidates', label: '총 지원자', value: stats.totalCandidates, icon: Users, color: 'text-blue-600', ring: 'ring-blue-400' },
+    { key: 'analyzed', label: '분석 완료', value: stats.analyzedCandidates, icon: BarChart3, color: 'text-amber-600', ring: 'ring-amber-400' },
+    { key: 'hired', label: '합격자', value: stats.hiredCandidates, icon: CheckCircle, color: 'text-green-600', ring: 'ring-green-400' },
   ]
 
   // 채용공고별 지원자 그룹핑
@@ -126,10 +126,9 @@ export default function RecruitmentDashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {statCards.map((s) => (
           <Card
-            key={s.label}
-            className={`border-l-4 cursor-pointer transition-shadow ${s.label === '합격자' && showHiredOnly ? 'ring-2 ring-green-400 shadow-md' : 'hover:shadow-sm'}`}
-            style={{ borderLeftColor: 'var(--tw-border-opacity)' }}
-            onClick={s.label === '합격자' ? () => setShowHiredOnly(!showHiredOnly) : undefined}
+            key={s.key}
+            className={`border-l-4 cursor-pointer transition-shadow ${activeStatCard === s.key ? `ring-2 ${s.ring} shadow-md` : 'hover:shadow-sm'}`}
+            onClick={() => setActiveStatCard(activeStatCard === s.key ? null : s.key)}
           >
             <CardContent className="py-3 px-4">
               <div className="flex items-center justify-between">
@@ -144,32 +143,147 @@ export default function RecruitmentDashboard() {
         ))}
       </div>
 
-      {/* 합격자 모아보기 */}
-      {showHiredOnly && (() => {
-        const hiredCandidates = candidates.filter((c) => c.status === 'hired')
-        return (
-          <Card className="border-green-200">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-green-700">
-                  <Trophy className="h-5 w-5" /> 합격자 목록 ({hiredCandidates.length}명)
-                </CardTitle>
-                <Button variant="outline" size="sm" onClick={() => setShowHiredOnly(false)}>닫기</Button>
+      {/* 클릭한 카드의 풀다운 블록 */}
+      {activeStatCard === 'openPostings' && (
+        <Card className="border-brand-200">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-brand-700">
+                <Briefcase className="h-5 w-5" /> 진행중 공고 ({stats.openPostings}건)
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => setActiveStatCard(null)}>닫기</Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {postings.filter((p) => p.status === 'open').length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-4">진행중인 공고가 없습니다.</p>
+            ) : (
+              <div className="divide-y">
+                {postings.filter((p) => p.status === 'open').map((p) => {
+                  const pCandidates = candidates.filter((c) => c.job_posting_id === p.id)
+                  return (
+                    <div key={p.id} className="flex items-center justify-between py-3 px-2 hover:bg-brand-50/50 cursor-pointer rounded-lg transition-colors" onClick={() => navigate(`/admin/recruitment/jobs/${p.id}`)}>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center">
+                          <Briefcase className="h-4 w-4 text-brand-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm text-gray-900">{p.title}</p>
+                          <p className="text-xs text-gray-500">마감: {p.deadline ? formatDate(p.deadline) : '미정'}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant="primary">{pCandidates.length}명 지원</Badge>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            </CardHeader>
-            <CardContent>
-              {hiredCandidates.length === 0 ? (
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeStatCard === 'totalCandidates' && (
+        <Card className="border-blue-200">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-blue-700">
+                <Users className="h-5 w-5" /> 전체 지원자 ({candidates.length}명)
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => setActiveStatCard(null)}>닫기</Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y">
+              {candidates.slice(0, 20).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((c) => {
+                const posting = postings.find((p) => p.id === c.job_posting_id)
+                return (
+                  <div key={c.id} className="flex items-center justify-between py-3 px-2 hover:bg-blue-50/50 cursor-pointer rounded-lg transition-colors" onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700">{c.name[0]}</div>
+                      <div>
+                        <p className="font-medium text-sm text-gray-900">{c.name}</p>
+                        <p className="text-xs text-gray-500">{posting?.title || '공고 미배정'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default" className={`${CANDIDATE_STATUS_COLORS[c.status as CandidateStatus] || ''} text-[10px]`}>
+                        {CANDIDATE_STATUS_LABELS[c.status as CandidateStatus] || c.status}
+                      </Badge>
+                      <span className="text-[10px] text-gray-400">{formatDate(c.created_at, 'MM/dd')}</span>
+                    </div>
+                  </div>
+                )
+              })}
+              {candidates.length > 20 && <p className="text-xs text-gray-400 text-center py-2">최근 20명만 표시됩니다.</p>}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeStatCard === 'analyzed' && (
+        <Card className="border-amber-200">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-amber-700">
+                <BarChart3 className="h-5 w-5" /> 분석 완료 ({stats.analyzedCandidates}명)
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => setActiveStatCard(null)}>닫기</Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const analyzed = candidates.filter((c) => ['resume_reviewed', 'survey_sent', 'survey_done', 'interview_scheduled', 'video_done', 'face_to_face_scheduled', 'face_to_face_done', 'analyzed', 'decided', 'hired'].includes(c.status))
+              return analyzed.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-4">분석 완료된 지원자가 없습니다.</p>
+              ) : (
+                <div className="divide-y">
+                  {analyzed.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((c) => {
+                    const posting = postings.find((p) => p.id === c.job_posting_id)
+                    return (
+                      <div key={c.id} className="flex items-center justify-between py-3 px-2 hover:bg-amber-50/50 cursor-pointer rounded-lg transition-colors" onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-700">{c.name[0]}</div>
+                          <div>
+                            <p className="font-medium text-sm text-gray-900">{c.name}</p>
+                            <p className="text-xs text-gray-500">{posting?.title || '공고 미배정'}</p>
+                          </div>
+                        </div>
+                        <Badge variant="default" className={`${CANDIDATE_STATUS_COLORS[c.status as CandidateStatus] || ''} text-[10px]`}>
+                          {CANDIDATE_STATUS_LABELS[c.status as CandidateStatus] || c.status}
+                        </Badge>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeStatCard === 'hired' && (
+        <Card className="border-green-200">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-green-700">
+                <Trophy className="h-5 w-5" /> 합격자 목록 ({stats.hiredCandidates}명)
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={() => setActiveStatCard(null)}>닫기</Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const hired = candidates.filter((c) => c.status === 'hired')
+              return hired.length === 0 ? (
                 <p className="text-gray-400 text-sm text-center py-4">합격자가 없습니다.</p>
               ) : (
                 <div className="divide-y">
-                  {hiredCandidates.map((c) => {
+                  {hired.map((c) => {
                     const posting = postings.find((p) => p.id === c.job_posting_id)
                     return (
-                      <div
-                        key={c.id}
-                        className="flex items-center justify-between py-3 px-2 hover:bg-green-50/50 cursor-pointer rounded-lg transition-colors"
-                        onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}
-                      >
+                      <div key={c.id} className="flex items-center justify-between py-3 px-2 hover:bg-green-50/50 cursor-pointer rounded-lg transition-colors" onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}>
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
                             <CheckCircle className="h-4 w-4 text-green-600" />
@@ -187,11 +301,11 @@ export default function RecruitmentDashboard() {
                     )
                   })}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        )
-      })()}
+              )
+            })()}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 공고별 지원자 현황 */}
       <Card>
