@@ -716,28 +716,34 @@ export default function MeetingNotes() {
         status: 'summarizing',
       }).eq('id', meeting.id)
 
-      // 4. Gemini 요약
-      const { data: geminiCfg } = await supabase
-        .from('ai_settings').select('api_key').eq('provider', 'gemini').limit(1).single()
-      const geminiKey = geminiCfg?.api_key
+      // 4. Gemini 요약 (실패해도 전사 텍스트는 보존)
+      try {
+        const { data: geminiCfg } = await supabase
+          .from('ai_settings').select('api_key').eq('provider', 'gemini').limit(1).single()
+        const geminiKey = geminiCfg?.api_key
 
-      let summary = ''
-      let actionItems: string[] = []
-      let decisions: string[] = []
-      if (geminiKey && transcriptText) {
-        const result = await summarizeMeeting(geminiKey, title, transcriptText)
-        summary = result.summary
-        actionItems = result.actionItems
-        decisions = result.decisions
+        if (geminiKey && transcriptText) {
+          const result = await summarizeMeeting(geminiKey, title, transcriptText)
+          await supabase.from('meeting_records').update({
+            summary: result.summary,
+            action_items: result.actionItems,
+            decisions: result.decisions,
+            status: 'completed',
+            error_message: null,
+          }).eq('id', meeting.id)
+          toast('Google Meet 회의록 가져오기 + 요약 완료!', 'success')
+        } else {
+          await supabase.from('meeting_records').update({ status: 'completed' }).eq('id', meeting.id)
+          toast('회의록 가져오기 완료 (AI 요약은 나중에 재시도하세요)', 'success')
+        }
+      } catch {
+        // 요약 실패해도 전사 텍스트는 이미 저장됨
+        await supabase.from('meeting_records').update({
+          status: 'completed',
+          error_message: 'AI 요약 실패 — 전사 텍스트는 저장됨. 재분석으로 요약 가능.',
+        }).eq('id', meeting.id)
+        toast('회의록 텍스트 저장 완료. AI 요약은 잠시 후 재분석하세요.', 'success')
       }
-
-      // 5. 완료
-      await supabase.from('meeting_records').update({
-        summary, action_items: actionItems, decisions,
-        status: 'completed', error_message: null,
-      }).eq('id', meeting.id)
-
-      toast('Google Meet 회의록 가져오기 + 요약 완료!', 'success')
       setMeetImportOpen(false)
       setMeetFiles([])
       setMeetSearchQuery('')
