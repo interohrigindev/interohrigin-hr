@@ -87,6 +87,7 @@ export default function ProbationManage() {
 
   const [evaluations, setEvaluations] = useState<EvalWithEmployee[]>([])
   const [employees, setEmployees] = useState<EmployeeBasic[]>([])
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
 
   // New evaluation dialog
@@ -118,14 +119,15 @@ export default function ProbationManage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [evalRes, empRes] = await Promise.all([
+    const [evalRes, empRes, deptRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position').eq('is_active', true).order('name'),
+      supabase.from('departments').select('id, name'),
     ])
 
+    if (deptRes.data) setDepartments(deptRes.data)
+
     if (empRes.data) {
-      console.log('[Probation] employees loaded:', empRes.data.length)
-      console.log('[Probation] 수습 직원:', empRes.data.filter((e: any) => e.employment_type === 'probation' || (e.position ?? '').includes('수습')).map((e: any) => `${e.name}(pos=${e.position},type=${e.employment_type})`))
       setEmployees(empRes.data)
     }
 
@@ -425,7 +427,7 @@ ${evalsSummary}
                       return (
                         <tr key={emp.id} className="border-b border-gray-100 hover:bg-gray-50">
                           <td className="py-2.5 px-3 font-semibold text-gray-900">{emp.name}</td>
-                          <td className="py-2.5 px-3 text-gray-600">{emp.department_id ? (employees.find(e => e.department_id === emp.department_id)?.department_id || '-') : '-'}</td>
+                          <td className="py-2.5 px-3 text-gray-600">{emp.department_id ? (departments.find(d => d.id === emp.department_id)?.name || '-') : '-'}</td>
                           <td className="py-2.5 px-3 text-gray-600">{emp.position || '-'}</td>
                           <td className="py-2.5 px-3 text-center text-gray-400">-</td>
                           <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(hire)}</td>
