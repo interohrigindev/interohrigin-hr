@@ -588,7 +588,7 @@ ${evalsSummary}
                                   </div>
                                 </div>
                                 {/* 5 criteria scores */}
-                                <div className="grid grid-cols-5 gap-3 mb-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-3">
                                   {PROBATION_CRITERIA.map((c) => {
                                     const val = s[c.key] || 0
                                     const grade = getProbationGrade(val)
@@ -722,7 +722,7 @@ ${evalsSummary}
             {/* 평가 가이드 */}
             <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-5">
               <p className="text-base font-bold text-gray-800 mb-3">{'<평가 가이드>'} 각 항목별 점수 (20점 만점 / 총 100점 만점)</p>
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                 <div className="bg-brand-50 border border-brand-200 rounded-lg p-3 text-center">
                   <span className="text-lg font-bold text-brand-700">S</span>
                   <p className="text-sm text-gray-700 mt-1">20~18점</p>

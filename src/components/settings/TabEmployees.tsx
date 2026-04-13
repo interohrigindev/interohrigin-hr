@@ -665,7 +665,7 @@ export default function TabEmployees() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[800px]">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="px-6 py-3 text-left font-medium text-gray-500">사원번호</th>

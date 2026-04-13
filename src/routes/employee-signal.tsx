@@ -185,7 +185,7 @@ export default function EmployeeSignalDashboard() {
       </div>
 
       {/* 신호등 요약 카드 */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {(['green', 'yellow', 'red', 'black'] as SignalGrade[]).map((grade) => {
           const cfg = SIGNAL_CONFIG[grade]
           const isActive = filterSignal === grade
