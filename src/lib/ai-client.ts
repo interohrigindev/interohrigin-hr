@@ -264,30 +264,62 @@ export async function summarizeMeeting(
     return { summary: '', actionItems: [], decisions: [] }
   }
 
-  const prompt = buildMeetingSummaryPrompt(title, transcription)
+  const fullPrompt = `${MEETING_SYSTEM_PROMPT}\n\n${buildMeetingSummaryPrompt(title, transcription)}`
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: MEETING_SYSTEM_PROMPT }] },
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
-      }),
+  // 1차: Gemini 시도
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: MEETING_SYSTEM_PROMPT }] },
+          contents: [{ parts: [{ text: buildMeetingSummaryPrompt(title, transcription) }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+        }),
+      }
+    )
+
+    if (res.ok) {
+      const data = await res.json()
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      if (content.trim()) return parseMeetingSummary(content)
     }
-  )
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as Record<string, any>
-    throw new Error(err?.error?.message || `Gemini API error: ${res.status}`)
+    // Gemini 실패 — 폴백 진행
+  } catch {
+    // Gemini 네트워크 오류 — 폴백 진행
   }
 
-  const data = await res.json()
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  // 2차: 등록된 다른 AI 엔진으로 폴백
+  const fallbackConfig = await getAIConfigForFeature('meeting_summary')
+  if (fallbackConfig) {
+    try {
+      const result = await generateAIContent(fallbackConfig, fullPrompt)
+      if (result.content.trim()) return parseMeetingSummary(result.content)
+    } catch {
+      // 폴백도 실패
+    }
+  }
 
-  return parseMeetingSummary(content)
+  // 3차: ai_settings에서 활성 엔진 아무거나
+  const { data: anySetting } = await supabase
+    .from('ai_settings')
+    .select('provider, api_key, model')
+    .eq('is_active', true)
+    .neq('provider', 'deepgram')
+    .limit(1)
+    .single()
+
+  if (anySetting) {
+    const result = await generateAIContent(
+      { provider: anySetting.provider, apiKey: anySetting.api_key, model: anySetting.model },
+      fullPrompt
+    )
+    if (result.content.trim()) return parseMeetingSummary(result.content)
+  }
+
+  throw new Error('모든 AI 엔진이 응답하지 않습니다. 잠시 후 재시도해주세요.')
 }
 
 // ─── API key validation ─────────────────────────────────────────
