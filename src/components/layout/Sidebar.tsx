@@ -100,11 +100,12 @@ const standaloneItems: NavItem[] = [
     icon: <FileText className="h-5 w-5" />,
     hideForRoles: ['director', 'division_head', 'ceo', 'admin'],
   },
-  {
-    to: '/io-ai',
-    label: 'IO AI',
-    icon: <Sparkles className="h-5 w-5" />,
-  },
+  // IO AI — 임시 숨김
+  // {
+  //   to: '/io-ai',
+  //   label: 'IO AI',
+  //   icon: <Sparkles className="h-5 w-5" />,
+  // },
   {
     to: '/ceo-report',
     label: 'CEO 리포트',

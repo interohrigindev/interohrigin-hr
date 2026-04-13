@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Mic, Download, Clock, Users, ChevronDown, ChevronUp, Loader2, Trash2,
   FileText, AlertTriangle, CheckCircle, ListChecks, MessageSquare, Upload, RefreshCw,
-  Share2, UserPlus, X, Square,
+  Share2, UserPlus, X, Square, Video, Search,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -116,6 +116,13 @@ export default function MeetingNotes() {
   const [uploadTime, setUploadTime] = useState('')
   const [uploadParticipants, setUploadParticipants] = useState<string[]>([])
   const [uploadSearch, setUploadSearch] = useState('')
+  // Google Meet 가져오기
+  const [meetImportOpen, setMeetImportOpen] = useState(false)
+  const [meetSearchQuery, setMeetSearchQuery] = useState('')
+  const [meetSearching, setMeetSearching] = useState(false)
+  const [meetFiles, setMeetFiles] = useState<{ id: string; name: string; size: string; mimeType: string; createdTime: string }[]>([])
+  const [meetImporting, setMeetImporting] = useState(false)
+
   const [shareDialog, setShareDialog] = useState<{ open: boolean; record: MeetingRecord | null }>({ open: false, record: null })
   const [shareSearch, setShareSearch] = useState('')
   const [selectedShareIds, setSelectedShareIds] = useState<string[]>([])
@@ -634,6 +641,114 @@ export default function MeetingNotes() {
     return lines.join('\n')
   }
 
+  // ─── Google Meet 가져오기 ────────────────────────────────────
+  async function handleMeetSearch() {
+    setMeetSearching(true)
+    setMeetFiles([])
+    try {
+      const params = new URLSearchParams()
+      if (meetSearchQuery.trim()) params.set('meetingTitle', meetSearchQuery.trim())
+      const res = await fetch(`/api/drive-recordings?${params}`)
+      const result = await res.json()
+      if (res.ok && result.files?.length > 0) {
+        // Google Docs(회의록/스크립트)만 필터링 + 영상도 포함
+        setMeetFiles(result.files)
+        toast(`${result.files.length}개 파일을 찾았습니다.`, 'success')
+      } else {
+        toast('Google Drive에서 파일을 찾을 수 없습니다.', 'error')
+      }
+    } catch {
+      toast('Drive 검색 오류', 'error')
+    }
+    setMeetSearching(false)
+  }
+
+  async function handleMeetImport(file: { id: string; name: string; mimeType: string }) {
+    if (!profile?.id) return
+    setMeetImporting(true)
+    try {
+      // 1. Drive에서 파일 가져오기
+      const res = await fetch('/api/drive-recordings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driveFileId: file.id }),
+      })
+
+      const contentType = res.headers.get('content-type') || ''
+      let transcriptText = ''
+
+      if (contentType.includes('application/json')) {
+        const result = await res.json()
+        if (result.type === 'document' && result.text) {
+          transcriptText = result.text
+        } else if (!res.ok) {
+          throw new Error(result.error || '가져오기 실패')
+        }
+      }
+
+      if (!transcriptText) {
+        throw new Error('텍스트를 추출할 수 없는 파일입니다. Google Docs(회의록) 파일을 선택하세요.')
+      }
+
+      // 2. DB 레코드 생성
+      const title = file.name
+        .replace(/- Gemini가 작성한 회의록$/i, '')
+        .replace(/- Recording$/i, '')
+        .replace(/\s*-\s*\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}\s+UTC\s*/g, ' ')
+        .trim() || 'Google Meet 회의록'
+      const now = new Date().toISOString()
+
+      const { data: meeting, error: dbErr } = await supabase
+        .from('meeting_records')
+        .insert({
+          title,
+          recorded_by: profile.id,
+          participant_ids: [],
+          status: 'summarizing',
+          created_at: now,
+        })
+        .select().single()
+      if (dbErr || !meeting) throw new Error('회의 생성 실패: ' + (dbErr?.message || ''))
+
+      // 3. 전사 텍스트 저장 (Deepgram 생략!)
+      await supabase.from('meeting_records').update({
+        transcription: transcriptText,
+        status: 'summarizing',
+      }).eq('id', meeting.id)
+
+      // 4. Gemini 요약
+      const { data: geminiCfg } = await supabase
+        .from('ai_settings').select('api_key').eq('provider', 'gemini').limit(1).single()
+      const geminiKey = geminiCfg?.api_key
+
+      let summary = ''
+      let actionItems: string[] = []
+      let decisions: string[] = []
+      if (geminiKey && transcriptText) {
+        const result = await summarizeMeeting(geminiKey, title, transcriptText)
+        summary = result.summary
+        actionItems = result.actionItems
+        decisions = result.decisions
+      }
+
+      // 5. 완료
+      await supabase.from('meeting_records').update({
+        summary, action_items: actionItems, decisions,
+        status: 'completed', error_message: null,
+      }).eq('id', meeting.id)
+
+      toast('Google Meet 회의록 가져오기 + 요약 완료!', 'success')
+      setMeetImportOpen(false)
+      setMeetFiles([])
+      setMeetSearchQuery('')
+      fetchData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '가져오기 실패'
+      toast(msg, 'error')
+    }
+    setMeetImporting(false)
+  }
+
   // ─── 회의록 공유 ─────────────────────────────────────────
   function openShareDialog(record: MeetingRecord) {
     setShareDialog({ open: true, record })
@@ -718,6 +833,19 @@ export default function MeetingNotes() {
               <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 분석 중...</>
             ) : (
               <><Upload className="h-3.5 w-3.5 mr-1" /> 파일 업로드</>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setMeetImportOpen(true)}
+            disabled={uploading || isRecording || meetImporting}
+            className="border-blue-300 text-blue-700 hover:bg-blue-50"
+          >
+            {meetImporting ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 가져오는 중...</>
+            ) : (
+              <><Video className="h-3.5 w-3.5 mr-1" /> Meet 회의록</>
             )}
           </Button>
           <div className="flex items-center gap-3 text-sm text-gray-500">
@@ -1341,6 +1469,81 @@ export default function MeetingNotes() {
               )}
             </Button>
           </div>
+        </div>
+      </Dialog>
+
+      {/* Google Meet 가져오기 다이얼로그 */}
+      <Dialog open={meetImportOpen} onClose={() => { setMeetImportOpen(false); setMeetFiles([]) }} title="Google Meet 회의록 가져오기">
+        <div className="space-y-4">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+            Google Meet에서 자동 생성된 회의록(Gemini 문서)을 가져와 AI 요약합니다.
+            Deepgram STT 과정이 생략되어 <strong>비용 없이 빠르게</strong> 처리됩니다.
+          </div>
+
+          {/* 검색 */}
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+                placeholder="회의 제목으로 검색 (빈 칸이면 전체)"
+                value={meetSearchQuery}
+                onChange={(e) => setMeetSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleMeetSearch()}
+              />
+            </div>
+            <Button onClick={handleMeetSearch} disabled={meetSearching}>
+              {meetSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : '검색'}
+            </Button>
+          </div>
+
+          {/* 검색 결과 */}
+          {meetFiles.length > 0 && (
+            <div className="max-h-64 overflow-y-auto border rounded-lg divide-y divide-gray-100">
+              {meetFiles.map((file) => {
+                const isDoc = file.mimeType === 'application/vnd.google-apps.document'
+                return (
+                  <div key={file.id} className="flex items-center justify-between p-3 hover:bg-gray-50">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {isDoc ? (
+                        <FileText className="h-5 w-5 text-purple-500 shrink-0" />
+                      ) : (
+                        <Video className="h-5 w-5 text-blue-500 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(file.createdTime).toLocaleDateString('ko-KR')}
+                          {isDoc ? ' · 회의록' : ` · ${Math.round(parseInt(file.size) / 1024 / 1024)}MB`}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleMeetImport(file)}
+                      disabled={meetImporting || !isDoc}
+                      className={isDoc ? '' : 'opacity-50'}
+                    >
+                      {meetImporting ? (
+                        <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 처리 중...</>
+                      ) : isDoc ? (
+                        <><FileText className="h-3.5 w-3.5 mr-1" /> 가져오기</>
+                      ) : (
+                        '영상 (미지원)'
+                      )}
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {meetFiles.length === 0 && !meetSearching && (
+            <p className="text-sm text-gray-400 text-center py-4">
+              검색 버튼을 눌러 Google Drive에서 회의록을 찾으세요.
+            </p>
+          )}
         </div>
       </Dialog>
     </div>
