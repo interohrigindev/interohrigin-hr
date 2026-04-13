@@ -664,8 +664,9 @@ export default function MeetingNotes() {
   }
 
   async function handleMeetImport(file: { id: string; name: string; mimeType: string }) {
-    if (!profile?.id) return
+    if (!profile?.id || meetImporting) return
     setMeetImporting(true)
+    setMeetImportOpen(false) // 즉시 다이얼로그 닫아서 중복 클릭 방지
     try {
       // 1. Drive에서 파일 가져오기
       const res = await fetch('/api/drive-recordings', {
