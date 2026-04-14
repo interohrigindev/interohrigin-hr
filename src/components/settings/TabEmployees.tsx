@@ -490,12 +490,34 @@ export default function TabEmployees() {
       }
     } else {
       // 이미 비활성인 경우 완전 삭제 시도
+      // 관련 테이블 FK 참조 먼저 정리
+      try {
+        await supabase.from('approval_steps').delete().eq('approver_id', emp.id)
+        await supabase.from('probation_evaluations').delete().eq('employee_id', emp.id)
+        await supabase.from('probation_evaluations').delete().eq('evaluator_id', emp.id)
+        await supabase.from('employee_hr_details').delete().eq('employee_id', emp.id)
+        await supabase.from('employee_profiles').delete().eq('employee_id', emp.id)
+        await supabase.from('mentor_assignments').delete().eq('mentor_id', emp.id)
+        await supabase.from('mentor_assignments').delete().eq('mentee_id', emp.id)
+        await supabase.from('peer_reviews').delete().eq('reviewer_id', emp.id)
+        await supabase.from('peer_reviews').delete().eq('target_id', emp.id)
+      } catch {
+        // 테이블이 없을 수 있으므로 무시
+      }
+
       const { error } = await supabase.rpc('delete_employee', {
         p_employee_id: emp.id,
       })
 
       if (error) {
-        toast('삭제 실패: ' + error.message, 'error')
+        // RPC 실패 시 직접 삭제 시도
+        const { error: directErr } = await supabase.from('employees').delete().eq('id', emp.id)
+        if (directErr) {
+          toast('삭제 실패: 이 직원과 연결된 데이터가 있어 삭제할 수 없습니다. 비활성 상태로 유지됩니다.', 'error')
+        } else {
+          toast(`${emp.name}님이 삭제되었습니다`)
+          fetchData()
+        }
       } else {
         toast(`${emp.name}님이 삭제되었습니다`)
         fetchData()
