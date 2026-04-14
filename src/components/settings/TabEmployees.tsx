@@ -731,6 +731,7 @@ export default function TabEmployees() {
                     <th className="px-6 py-3 text-left font-medium text-gray-500">사원번호</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">이름</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">부서</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">팀</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">직무</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">역할</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">상태</th>
@@ -766,7 +767,24 @@ export default function TabEmployees() {
                           </div>
                         </td>
                         <td className="px-6 py-3 text-gray-600">
-                          {(emp as any).department?.name ?? '-'}
+                          {(() => {
+                            const dept = (emp as any).department
+                            if (!dept) return '-'
+                            // 팀이면 부모 부서 이름 표시
+                            if (dept.parent_id) {
+                              const parent = departments.find((d) => d.id === dept.parent_id)
+                              return parent?.name || '-'
+                            }
+                            return dept.name
+                          })()}
+                        </td>
+                        <td className="px-6 py-3 text-gray-600">
+                          {(() => {
+                            const dept = (emp as any).department
+                            if (!dept) return '-'
+                            // 팀이면 팀 이름, 부서면 '-'
+                            return dept.parent_id ? dept.name : '-'
+                          })()}
                         </td>
                         <td className="px-6 py-3 text-gray-600 text-xs">
                           {emp.position || '-'}
@@ -958,19 +976,47 @@ export default function TabEmployees() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <Select
               id="invite-dept"
-              label="부서/팀"
+              label="부서"
               options={[
                 { value: '', label: '부서 미지정' },
-                ...departments.filter((d) => !d.parent_id).flatMap((d) => [
-                  { value: d.id, label: `${d.name}` },
-                  ...departments.filter((c) => c.parent_id === d.id).map((c) => ({ value: c.id, label: `ㄴ ${c.name}` })),
-                ]),
+                ...departments.filter((d) => !d.parent_id).map((d) => ({ value: d.id, label: d.name })),
               ]}
-              value={inviteForm.department_id}
+              value={(() => {
+                // 현재 선택된 department_id가 팀이면 부모 부서 ID 반환
+                const current = departments.find((d) => d.id === inviteForm.department_id)
+                if (current?.parent_id) return current.parent_id
+                return inviteForm.department_id
+              })()}
               onChange={(e) => setInviteForm({ ...inviteForm, department_id: e.target.value })}
+            />
+            <Select
+              id="invite-team"
+              label="팀"
+              options={[
+                { value: '', label: '팀 미지정' },
+                ...departments.filter((d) => {
+                  const currentDept = departments.find((dd) => dd.id === inviteForm.department_id)
+                  const parentId = currentDept?.parent_id || inviteForm.department_id
+                  return d.parent_id === parentId
+                }).map((d) => ({ value: d.id, label: d.name })),
+              ]}
+              value={(() => {
+                const current = departments.find((d) => d.id === inviteForm.department_id)
+                return current?.parent_id ? inviteForm.department_id : ''
+              })()}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setInviteForm({ ...inviteForm, department_id: e.target.value })
+                } else {
+                  // 팀 미지정 → 부서 ID 유지
+                  const current = departments.find((d) => d.id === inviteForm.department_id)
+                  const parentId = current?.parent_id || inviteForm.department_id
+                  setInviteForm({ ...inviteForm, department_id: parentId })
+                }
+              }}
             />
             <Select
               id="invite-role"
@@ -1124,19 +1170,45 @@ export default function TabEmployees() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <Select
               id="edit-dept"
-              label="부서/팀"
+              label="부서"
               options={[
                 { value: '', label: '부서 미지정' },
-                ...departments.filter((d) => !d.parent_id).flatMap((d) => [
-                  { value: d.id, label: `${d.name}` },
-                  ...departments.filter((c) => c.parent_id === d.id).map((c) => ({ value: c.id, label: `ㄴ ${c.name}` })),
-                ]),
+                ...departments.filter((d) => !d.parent_id).map((d) => ({ value: d.id, label: d.name })),
               ]}
-              value={editForm.department_id}
+              value={(() => {
+                const current = departments.find((d) => d.id === editForm.department_id)
+                if (current?.parent_id) return current.parent_id
+                return editForm.department_id
+              })()}
               onChange={(e) => setEditForm({ ...editForm, department_id: e.target.value })}
+            />
+            <Select
+              id="edit-team"
+              label="팀"
+              options={[
+                { value: '', label: '팀 미지정' },
+                ...departments.filter((d) => {
+                  const currentDept = departments.find((dd) => dd.id === editForm.department_id)
+                  const parentId = currentDept?.parent_id || editForm.department_id
+                  return d.parent_id === parentId
+                }).map((d) => ({ value: d.id, label: d.name })),
+              ]}
+              value={(() => {
+                const current = departments.find((d) => d.id === editForm.department_id)
+                return current?.parent_id ? editForm.department_id : ''
+              })()}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setEditForm({ ...editForm, department_id: e.target.value })
+                } else {
+                  const current = departments.find((d) => d.id === editForm.department_id)
+                  const parentId = current?.parent_id || editForm.department_id
+                  setEditForm({ ...editForm, department_id: parentId })
+                }
+              }}
             />
             <Select
               id="edit-role"
