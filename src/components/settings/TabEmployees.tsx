@@ -610,12 +610,15 @@ export default function TabEmployees() {
 
   if (loading) return <PageSpinner />
 
+  const activeEmployees = employees.filter((e) => e.is_active)
+  const inactiveEmployees = employees.filter((e) => !e.is_active)
+
   const filteredEmployees =
     filterDept === 'all'
-      ? employees
+      ? activeEmployees
       : filterDept === 'none'
-      ? employees.filter((e) => !e.department_id)
-      : employees.filter((e) => e.department_id === filterDept)
+      ? activeEmployees.filter((e) => !e.department_id)
+      : activeEmployees.filter((e) => e.department_id === filterDept)
 
   return (
     <div className="space-y-6">
@@ -721,7 +724,7 @@ export default function TabEmployees() {
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-gray-400" />
             <CardTitle>직원 관리</CardTitle>
-            <Badge variant="default">{employees.length}명</Badge>
+            <Badge variant="default">{activeEmployees.length}명</Badge>
           </div>
           <div className="flex items-center gap-3">
             <Select
@@ -895,6 +898,67 @@ export default function TabEmployees() {
           )}
         </CardContent>
       </Card>
+
+      {/* ─── 퇴사 관리 ──────────────────────────────────────── */}
+      {inactiveEmployees.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-red-400" />
+              <CardTitle>퇴사 관리</CardTitle>
+              <Badge variant="danger">{inactiveEmployees.length}명</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[600px]">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">사원번호</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">이름</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">부서</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">직무</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">상태</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">작업</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inactiveEmployees.map((emp) => (
+                    <tr key={emp.id} className="border-b border-gray-50 bg-red-50/30">
+                      <td className="px-6 py-3 text-gray-500 text-xs font-mono">{emp.employee_number || '-'}</td>
+                      <td className="px-6 py-3 font-medium text-gray-600">{emp.name}</td>
+                      <td className="px-6 py-3 text-gray-500">{(emp as any).department?.name ?? '-'}</td>
+                      <td className="px-6 py-3 text-gray-500 text-xs">{emp.position || '-'}</td>
+                      <td className="px-6 py-3"><Badge variant="danger">퇴사</Badge></td>
+                      <td className="px-6 py-3">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`${emp.name}님을 복직 처리하시겠습니까?`)) return
+                              const { error } = await supabase.from('employees').update({ is_active: true }).eq('id', emp.id)
+                              if (error) toast('복직 실패: ' + error.message, 'error')
+                              else { toast(`${emp.name}님이 복직 처리되었습니다`, 'success'); fetchData() }
+                            }}
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            복직
+                          </button>
+                          <button
+                            onClick={() => handleDeleteEmployee(emp)}
+                            className="text-xs text-red-600 hover:underline"
+                          >
+                            완전 삭제
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ─── 부서 추가/수정 다이얼로그 ─────────────────────── */}
       <Dialog
