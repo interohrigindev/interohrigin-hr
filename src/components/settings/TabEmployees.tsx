@@ -608,31 +608,67 @@ export default function TabEmployees() {
           {departments.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">등록된 부서가 없습니다</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {departments.map((dept) => {
+            <div className="space-y-2">
+              {/* 상위 부서 (parent_id 없는 것) */}
+              {departments.filter((d) => !d.parent_id).map((dept) => {
+                const count = employees.filter((e) => e.department_id === dept.id).length
+                const childDepts = departments.filter((d) => d.parent_id === dept.id)
+                return (
+                  <div key={dept.id}>
+                    <div className="flex items-center justify-between rounded-lg border-2 border-brand-200 bg-brand-50/30 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">{dept.name}</p>
+                        <p className="text-xs text-gray-500">{count}명 · 부서{childDepts.length > 0 ? ` · 하위 팀 ${childDepts.length}개` : ''}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => openEditDept(dept)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleDeleteDept(dept)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    {/* 하위 팀 */}
+                    {childDepts.map((child) => {
+                      const childCount = employees.filter((e) => e.department_id === child.id).length
+                      return (
+                        <div key={child.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-2.5 ml-6 mt-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-300">└</span>
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">{child.name}</p>
+                              <p className="text-xs text-gray-500">{childCount}명 · 팀</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <button onClick={() => openEditDept(child)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => handleDeleteDept(child)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+              {/* parent_id가 있는데 부모가 삭제된 고아 부서 */}
+              {departments.filter((d) => d.parent_id && !departments.find((p) => p.id === d.parent_id)).map((dept) => {
                 const count = employees.filter((e) => e.department_id === dept.id).length
                 return (
-                  <div
-                    key={dept.id}
-                    className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3"
-                  >
+                  <div key={dept.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{dept.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {dept.parent_id ? `${departments.find((d) => d.id === dept.parent_id)?.name || ''} 소속 · ` : ''}{count}명
-                      </p>
+                      <p className="text-xs text-gray-500">{count}명</p>
                     </div>
                     <div className="flex gap-1">
-                      <button
-                        onClick={() => openEditDept(dept)}
-                        className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                      >
+                      <button onClick={() => openEditDept(dept)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button
-                        onClick={() => handleDeleteDept(dept)}
-                        className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                      >
+                      <button onClick={() => handleDeleteDept(dept)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>

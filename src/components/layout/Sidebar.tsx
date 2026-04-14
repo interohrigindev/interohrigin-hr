@@ -128,6 +128,11 @@ const standaloneItems: NavItem[] = [
     label: '회의록',
     icon: <Mic className="h-5 w-5" />,
   },
+  {
+    to: '/my-evaluations',
+    label: '내 평가 결과',
+    icon: <ClipboardCheck className="h-5 w-5" />,
+  },
   // { to: '/calendar', label: '캘린더', icon: <CalendarDays className="h-5 w-5" /> }, // 일시 숨김
 ]
 
@@ -178,6 +183,7 @@ const navGroups: NavGroup[] = [
       { to: '/admin/ojt', label: 'OJT 프로그램', icon: <GraduationCap className="h-4 w-4" />, end: true },
       { to: '/admin/ojt/mentor', label: '멘토-멘티', icon: <UserCheck className="h-4 w-4" /> },
       { to: '/admin/probation', label: '수습 평가', icon: <ClipboardCheck className="h-4 w-4" /> },
+      { to: '/admin/probation-results', label: '평가 결과', icon: <FileBarChart className="h-4 w-4" /> },
     ],
   },
   {

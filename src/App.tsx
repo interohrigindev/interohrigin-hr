@@ -38,6 +38,10 @@ import RecruitmentSettings from '@/routes/recruitment/settings'
 import OJTPrograms from '@/routes/ojt/programs'
 import MentorManage from '@/routes/ojt/mentor'
 import ProbationManage from '@/routes/ojt/probation'
+import ProbationResults from '@/routes/ojt/probation-results'
+
+// 내 수습 평가 결과
+import MyEvaluations from '@/routes/my-evaluations'
 
 // 월간 점검 / 동료 평가
 import MonthlyCheckin from '@/routes/monthly-checkin'
@@ -203,6 +207,10 @@ function App() {
               <Route path="admin/ojt" element={<AdminRoute><OJTPrograms /></AdminRoute>} />
               <Route path="admin/ojt/mentor" element={<AdminRoute><MentorManage /></AdminRoute>} />
               <Route path="admin/probation" element={<AdminRoute><ProbationManage /></AdminRoute>} />
+              <Route path="admin/probation-results" element={<AdminRoute><ProbationResults /></AdminRoute>} />
+
+              {/* 내 수습 평가 결과 */}
+              <Route path="my-evaluations" element={<MyEvaluations />} />
 
               {/* 월간 점검 / 동료 평가 */}
               <Route path="monthly-checkin" element={<MonthlyCheckin />} />
