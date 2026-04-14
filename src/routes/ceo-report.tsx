@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import {
   Users, Briefcase, TrendingUp, AlertCircle, Clock,
   Mic, RefreshCw, FileDown, Link, Folder, ArrowRight,
+  Sparkles, Loader2,
 } from 'lucide-react'
+import { generateCEOBriefing, type CEOBriefingData } from '@/lib/ai-client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -20,6 +22,9 @@ interface ReportData {
   projectStats: Record<string, number>
   recentMeetings: { title: string; status: string; duration_min: number | null; date: string }[]
   probationEvals: any[]
+  projects: { id: string; project_name: string; status: string; priority: number; stages: any[] }[]
+  allCandidates: { status: string; job_posting_id: string | null; name: string }[]
+  allPostings: { id: string; title: string; status: string }[]
 }
 
 const SIGNAL_CONFIG = {
@@ -29,12 +34,30 @@ const SIGNAL_CONFIG = {
   black: { label: '위험', color: 'bg-gray-800', text: 'text-gray-700', bg: 'bg-gray-100' },
 }
 
+function formatMarkdown(md: string): string {
+  return md
+    .replace(/^## (.+)$/gm, '<h3 class="text-base font-bold text-gray-900 mt-5 mb-2 pb-1 border-b border-gray-200">$1</h3>')
+    .replace(/^### (.+)$/gm, '<h4 class="text-sm font-bold text-gray-800 mt-3 mb-1">$1</h4>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^- (.+)$/gm, '<li class="ml-4 text-sm text-gray-700 py-0.5">• $1</li>')
+    .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 text-sm text-gray-700 py-0.5"><span class="font-semibold text-brand-600">$1.</span> $2</li>')
+    .replace(/\n\n/g, '<br/>')
+}
+
+function formatAnalysisSection(md: string, sectionTitle: string): string {
+  const regex = new RegExp(`## ${sectionTitle}\\n([\\s\\S]*?)(?=\\n## |$)`)
+  const match = md.match(regex)
+  return match ? formatMarkdown(match[1].trim()) : ''
+}
+
 export default function CEOReport() {
   const { hasRole } = useAuth()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReportData | null>(null)
   const [signals, setSignals] = useState<any[]>([])
+  const [aiAnalysis, setAiAnalysis] = useState('')
+  const [aiAnalyzing, setAiAnalyzing] = useState(false)
 
   // CEO 또는 admin만 접근
   const canAccess = hasRole('ceo') || hasRole('admin')
@@ -43,36 +66,63 @@ export default function CEOReport() {
     if (canAccess) fetchReport()
   }, [canAccess])
 
+  // localStorage에서 오늘자 AI 분석 캐시 복원
+  useEffect(() => {
+    const todayKey = new Date().toISOString().slice(0, 10)
+    const cached = localStorage.getItem(`ceo-ai-analysis-${todayKey}`)
+    if (cached) setAiAnalysis(cached)
+  }, [])
+
   async function fetchReport() {
     setLoading(true)
     try {
       const [empRes, probRes, postRes, candRes, projRes, meetRes] = await Promise.all([
         supabase.from('employees').select('id, name, role, position, department_id, employment_type, hire_date').eq('is_active', true),
         supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }).limit(50),
-        supabase.from('job_postings').select('id, title, status').eq('status', 'published'),
-        supabase.from('candidates').select('id, status').order('created_at', { ascending: false }).limit(100),
-        supabase.from('projects').select('id, name, status, priority').order('updated_at', { ascending: false }).limit(20),
+        supabase.from('job_postings').select('id, title, status'),
+        supabase.from('candidates').select('id, status, job_posting_id, name').order('created_at', { ascending: false }).limit(200),
+        supabase.from('project_boards').select('id, project_name, status, priority, pipeline_stages(id, stage_name, status, deadline)').order('created_at', { ascending: false }).limit(20),
         supabase.from('meeting_records').select('id, title, status, duration_seconds, created_at').order('created_at', { ascending: false }).limit(5),
       ])
 
       const employees = empRes.data || []
       const probationEmps = employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
 
+      const allProjects = (projRes.data || []).map((p: any) => ({
+        id: p.id,
+        project_name: p.project_name,
+        status: p.status,
+        priority: p.priority ?? 0,
+        stages: p.pipeline_stages || [],
+      }))
+
       const projectStats: Record<string, number> = {}
-      for (const p of (projRes.data || [])) {
+      for (const p of allProjects) {
         projectStats[p.status] = (projectStats[p.status] || 0) + 1
       }
 
+      const allCandidates = (candRes.data || []).map((c: any) => ({
+        status: c.status,
+        job_posting_id: c.job_posting_id,
+        name: c.name,
+      }))
+
       const candidatesByStatus: Record<string, number> = {}
-      for (const c of (candRes.data || [])) {
+      for (const c of allCandidates) {
         candidatesByStatus[c.status] = (candidatesByStatus[c.status] || 0) + 1
       }
+
+      const allPostings = (postRes.data || []).map((p: any) => ({
+        id: p.id,
+        title: p.title,
+        status: p.status,
+      }))
 
       setData({
         totalEmployees: employees.length,
         probationEmployees: probationEmps,
-        activePostings: postRes.data?.length || 0,
-        candidateCount: candRes.data?.length || 0,
+        activePostings: allPostings.filter((p) => p.status === 'published').length,
+        candidateCount: allCandidates.length,
         candidatesByStatus,
         projectStats,
         recentMeetings: (meetRes.data || []).map((m: any) => ({
@@ -82,6 +132,9 @@ export default function CEOReport() {
           date: m.created_at,
         })),
         probationEvals: probRes.data || [],
+        projects: allProjects,
+        allCandidates,
+        allPostings,
       })
 
       // 신호등 간이 계산
@@ -117,6 +170,89 @@ export default function CEOReport() {
   function handleCopyLink() {
     navigator.clipboard.writeText(window.location.href)
     toast('링크가 복사되었습니다.', 'success')
+  }
+
+  async function handleGenerateAnalysis() {
+    if (!data || aiAnalyzing) return
+    setAiAnalyzing(true)
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10)
+
+      // 신호등 집계
+      const sigCounts = {
+        green: signals.filter((s) => s.signal === 'green').length,
+        yellow: signals.filter((s) => s.signal === 'yellow').length,
+        red: signals.filter((s) => s.signal === 'red').length,
+        black: signals.filter((s) => s.signal === 'black').length,
+        riskNames: signals.filter((s) => s.signal === 'red' || s.signal === 'black').map((s) => s.name),
+      }
+
+      // 프로젝트 + 지연 단계
+      const todayDate = new Date()
+      const projectsForAI = data.projects.map((p) => ({
+        name: p.project_name,
+        status: p.status,
+        priority: p.priority,
+        delayedStages: (p.stages || [])
+          .filter((s: any) => s.deadline && new Date(s.deadline) < todayDate && s.status !== '완료')
+          .map((s: any) => `${s.stage_name} (마감: ${s.deadline})`),
+      }))
+
+      // 수습직원 + 평가 점수
+      const probationForAI = data.probationEmployees.map((emp) => {
+        const evals = data.probationEvals.filter((e: any) => e.employee_id === emp.id)
+        const evalScores = evals.map((e: any) => {
+          const s = e.scores || {}
+          const total = Object.values(s).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0)
+          const count = Object.keys(s).length || 1
+          return { stage: e.stage || e.eval_type || '평가', avg: Math.round(total / count), recommendation: e.recommendation || '' }
+        })
+        return { name: emp.name, hireDate: emp.hire_date || '', scores: evalScores }
+      })
+
+      // 회의 기록에서 결정사항/액션아이템 가져오기
+      let recentDecisions: string[] = []
+      let recentActionItems: string[] = []
+      try {
+        const { data: meetingData } = await supabase
+          .from('meeting_records')
+          .select('decisions, action_items')
+          .eq('status', 'completed')
+          .order('created_at', { ascending: false })
+          .limit(5)
+        for (const m of (meetingData || [])) {
+          if (Array.isArray(m.decisions)) recentDecisions.push(...m.decisions)
+          if (Array.isArray(m.action_items)) recentActionItems.push(...m.action_items)
+        }
+      } catch { /* 회의 기록 없으면 무시 */ }
+
+      const s = data.candidatesByStatus
+      const briefingData: CEOBriefingData = {
+        date: todayStr,
+        totalEmployees: data.totalEmployees,
+        signals: sigCounts,
+        projects: projectsForAI,
+        probation: probationForAI,
+        pipeline: {
+          applied: s['applied'] || 0,
+          screening: (s['resume_reviewed'] || 0) + (s['survey_sent'] || 0) + (s['survey_done'] || 0),
+          interview: (s['interview_scheduled'] || 0) + (s['video_done'] || 0) + (s['face_to_face_scheduled'] || 0) + (s['face_to_face_done'] || 0),
+          hired: s['hired'] || 0,
+          totalPostings: data.allPostings.length,
+        },
+        recentDecisions: recentDecisions.slice(0, 10),
+        recentActionItems: recentActionItems.slice(0, 10),
+      }
+
+      const result = await generateCEOBriefing(briefingData)
+      setAiAnalysis(result)
+      localStorage.setItem(`ceo-ai-analysis-${todayStr}`, result)
+      toast('AI 경영 분석이 완료되었습니다.', 'success')
+    } catch (err) {
+      console.error('AI 분석 오류:', err)
+      toast('AI 분석 중 오류가 발생했습니다.', 'error')
+    }
+    setAiAnalyzing(false)
   }
 
   if (!canAccess) {
@@ -179,6 +315,9 @@ export default function CEOReport() {
           <p className="text-sm text-gray-500 mt-1">{today}</p>
         </div>
         <div className="flex items-center gap-2" data-print-hide>
+          <Button size="sm" onClick={handleGenerateAnalysis} disabled={aiAnalyzing || !data}>
+            {aiAnalyzing ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 분석 중...</> : <><Sparkles className="h-3.5 w-3.5 mr-1" /> AI 경영 분석</>}
+          </Button>
           <Button variant="outline" size="sm" onClick={handlePrintPdf}>
             <FileDown className="h-3.5 w-3.5 mr-1" /> PDF 다운로드
           </Button>
@@ -190,6 +329,19 @@ export default function CEOReport() {
           </Button>
         </div>
       </div>
+
+      {/* AI 핵심 요약 */}
+      {aiAnalysis && (
+        <Card className="border-brand-200 bg-gradient-to-r from-brand-50 to-purple-50">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="h-5 w-5 text-brand-600" />
+              <span className="text-sm font-bold text-brand-700">AI 핵심 요약</span>
+            </div>
+            <div className="text-sm text-gray-800 leading-relaxed" dangerouslySetInnerHTML={{ __html: formatAnalysisSection(aiAnalysis, '핵심 요약') }} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* 핵심 지표 카드 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -320,6 +472,20 @@ export default function CEOReport() {
           </div>
         </CardContent>
       </Card>
+
+      {/* AI 경영 분석 리포트 */}
+      {aiAnalysis && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-brand-600" /> AI 경영 분석 리포트
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="prose prose-sm max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: formatMarkdown(aiAnalysis) }} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* 수습 직원 현황 */}
       {data && data.probationEmployees.length > 0 && (

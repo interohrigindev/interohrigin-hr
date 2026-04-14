@@ -322,6 +322,108 @@ export async function summarizeMeeting(
   throw new Error('모든 AI 엔진이 응답하지 않습니다. 잠시 후 재시도해주세요.')
 }
 
+// ─── CEO 경영 브리핑 생성 ──────────────────────────────────────
+
+export interface CEOBriefingData {
+  date: string
+  totalEmployees: number
+  signals: { green: number; yellow: number; red: number; black: number; riskNames: string[] }
+  projects: { name: string; status: string; priority: number; delayedStages: string[] }[]
+  probation: { name: string; hireDate: string; scores: { stage: string; avg: number; recommendation: string }[] }[]
+  pipeline: { applied: number; screening: number; interview: number; hired: number; totalPostings: number }
+  recentDecisions: string[]
+  recentActionItems: string[]
+}
+
+const CEO_BRIEFING_PROMPT = `당신은 대한민국 중소기업 CEO의 참모입니다. 아래 HR 데이터를 분석하여 경영 의사결정에 필요한 핵심 브리핑을 작성하세요.
+
+작성 규칙:
+- 수치와 근거를 반드시 포함
+- 문제점만 나열하지 말고 구체적인 조치 방안을 제시
+- CEO가 이번 주 즉시 실행할 수 있는 액션 위주
+- 긍정적 성과도 균형있게 포함
+- 마크다운 형식, 한국어로 작성
+
+다음 구조로 작성하세요:
+
+## 핵심 요약
+(가장 시급한 3가지 사안을 1문장씩)
+
+## 프로젝트 현황 분석
+- 지연/홀딩 프로젝트 진단 및 원인 추정
+- 우선순위 재설정이 필요한 프로젝트
+- 정상 진행 중인 프로젝트 성과
+
+## 인력 현황 분석
+- 수습 직원 평가 추이 및 정규직 전환 권고
+- 직원 신호등 위험 인원 분석 및 조치 제안
+- 팀 안정성 진단
+
+## 채용 파이프라인 분석
+- 단계별 전환율 및 병목 구간
+- 채용 속도 진단 및 개선 제안
+
+## 이번 주 CEO 집중 사항
+(가장 중요한 3가지를 우선순위 순으로, 각각 구체적 액션 포함)`
+
+export async function generateCEOBriefing(data: CEOBriefingData): Promise<string> {
+  const dataText = `
+[분석 기준일] ${data.date}
+
+[전체 인원] ${data.totalEmployees}명
+
+[직원 신호등]
+우수(Green): ${data.signals.green}명 / 보통(Yellow): ${data.signals.yellow}명 / 주의(Red): ${data.signals.red}명 / 위험(Black): ${data.signals.black}명
+${data.signals.riskNames.length > 0 ? `위험/주의 직원: ${data.signals.riskNames.join(', ')}` : '위험/주의 직원 없음'}
+
+[프로젝트 현황] (${data.projects.length}개)
+${data.projects.map((p) => `- ${p.name} | 상태: ${p.status} | 우선순위: ${p.priority}/10${p.delayedStages.length > 0 ? ` | 지연 단계: ${p.delayedStages.join(', ')}` : ''}`).join('\n')}
+
+[수습 직원] (${data.probation.length}명)
+${data.probation.map((p) => `- ${p.name} (입사: ${p.hireDate})\n  ${p.scores.map((s) => `${s.stage}: ${s.avg}점 [${s.recommendation}]`).join(' → ')}`).join('\n')}
+
+[채용 파이프라인] (공고 ${data.pipeline.totalPostings}건)
+지원 ${data.pipeline.applied}명 → 서류/설문 ${data.pipeline.screening}명 → 면접 ${data.pipeline.interview}명 → 합격 ${data.pipeline.hired}명
+${data.pipeline.applied > 0 ? `서류 통과율: ${Math.round((data.pipeline.screening / data.pipeline.applied) * 100)}% / 최종 합격률: ${Math.round((data.pipeline.hired / data.pipeline.applied) * 100)}%` : '지원자 없음'}
+
+[최근 회의 결정사항]
+${data.recentDecisions.length > 0 ? data.recentDecisions.map((d) => `- ${d}`).join('\n') : '없음'}
+
+[미완료 액션아이템]
+${data.recentActionItems.length > 0 ? data.recentActionItems.map((a) => `- ${a}`).join('\n') : '없음'}
+`
+
+  const fullPrompt = `${CEO_BRIEFING_PROMPT}\n\n${dataText}`
+
+  // 1차: feature 설정된 AI
+  const config = await getAIConfigForFeature('ceo_report')
+  if (config) {
+    try {
+      const result = await generateAIContent(config, fullPrompt)
+      if (result.content.trim()) return result.content
+    } catch { /* 폴백 */ }
+  }
+
+  // 2차: 활성 AI 아무거나
+  const { data: fallback } = await supabase
+    .from('ai_settings')
+    .select('provider, api_key, model')
+    .eq('is_active', true)
+    .neq('provider', 'deepgram')
+    .limit(1)
+    .single()
+
+  if (fallback) {
+    const result = await generateAIContent(
+      { provider: fallback.provider, apiKey: fallback.api_key, model: fallback.model },
+      fullPrompt
+    )
+    if (result.content.trim()) return result.content
+  }
+
+  throw new Error('AI 엔진이 응답하지 않습니다. 잠시 후 재시도해주세요.')
+}
+
 // ─── API key validation ─────────────────────────────────────────
 
 export async function validateApiKey(config: AIConfig): Promise<{ valid: boolean; error?: string }> {
