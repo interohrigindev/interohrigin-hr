@@ -1,13 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Users, BarChart3, CheckCircle, ChevronDown, ChevronRight, EyeOff, Eye, Trophy } from 'lucide-react'
+import { Briefcase, Users, BarChart3, CheckCircle, ChevronDown, ChevronRight, EyeOff, Eye, Trophy, UserPlus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
+import { useToast } from '@/components/ui/Toast'
 import { useRecruitmentStats, useCandidates, useJobPostings } from '@/hooks/useRecruitment'
+import { supabase } from '@/lib/supabase'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, POSTING_STATUS_LABELS, POSTING_STATUS_COLORS } from '@/lib/recruitment-constants'
 import type { CandidateStatus, PostingStatus } from '@/types/recruitment'
+import type { Department } from '@/types/database'
 import { formatDate } from '@/lib/utils'
 
 /* ─── 공고 상태별 컬러 (헤더 배경) ─── */
@@ -41,13 +47,66 @@ const DEFAULT_CARD_STYLE = { border: 'border-gray-200', bg: 'bg-gray-50/30' }
 
 export default function RecruitmentDashboard() {
   const navigate = useNavigate()
+  const { toast } = useToast()
   const { stats, loading: statsLoading } = useRecruitmentStats()
-  const { candidates, loading: candLoading } = useCandidates()
+  const { candidates, loading: candLoading, refetch: refetchCandidates } = useCandidates()
   const { postings, loading: postLoading } = useJobPostings()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [initialized, setInitialized] = useState(false)
   const [showRejected, setShowRejected] = useState(false)
   const [activeStatCard, setActiveStatCard] = useState<string | null>(null)
+
+  // ─── 직원 등록 다이얼로그 ────────────────────────────────
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [registerDialogOpen, setRegisterDialogOpen] = useState(false)
+  const [registerCandidate, setRegisterCandidate] = useState<{ id: string; name: string; email: string; phone?: string } | null>(null)
+  const [registerForm, setRegisterForm] = useState({
+    name: '', email: '', phone: '', department_id: '', role: 'employee', start_date: '',
+  })
+
+  useEffect(() => {
+    supabase.from('departments').select('*').then(({ data }) => { if (data) setDepartments(data) })
+  }, [])
+
+  function openRegisterDialog(c: { id: string; name: string; email: string; phone?: string }) {
+    setRegisterCandidate(c)
+    setRegisterForm({
+      name: c.name || '',
+      email: c.email || '',
+      phone: c.phone || '',
+      department_id: '',
+      role: 'employee',
+      start_date: new Date().toISOString().slice(0, 10),
+    })
+    setRegisterDialogOpen(true)
+  }
+
+  async function handleRegisterEmployee() {
+    if (!registerForm.name.trim() || !registerForm.email.trim()) {
+      toast('이름과 이메일은 필수입니다.', 'error')
+      return
+    }
+    const { data: newEmp, error } = await supabase.from('employees').insert({
+      name: registerForm.name,
+      email: registerForm.email,
+      phone: registerForm.phone || null,
+      department_id: registerForm.department_id || null,
+      role: registerForm.role,
+      is_active: true,
+    }).select().single()
+
+    if (error) {
+      toast('직원 등록 실패: ' + error.message, 'error')
+      return
+    }
+    // 후보자 상태를 hired로 업데이트
+    if (registerCandidate?.id) {
+      await supabase.from('candidates').update({ status: 'hired' }).eq('id', registerCandidate.id)
+    }
+    toast(`${registerForm.name}님이 직원으로 등록되었습니다. (ID: ${newEmp.id})`, 'success')
+    setRegisterDialogOpen(false)
+    refetchCandidates?.()
+  }
 
   if (statsLoading || candLoading || postLoading) return <PageSpinner />
 
@@ -283,8 +342,8 @@ export default function RecruitmentDashboard() {
                   {hired.map((c) => {
                     const posting = postings.find((p) => p.id === c.job_posting_id)
                     return (
-                      <div key={c.id} className="flex items-center justify-between py-3 px-2 hover:bg-green-50/50 cursor-pointer rounded-lg transition-colors" onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}>
-                        <div className="flex items-center gap-3">
+                      <div key={c.id} className="flex items-center justify-between py-3 px-2 hover:bg-green-50/50 rounded-lg transition-colors">
+                        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}>
                           <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
                             <CheckCircle className="h-4 w-4 text-green-600" />
                           </div>
@@ -293,9 +352,14 @@ export default function RecruitmentDashboard() {
                             <p className="text-xs text-gray-500">{posting?.title || '공고 미배정'}</p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-xs text-gray-500">{c.email}</p>
-                          <p className="text-[10px] text-gray-400">{formatDate(c.created_at)}</p>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right mr-2">
+                            <p className="text-xs text-gray-500">{c.email}</p>
+                            <p className="text-[10px] text-gray-400">{formatDate(c.created_at)}</p>
+                          </div>
+                          <Button size="sm" onClick={(e) => { e.stopPropagation(); openRegisterDialog({ id: c.id, name: c.name, email: c.email, phone: c.phone || '' }) }}>
+                            <UserPlus className="h-3 w-3 mr-1" /> 직원 등록
+                          </Button>
                         </div>
                       </div>
                     )
@@ -474,6 +538,42 @@ export default function RecruitmentDashboard() {
           )}
         </CardContent>
       </Card>
+      {/* ─── 직원 등록 다이얼로그 ──────────────────────────── */}
+      <Dialog
+        open={registerDialogOpen}
+        onClose={() => setRegisterDialogOpen(false)}
+        title="직원 등록"
+        className="max-w-lg"
+      >
+        <div className="space-y-4">
+          <Input label="이름 *" value={registerForm.name} onChange={(e) => setRegisterForm((p) => ({ ...p, name: e.target.value }))} />
+          <Input label="이메일 *" type="email" value={registerForm.email} onChange={(e) => setRegisterForm((p) => ({ ...p, email: e.target.value }))} />
+          <Input label="전화번호" value={registerForm.phone} onChange={(e) => setRegisterForm((p) => ({ ...p, phone: e.target.value }))} />
+          <Select
+            label="부서"
+            value={registerForm.department_id}
+            onChange={(e) => setRegisterForm((p) => ({ ...p, department_id: e.target.value }))}
+            options={[{ value: '', label: '미정' }, ...departments.filter((d) => !d.parent_id).map((d) => ({ value: d.id, label: d.name }))]}
+          />
+          <Select
+            label="역할"
+            value={registerForm.role}
+            onChange={(e) => setRegisterForm((p) => ({ ...p, role: e.target.value }))}
+            options={[
+              { value: 'employee', label: '사원' },
+              { value: 'leader', label: '팀장' },
+              { value: 'director', label: '이사' },
+            ]}
+          />
+          <Input label="입사일" type="date" value={registerForm.start_date} onChange={(e) => setRegisterForm((p) => ({ ...p, start_date: e.target.value }))} />
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setRegisterDialogOpen(false)}>취소</Button>
+            <Button onClick={handleRegisterEmployee}>
+              <UserPlus className="h-4 w-4 mr-1" /> 직원 등록
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
 }
