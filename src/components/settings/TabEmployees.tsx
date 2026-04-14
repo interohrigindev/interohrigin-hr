@@ -209,6 +209,13 @@ export default function TabEmployees() {
     setShowDeptDialog(true)
   }
 
+  function openAddTeam(parentDept: Department) {
+    setEditingDept(null)
+    setDeptName('')
+    setDeptParentId(parentDept.id)
+    setShowDeptDialog(true)
+  }
+
   function openEditDept(dept: Department) {
     setEditingDept(dept)
     setDeptName(dept.name)
@@ -620,7 +627,13 @@ export default function TabEmployees() {
                         <p className="text-sm font-bold text-gray-900">{dept.name}</p>
                         <p className="text-xs text-gray-500">{count}명 · 부서{childDepts.length > 0 ? ` · 하위 팀 ${childDepts.length}개` : ''}</p>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openAddTeam(dept)}
+                          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-brand-600 bg-brand-100 hover:bg-brand-200 transition-colors"
+                        >
+                          <Plus className="h-3 w-3" /> 팀 추가
+                        </button>
                         <button onClick={() => openEditDept(dept)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -847,15 +860,15 @@ export default function TabEmployees() {
       <Dialog
         open={showDeptDialog}
         onClose={() => setShowDeptDialog(false)}
-        title={editingDept ? '부서 수정' : '부서 추가'}
+        title={editingDept ? '부서/팀 수정' : deptParentId ? `팀 추가 — ${departments.find((d) => d.id === deptParentId)?.name || ''}` : '부서 추가'}
       >
         <div className="space-y-4">
           <Input
             id="dept-name"
-            label="부서명"
+            label={deptParentId && !editingDept ? '팀명' : '부서명'}
             value={deptName}
             onChange={(e) => setDeptName(e.target.value)}
-            placeholder="예: 브랜드사업본부"
+            placeholder={deptParentId && !editingDept ? '예: 마케팅팀' : '예: 브랜드사업본부'}
           />
           <Select
             id="dept-parent"
@@ -863,7 +876,7 @@ export default function TabEmployees() {
             options={[
               { value: '', label: '없음 (최상위 부서)' },
               ...departments
-                .filter((d) => d.id !== editingDept?.id)
+                .filter((d) => d.id !== editingDept?.id && !d.parent_id)
                 .map((d) => ({ value: d.id, label: d.name })),
             ]}
             value={deptParentId}
@@ -948,10 +961,13 @@ export default function TabEmployees() {
           <div className="grid grid-cols-2 gap-4">
             <Select
               id="invite-dept"
-              label="부서"
+              label="부서/팀"
               options={[
                 { value: '', label: '부서 미지정' },
-                ...departments.map((d) => ({ value: d.id, label: d.name })),
+                ...departments.filter((d) => !d.parent_id).flatMap((d) => [
+                  { value: d.id, label: `${d.name}` },
+                  ...departments.filter((c) => c.parent_id === d.id).map((c) => ({ value: c.id, label: `ㄴ ${c.name}` })),
+                ]),
               ]}
               value={inviteForm.department_id}
               onChange={(e) => setInviteForm({ ...inviteForm, department_id: e.target.value })}
@@ -1111,10 +1127,13 @@ export default function TabEmployees() {
           <div className="grid grid-cols-2 gap-4">
             <Select
               id="edit-dept"
-              label="부서"
+              label="부서/팀"
               options={[
                 { value: '', label: '부서 미지정' },
-                ...departments.map((d) => ({ value: d.id, label: d.name })),
+                ...departments.filter((d) => !d.parent_id).flatMap((d) => [
+                  { value: d.id, label: `${d.name}` },
+                  ...departments.filter((c) => c.parent_id === d.id).map((c) => ({ value: c.id, label: `ㄴ ${c.name}` })),
+                ]),
               ]}
               value={editForm.department_id}
               onChange={(e) => setEditForm({ ...editForm, department_id: e.target.value })}
