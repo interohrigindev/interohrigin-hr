@@ -293,7 +293,29 @@ ${fileInfo}
 - position_fit, organization_fit: 0~100 정수
 - recommendation: PROCEED(서류통과), REVIEW(추가검토필요), REJECT(부적합) 중 택 1`
 
-      const result = await generateAIContent(config, prompt, files.length > 0 ? files : undefined)
+      let result
+      try {
+        result = await generateAIContent(config, prompt, files.length > 0 ? files : undefined)
+      } catch (aiErr: any) {
+        // 1차 AI 실패 시 다른 엔진으로 폴백
+        setAnalysisStatus('AI 엔진 전환 중...')
+        const { data: fallback } = await supabase
+          .from('ai_settings')
+          .select('provider, api_key, model')
+          .eq('is_active', true)
+          .neq('provider', 'deepgram')
+          .neq('provider', config.provider)
+          .limit(1)
+          .single()
+        if (fallback) {
+          result = await generateAIContent(
+            { provider: fallback.provider, apiKey: fallback.api_key, model: fallback.model },
+            prompt, files.length > 0 ? files : undefined
+          )
+        } else {
+          throw aiErr
+        }
+      }
 
       setAnalysisStatus('AI 응답 분석 중...')
       // JSON 파싱 — markdown 코드블록 제거 후 추출

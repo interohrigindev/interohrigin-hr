@@ -834,7 +834,7 @@ ${candidateList}
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         title="면접 일정 추가"
-        className="max-w-lg"
+        className="max-w-lg max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-4">
           <Select

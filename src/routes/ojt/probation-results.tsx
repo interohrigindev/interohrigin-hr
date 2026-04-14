@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Sparkles, Loader2, TrendingUp, AlertTriangle, CheckCircle, XCircle, Users } from 'lucide-react'
+import { Sparkles, Loader2, TrendingUp, AlertTriangle, CheckCircle, XCircle, Users, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -116,6 +116,16 @@ export default function ProbationResults() {
 
   // Filter
   const [filterEmployee, setFilterEmployee] = useState('')
+
+  // Expand/collapse
+  const [expandedEmployees, setExpandedEmployees] = useState<Set<string>>(new Set())
+  const toggleExpand = (id: string) => {
+    setExpandedEmployees(prev => {
+      const n = new Set(prev)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -268,12 +278,14 @@ ${evalsSummary}
             const latestEval = evals[evals.length - 1]
             const latestRec = latestEval?.continuation_recommendation as ContinuationRecommendation | null
             const stageGrouped = getEvalsGroupedByStage(evals)
+            const isExpanded = expandedEmployees.has(empId)
+            const allVisible = evals.every(ev => (ev as any).is_visible_to_employee)
 
             return (
               <Card key={empId}>
-                <CardHeader>
+                <CardHeader className="cursor-pointer" onClick={() => toggleExpand(empId)}>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <CardTitle className="text-lg">{name}</CardTitle>
                       {latestRec && (
                         <Badge variant={RECOMMENDATION_VARIANTS[latestRec]}>
@@ -284,12 +296,37 @@ ${evalsSummary}
                         <Users className="h-3 w-3 mr-1" />
                         {evals.length}건 평가
                       </Badge>
+                      <span className="text-sm text-gray-500">
+                        {STAGES.filter(s => stageGrouped.has(s)).map(s => `${STAGE_SHORT[s].split(' ')[0]}: ${getAvgScoreForStage(evals, s).toFixed(0)}점`).join(', ')}
+                      </span>
+                      {/* 직원 공개 토글 */}
+                      <div className="flex items-center gap-2 ml-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            const newVal = !allVisible
+                            for (const ev of evals) {
+                              await supabase.from('probation_evaluations').update({ is_visible_to_employee: newVal }).eq('id', ev.id)
+                            }
+                            toast(newVal ? '직원에게 공개됨' : '공개 해제됨', 'success')
+                            fetchData()
+                          }}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${allVisible ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                        >
+                          <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${allVisible ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                        <span className="text-sm text-gray-500">{allVisible ? '직원에게 공개' : '비공개'}</span>
+                      </div>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => openTrendDialog(empId, name)}>
-                      <TrendingUp className="h-3 w-3 mr-1" /> 추이 분석
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openTrendDialog(empId, name) }}>
+                        <TrendingUp className="h-3 w-3 mr-1" /> 추이 분석
+                      </Button>
+                      {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+                    </div>
                   </div>
                 </CardHeader>
+                {isExpanded && (
                 <CardContent className="space-y-4">
                   {/* Stage progress */}
                   <div className="flex gap-1">
@@ -439,6 +476,7 @@ ${evalsSummary}
                     )
                   })}
                 </CardContent>
+                )}
               </Card>
             )
           })}

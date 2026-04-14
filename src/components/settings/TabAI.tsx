@@ -338,10 +338,10 @@ export default function TabAI() {
                     {/* 토글 스위치 */}
                     <button
                       onClick={() => handleToggleActive(s.id)}
-                      className={`relative w-10 h-5 rounded-full transition-colors ${s.is_active ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${s.is_active ? 'bg-emerald-500' : 'bg-gray-300'}`}
                       title={s.is_active ? '비활성화' : '활성화'}
                     >
-                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${s.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                      <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${s.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
                     </button>
                     <button
                       onClick={() => handleDelete(s.id)}
