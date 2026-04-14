@@ -12,6 +12,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { AvatarPicker, resolveAvatarSrc } from '@/components/ui/AvatarPicker'
 import { ROLE_LABELS } from '@/lib/constants'
+import { useAuth } from '@/hooks/useAuth'
 import { generateEmail, generateEmailPrefix, generateAlternativeEmails, DOMAIN } from '@/lib/email-generator'
 import {
   Plus,
@@ -60,6 +61,8 @@ const BLOOD_TYPE_OPTIONS = [
 
 export default function TabEmployees() {
   const { toast } = useToast()
+  const { profile } = useAuth()
+  const canViewSalary = profile?.role && ['ceo', 'director', 'division_head', 'admin'].includes(profile.role)
   const [departments, setDepartments] = useState<Department[]>([])
   const [employees, setEmployees] = useState<(Employee & { department?: Department })[]>([])
   const [loading, setLoading] = useState(true)
@@ -344,6 +347,14 @@ export default function TabEmployees() {
         if (profileErr) {
           toast('MBTI/혈액형 저장 실패: ' + profileErr.message, 'error')
         }
+      }
+
+      // Step 4: 연봉 저장 (employee_hr_details)
+      if (employeeId && (inviteForm as any).annual_salary) {
+        await supabase.from('employee_hr_details').upsert({
+          employee_id: employeeId,
+          annual_salary: (inviteForm as any).annual_salary,
+        }, { onConflict: 'employee_id' })
       }
 
       toast(`${inviteForm.name}님이 등록되었습니다. 임시 비밀번호: ${inviteForm.password}`, 'info')
@@ -671,7 +682,7 @@ export default function TabEmployees() {
                     <th className="px-6 py-3 text-left font-medium text-gray-500">사원번호</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">이름</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">부서</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-500">직급</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-500">직무</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">역할</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">상태</th>
                     {activePeriodId && (
@@ -936,14 +947,14 @@ export default function TabEmployees() {
               placeholder="010-0000-0000"
             />
           </div>
-          {/* 직급 / 입사구분 */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* 직무 / 입사구분 / 연봉 */}
+          <div className={`grid ${canViewSalary ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
             <Input
               id="invite-position"
-              label="직급/직책"
+              label="직무"
               value={inviteForm.position}
               onChange={(e) => setInviteForm({ ...inviteForm, position: e.target.value })}
-              placeholder="대리, 과장, 팀장 등"
+              placeholder="마케팅, 개발, 디자인 등"
             />
             <Select
               id="invite-employment-type"
@@ -952,6 +963,16 @@ export default function TabEmployees() {
               value={inviteForm.employment_type}
               onChange={(e) => setInviteForm({ ...inviteForm, employment_type: e.target.value })}
             />
+            {canViewSalary && (
+              <Input
+                id="invite-salary"
+                label="연봉 (만원)"
+                type="number"
+                value={(inviteForm as any).annual_salary || ''}
+                onChange={(e) => setInviteForm({ ...inviteForm, annual_salary: e.target.value ? parseInt(e.target.value) * 10000 : '' } as any)}
+                placeholder="3000"
+              />
+            )}
           </div>
 
           {/* MBTI / 혈액형 / 한자이름 */}
@@ -1071,14 +1092,14 @@ export default function TabEmployees() {
             />
           </div>
 
-          {/* 직급 / 입사구분 */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* 직무 / 입사구분 / 연봉 */}
+          <div className={`grid ${canViewSalary ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
             <Input
               id="edit-position"
-              label="직급/직책"
+              label="직무"
               value={editForm.position}
               onChange={(e) => setEditForm({ ...editForm, position: e.target.value })}
-              placeholder="대리, 과장, 팀장 등"
+              placeholder="마케팅, 개발, 디자인 등"
             />
             <Select
               id="edit-employment-type"
@@ -1087,6 +1108,16 @@ export default function TabEmployees() {
               value={editForm.employment_type}
               onChange={(e) => setEditForm({ ...editForm, employment_type: e.target.value })}
             />
+            {canViewSalary && (
+              <Input
+                id="edit-salary"
+                label="연봉 (만원)"
+                type="number"
+                value={(editForm as any).annual_salary || ''}
+                onChange={(e) => setEditForm({ ...editForm, annual_salary: e.target.value ? parseInt(e.target.value) * 10000 : '' } as any)}
+                placeholder="3000"
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

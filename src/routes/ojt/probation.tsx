@@ -31,9 +31,9 @@ const STAGE_LABELS: Record<ProbationStage, string> = {
 }
 
 const STAGE_SHORT: Record<ProbationStage, string> = {
-  round1: '1회차',
-  round2: '2회차',
-  round3: '3회차',
+  round1: '1회차 (2주차)',
+  round2: '2회차 (6주차)',
+  round3: '3회차 (10주차)',
 }
 
 const STAGE_ORDER: Record<ProbationStage, number> = {
@@ -68,6 +68,14 @@ const RECOMMENDATION_ICONS: Record<ContinuationRecommendation, typeof CheckCircl
 
 const MAX_SCORE_PER_ITEM = 20
 
+const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
+  full_time: '정규직',
+  contract: '계약직',
+  intern: '인턴',
+  part_time: '파트타임',
+  probation: '수습',
+}
+
 interface EmployeeBasic {
   id: string
   name: string
@@ -75,6 +83,8 @@ interface EmployeeBasic {
   hire_date: string | null
   employment_type: string | null
   position: string | null
+  job_title?: string | null
+  annual_salary?: number | null
 }
 
 interface EvalWithEmployee extends ProbationEvaluation {
@@ -119,16 +129,23 @@ export default function ProbationManage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [evalRes, empRes, deptRes] = await Promise.all([
+    const [evalRes, empRes, deptRes, hrRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position').eq('is_active', true).order('name'),
       supabase.from('departments').select('id, name'),
+      supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
     ])
 
     if (deptRes.data) setDepartments(deptRes.data)
 
     if (empRes.data) {
-      setEmployees(empRes.data)
+      // HR 상세 정보 병합
+      const hrMap = new Map((hrRes.data || []).map((h: any) => [h.employee_id, h]))
+      const enrichedEmps = empRes.data.map((e: any) => {
+        const hr = hrMap.get(e.id)
+        return { ...e, job_title: hr?.job_title || null, annual_salary: hr?.annual_salary || null }
+      })
+      setEmployees(enrichedEmps)
     }
 
     if (evalRes.data && empRes.data) {
@@ -390,12 +407,13 @@ ${evalsSummary}
                     <tr className="border-b-2 border-gray-200 text-gray-600">
                       <th className="text-left py-2.5 px-3 font-semibold">성함</th>
                       <th className="text-left py-2.5 px-3 font-semibold">소속</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">구분</th>
                       <th className="text-left py-2.5 px-3 font-semibold">직무</th>
                       <th className="text-center py-2.5 px-3 font-semibold">수습 연봉</th>
                       <th className="text-center py-2.5 px-3 font-semibold">입사일</th>
-                      <th className="text-center py-2.5 px-3 font-semibold">1회차 평가</th>
-                      <th className="text-center py-2.5 px-3 font-semibold">2회차 평가</th>
-                      <th className="text-center py-2.5 px-3 font-semibold">3회차 평가</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">1회차 (2주)</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">2회차 (6주)</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">3회차 (10주)</th>
                       <th className="text-center py-2.5 px-3 font-semibold">수습 종료일</th>
                     </tr>
                   </thead>
@@ -428,8 +446,15 @@ ${evalsSummary}
                         <tr key={emp.id} className="border-b border-gray-100 hover:bg-gray-50">
                           <td className="py-2.5 px-3 font-semibold text-gray-900">{emp.name}</td>
                           <td className="py-2.5 px-3 text-gray-600">{emp.department_id ? (departments.find(d => d.id === emp.department_id)?.name || '-') : '-'}</td>
-                          <td className="py-2.5 px-3 text-gray-600">{emp.position || '-'}</td>
-                          <td className="py-2.5 px-3 text-center text-gray-400">-</td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${emp.employment_type === 'probation' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {EMPLOYMENT_TYPE_LABELS[emp.employment_type || ''] || emp.employment_type || '-'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-gray-600">{emp.job_title || emp.position || '-'}</td>
+                          <td className="py-2.5 px-3 text-center text-gray-700">
+                            {emp.annual_salary ? `${(emp.annual_salary / 10000).toFixed(0)}만원` : '-'}
+                          </td>
                           <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(hire)}</td>
                           <td className="py-2.5 px-3 text-center">{getRoundCell('round1', roundDates[0])}</td>
                           <td className="py-2.5 px-3 text-center">{getRoundCell('round2', roundDates[1])}</td>
@@ -542,6 +567,12 @@ ${evalsSummary}
                     const stageEvals = stageGrouped.get(stage) || []
                     const stageAvg = getAvgScoreForStage(evals, stage)
 
+                    // 리더는 이사/대표 평가를 볼 수 없음
+                    const visibleEvals = profile?.role === 'leader'
+                      ? stageEvals.filter((ev) => ev.evaluator_role !== 'executive' && ev.evaluator_role !== 'ceo')
+                      : stageEvals
+                    if (visibleEvals.length === 0) return null
+
                     return (
                       <div key={stage} className="border rounded-lg overflow-hidden">
                         <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b">
@@ -549,10 +580,10 @@ ${evalsSummary}
                             <Badge variant="primary">{STAGE_SHORT[stage]}</Badge>
                             <span className="text-base font-semibold text-gray-700">평균 {stageAvg.toFixed(1)}/100</span>
                           </div>
-                          <span className="text-sm text-gray-500">{stageEvals.length}명 평가</span>
+                          <span className="text-sm text-gray-500">{visibleEvals.length}명 평가</span>
                         </div>
                         <div className="divide-y divide-gray-200">
-                          {stageEvals.map((ev) => {
+                          {visibleEvals.map((ev) => {
                             const s = ev.scores as Record<string, number>
                             const total = getTotalScore(s)
                             const rec = ev.continuation_recommendation as ContinuationRecommendation | null
