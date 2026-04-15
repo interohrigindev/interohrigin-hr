@@ -69,11 +69,15 @@ const TASK_PROMPTS: Record<TaskType, string> = {
 export function getSystemPrompt(
   taskType: TaskType,
   userName?: string,
-  userRole?: string
+  userRole?: string,
+  platformContext?: string
 ): string {
   let prompt = TASK_PROMPTS[taskType]
   if (userName) {
     prompt += `\n\n현재 사용자: ${userName}${userRole ? ` (${userRole})` : ''}`
+  }
+  if (platformContext) {
+    prompt += platformContext
   }
   return prompt
 }

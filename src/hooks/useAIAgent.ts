@@ -6,6 +6,7 @@ import type { AIConfig } from '@/lib/ai-client'
 import { routeMessage, getTaskLabel, getNextProvider } from '@/lib/ai-router'
 import type { TaskType } from '@/lib/ai-router'
 import { getSystemPrompt } from '@/lib/ai-prompts'
+import { buildPlatformContext } from '@/lib/ai-context'
 import { detectDocumentRequest, generateDocument } from '@/lib/document-generator'
 import { useAuth } from '@/hooks/useAuth'
 import type { AgentConversation, AgentMessage, AgentContextType } from '@/types/ai-agent'
@@ -203,7 +204,9 @@ export function useAIAgent() {
       const recentMsgs = [...messages.filter((m) => m.role !== 'system').slice(-20), { role: 'user' as const, content }]
         .map((m) => ({ role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant', content: m.content }))
 
-      const systemPrompt = getSystemPrompt(taskType, profile?.name, profile?.role)
+      // RAG: 플랫폼 실시간 데이터 컨텍스트 빌드
+      const platformContext = await buildPlatformContext(profile?.id)
+      const systemPrompt = getSystemPrompt(taskType, profile?.name, profile?.role, platformContext)
 
       // AI 호출 (실패 시 다른 provider로 자동 fallback)
       let response
