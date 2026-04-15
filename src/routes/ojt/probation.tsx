@@ -173,7 +173,7 @@ export default function ProbationManage() {
       const scoreStr = PROBATION_CRITERIA.map((c) => `${c.label}: ${scores[c.key] || 0}/${MAX_SCORE_PER_ITEM}`).join(', ')
       const total = getTotalScore(scores)
 
-      const prevEvals = evaluations.filter((e) => e.employee_id === selectedEmployeeId)
+      const prevEvals = evaluations.filter((e) => e.employee_id === selectedEmployeeId && e.evaluator_id === profile?.id && e.evaluator_role === selectedRole)
       const prevSummary = prevEvals.length > 0
         ? prevEvals.map((e) => {
             const s = e.scores as Record<string, number>
