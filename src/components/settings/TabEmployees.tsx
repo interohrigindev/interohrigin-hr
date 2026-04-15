@@ -769,13 +769,13 @@ export default function TabEmployees() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[800px]">
+              <table className="w-full text-sm min-w-[700px]">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="px-6 py-3 text-left font-medium text-gray-500">사원번호</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-500">이름</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-500">부서</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-500">팀</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">사원번호</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">이름</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">부서</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">팀</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">직무</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">역할</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-500">상태</th>

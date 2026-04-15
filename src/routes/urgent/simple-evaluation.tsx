@@ -273,8 +273,8 @@ export default function SimpleEvaluation() {
               {/* 9개 항목 (5점 척도) */}
               <div className="grid gap-2">
                 {SIMPLE_EVAL_ITEMS.slice(0, 9).map((item) => (
-                  <div key={item.key} className="flex items-center gap-3">
-                    <span className="w-28 shrink-0 text-sm font-medium text-gray-700">
+                  <div key={item.key} className="flex items-center gap-2 sm:gap-3">
+                    <span className="w-20 sm:w-28 shrink-0 text-xs sm:text-sm font-medium text-gray-700">
                       {item.label}
                     </span>
                     <div className="flex gap-1">
@@ -307,9 +307,9 @@ export default function SimpleEvaluation() {
               </div>
 
               {/* 종합 추천 */}
-              <div className="flex items-center gap-3 border-t border-gray-100 pt-3">
-                <span className="w-28 shrink-0 text-sm font-medium text-gray-700">종합 추천</span>
-                <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 border-t border-gray-100 pt-3">
+                <span className="shrink-0 text-sm font-medium text-gray-700">종합 추천</span>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                   {(Object.entries(RECOMMENDATION_LABELS) as [OverallRecommendation, string][]).map(
                     ([key, label]) => (
                       <button

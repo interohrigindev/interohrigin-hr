@@ -15,7 +15,7 @@ export function Header({ onMenuToggle }: HeaderProps) {
   const navigate = useNavigate()
 
   return (
-    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white safe-area-top">
       <div className="flex h-14 items-center justify-between px-4 md:px-6">
         {/* Left: hamburger + title */}
         <div className="flex items-center gap-3">

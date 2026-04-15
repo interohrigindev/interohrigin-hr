@@ -309,23 +309,23 @@ export default function CEOReport() {
       `}</style>
 
       {/* 헤더 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">CEO 리포트</h1>
           <p className="text-sm text-gray-500 mt-1">{today}</p>
         </div>
-        <div className="flex items-center gap-2" data-print-hide>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2" data-print-hide>
           <Button size="sm" onClick={handleGenerateAnalysis} disabled={aiAnalyzing || !data}>
-            {aiAnalyzing ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 분석 중...</> : <><Sparkles className="h-3.5 w-3.5 mr-1" /> AI 경영 분석</>}
+            {aiAnalyzing ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 분석 중...</> : <><Sparkles className="h-3.5 w-3.5 mr-1" /> <span className="hidden sm:inline">AI 경영 </span>분석</>}
           </Button>
           <Button variant="outline" size="sm" onClick={handlePrintPdf}>
-            <FileDown className="h-3.5 w-3.5 mr-1" /> PDF 다운로드
+            <FileDown className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">PDF 다운로드</span>
           </Button>
           <Button variant="outline" size="sm" onClick={handleCopyLink}>
-            <Link className="h-3.5 w-3.5 mr-1" /> 링크 복사
+            <Link className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">링크 복사</span>
           </Button>
           <Button variant="outline" size="sm" onClick={fetchReport}>
-            <RefreshCw className="h-3.5 w-3.5 mr-1" /> 새로고침
+            <RefreshCw className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">새로고침</span>
           </Button>
         </div>
       </div>
