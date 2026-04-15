@@ -1,0 +1,25 @@
+{
+  "name": "인터오리진 HR플랫폼",
+  "short_name": "IO HR",
+  "description": "직원 생애주기 통합 관리 — 채용·입사·OJT·업무·평가·퇴사",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6B3FA0",
+  "orientation": "any",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
