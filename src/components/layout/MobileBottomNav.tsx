@@ -7,7 +7,6 @@ interface BottomTab {
   label: string
   emoji: string
   matchPaths?: string[]
-  minRole?: string
 }
 
 const TABS: BottomTab[] = [
@@ -28,7 +27,6 @@ const TABS: BottomTab[] = [
     label: '채용',
     emoji: '💼',
     matchPaths: ['/admin/recruitment'],
-    minRole: 'director',
   },
   {
     to: '/meeting-notes',
@@ -39,12 +37,11 @@ const TABS: BottomTab[] = [
   {
     to: '/settings/general',
     label: '더보기',
-    emoji: '⚙️',
+    emoji: '☰',
     matchPaths: ['/settings'],
   },
 ]
 
-// 일반 직원용 탭 (채용 대신 게시판)
 const EMPLOYEE_TABS: BottomTab[] = [
   {
     to: '/admin/projects',
@@ -73,27 +70,27 @@ const EMPLOYEE_TABS: BottomTab[] = [
   {
     to: '/my-evaluations',
     label: '더보기',
-    emoji: '⚙️',
+    emoji: '☰',
     matchPaths: ['/my-evaluations', '/settings'],
   },
 ]
 
 const ADMIN_ROLES = ['director', 'division_head', 'ceo', 'admin']
+const HIDDEN_PATHS = ['/login', '/careers', '/apply', '/survey/', '/accept-offer', '/io-ai']
 
 export function MobileBottomNav() {
   const { profile } = useAuth()
   const location = useLocation()
 
-  // 공개 페이지에서는 숨김
-  const hiddenPaths = ['/login', '/careers', '/apply', '/survey/', '/accept-offer']
-  if (hiddenPaths.some((p) => location.pathname.startsWith(p))) return null
+  if (HIDDEN_PATHS.some((p) => location.pathname.startsWith(p))) return null
+  if (!profile) return null
 
-  const isAdmin = profile?.role && ADMIN_ROLES.includes(profile.role)
+  const isAdmin = profile.role && ADMIN_ROLES.includes(profile.role)
   const tabs = isAdmin ? TABS : EMPLOYEE_TABS
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 md:hidden safe-area-bottom">
-      <div className="flex items-center justify-around h-14 px-1">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden safe-area-bottom bg-white/95 backdrop-blur-md border-t border-gray-100 shadow-[0_-1px_6px_rgba(0,0,0,0.06)]">
+      <div className="grid grid-cols-5 h-[56px]">
         {tabs.map((tab) => {
           const isActive = tab.matchPaths
             ? tab.matchPaths.some((p) => location.pathname.startsWith(p))
@@ -103,15 +100,21 @@ export function MobileBottomNav() {
             <NavLink
               key={tab.to}
               to={tab.to}
-              className={cn(
-                'flex flex-col items-center justify-center flex-1 py-1 min-w-0 transition-colors',
-                isActive ? 'text-brand-600' : 'text-gray-400'
-              )}
+              className="flex flex-col items-center justify-center gap-0.5 relative"
             >
-              <span className="text-xl leading-none">{tab.emoji}</span>
+              {/* 활성 표시 점 */}
+              {isActive && (
+                <span className="absolute top-1 w-1 h-1 rounded-full bg-brand-500" />
+              )}
               <span className={cn(
-                'text-[10px] mt-0.5 truncate',
-                isActive ? 'font-bold' : 'font-medium'
+                'text-[22px] leading-none mt-1 transition-transform',
+                isActive && 'scale-110'
+              )}>
+                {tab.emoji}
+              </span>
+              <span className={cn(
+                'text-[10px] leading-tight',
+                isActive ? 'text-brand-600 font-bold' : 'text-gray-400 font-medium'
               )}>
                 {tab.label}
               </span>

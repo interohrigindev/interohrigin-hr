@@ -27,9 +27,10 @@ export function Header({ onMenuToggle }: HeaderProps) {
             <Menu className="h-5 w-5" />
           </button>
 
-          <img src={logoSvg} alt="InterOhrigin" className="h-8 w-8" />
-          <h1 className="text-lg font-bold tracking-tight text-gray-900">
-            인터오리진{' '}
+          <img src={logoSvg} alt="InterOhrigin" className="h-7 w-7 md:h-8 md:w-8" />
+          <h1 className="text-base md:text-lg font-bold tracking-tight text-gray-900">
+            <span className="hidden sm:inline">인터오리진 </span>
+            <span className="sm:hidden">IO </span>
             <span className="text-brand-600">HR Platform</span>
           </h1>
         </div>

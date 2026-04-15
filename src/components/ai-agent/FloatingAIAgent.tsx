@@ -93,7 +93,7 @@ export default function FloatingAIAgent() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+          className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 w-12 h-12 md:w-14 md:h-14 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
         >
           <Bot className="h-6 w-6" />
           {activeConvs.length > 0 && (
@@ -106,7 +106,7 @@ export default function FloatingAIAgent() {
 
       {/* ─── 채팅 패널 ─── */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-[400px] h-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
+        <div className="fixed bottom-16 md:bottom-6 right-2 md:right-6 z-50 w-[calc(100vw-16px)] md:w-[400px] h-[70vh] md:h-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
 
           {/* 헤더 */}
           <div className="flex items-center justify-between px-4 py-3 bg-violet-600 text-white shrink-0">
