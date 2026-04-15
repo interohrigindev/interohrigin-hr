@@ -602,9 +602,9 @@ ${candidateList}
   return (
     <div className="space-y-6">
       {/* ── 헤더 ─────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">면접 일정 관리</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <Button variant="outline" onClick={() => setAutoDialogOpen(true)}>
             <Sparkles className="h-4 w-4 mr-1" /> AI 자동 배정
           </Button>
@@ -699,9 +699,9 @@ ${candidateList}
               <Calendar className="h-4 w-4 text-blue-500" />
               면접 캘린더
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap gap-y-2">
               {/* 뷰 토글 */}
-              <div className="flex bg-gray-100 rounded-lg p-0.5">
+              <div className="flex bg-gray-100 rounded-lg p-0.5 shrink-0">
                 <button
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
                     viewMode === '3day'
@@ -732,7 +732,7 @@ ${candidateList}
                 >
                   <ChevronLeft className="h-4 w-4 text-gray-600" />
                 </button>
-                <span className="text-sm font-medium text-gray-700 min-w-[150px] text-center select-none">
+                <span className="text-sm font-medium text-gray-700 min-w-[80px] text-center select-none">
                   {format(viewDays[0], 'M/d', { locale: ko })}
                   {' ~ '}
                   {format(viewDays[viewDays.length - 1], 'M/d', { locale: ko })}

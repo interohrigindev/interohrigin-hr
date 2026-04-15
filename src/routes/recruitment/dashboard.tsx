@@ -174,9 +174,9 @@ export default function RecruitmentDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">채용 대시보드</h1>
-        <Button onClick={() => navigate('/admin/recruitment/jobs/new')}>
+        <Button className="shrink-0" onClick={() => navigate('/admin/recruitment/jobs/new')}>
           새 채용공고
         </Button>
       </div>

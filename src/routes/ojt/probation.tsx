@@ -250,9 +250,9 @@ ${prevSummary}
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">수습 단계별 평가</h1>
-        <Button onClick={openNewEval}><Plus className="h-4 w-4 mr-1" /> 새 평가</Button>
+        <Button className="shrink-0" onClick={openNewEval}><Plus className="h-4 w-4 mr-1" /> 새 평가</Button>
       </div>
 
       {/* Info banner */}
@@ -370,7 +370,7 @@ ${prevSummary}
           </CardHeader>
           <CardContent className="space-y-6">
             {/* 직원/회차/역할 선택 */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Select
                 label="직원 *"
                 value={selectedEmployeeId}
@@ -409,7 +409,7 @@ ${prevSummary}
               return (
                 <div className="bg-brand-50 border border-brand-200 rounded-lg p-4 space-y-2">
                   <h3 className="text-lg font-bold text-brand-900">수습 평가_{emp.name}({STAGE_SHORT[selectedStage]})</h3>
-                  <div className="grid grid-cols-3 gap-2 text-sm text-brand-800">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-brand-800">
                     <span>부서 / 직급 : {emp.position || '-'}</span>
                     <span>입사 일자 : {formatDate(hireDate)}</span>
                     <span>수습 종료 일자 : {formatDate(endDate)}</span>

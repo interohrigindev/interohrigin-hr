@@ -66,12 +66,13 @@ export default function EmployeeSearch() {
         <CardContent className="pt-4">
           <div className="flex gap-2">
             <Input
+              className="flex-1 min-w-0"
               placeholder="직원 이름을 입력하세요"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
             />
-            <Button onClick={handleSearch} disabled={loading}>
+            <Button className="shrink-0" onClick={handleSearch} disabled={loading}>
               {loading ? '검색 중...' : '검색'}
             </Button>
           </div>

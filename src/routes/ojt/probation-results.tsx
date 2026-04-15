@@ -394,8 +394,8 @@ ${evalsSummary}
             return (
               <Card key={empId}>
                 <CardHeader className="cursor-pointer" onClick={() => toggleExpand(empId)}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-start justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-3 flex-wrap min-w-0">
                       <CardTitle className="text-lg">{name}</CardTitle>
                       {latestRec && (
                         <Badge variant={RECOMMENDATION_VARIANTS[latestRec]}>
@@ -428,7 +428,7 @@ ${evalsSummary}
                         <span className="text-sm text-gray-500">{allVisible ? '직원에게 공개' : '비공개'}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <Button size="sm" variant="outline" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openTrendDialog(empId, name) }}>
                         <TrendingUp className="h-3 w-3 mr-1" /> 추이 분석
                       </Button>
@@ -522,8 +522,8 @@ ${evalsSummary}
                             }
                             return (
                               <div key={ev.id} className={`p-4 border-l-4 ${roleColorMap[ev.evaluator_role || ''] || 'border-l-gray-300'}`}>
-                                <div className="flex items-center justify-between mb-3">
-                                  <div className="flex items-center gap-3">
+                                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                  <div className="flex items-center gap-3 flex-wrap">
                                     <span className={`text-sm font-bold px-3 py-1 rounded-full ${roleBadgeMap[ev.evaluator_role || ''] || 'bg-gray-100 text-gray-700'}`}>
                                       {EVALUATOR_LABELS[ev.evaluator_role as ProbationEvaluatorRole] || ev.evaluator_role}
                                     </span>
@@ -538,7 +538,7 @@ ${evalsSummary}
                                   </div>
                                   {/* 수정 버튼: 본인 평가이거나 admin/ceo일 때 */}
                                   {(ev.evaluator_id === profile?.id || profile?.role === 'admin' || profile?.role === 'ceo') && (
-                                    <Button size="sm" variant="outline" onClick={() => openEditDialog(ev)}>
+                                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => openEditDialog(ev)}>
                                       <Pencil className="h-3 w-3 mr-1" /> 수정
                                     </Button>
                                   )}

@@ -56,7 +56,7 @@ function TaskSection({
                   value={task.note || ''}
                   onChange={(e) => onUpdate(idx, 'note', e.target.value)}
                   placeholder="메모"
-                  className="w-40"
+                  className="w-24 sm:w-40"
                 />
                 <button
                   onClick={() => onRemove(idx)}
@@ -429,9 +429,9 @@ ${completedText || '아직 없음'}
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">일일 업무 보고서</h1>
-        <Button onClick={handleSave} disabled={saving}>
+        <Button className="shrink-0" onClick={handleSave} disabled={saving}>
           {saving ? <Spinner size="sm" /> : <Save className="h-4 w-4" />}
           저장
         </Button>
@@ -534,7 +534,7 @@ ${completedText || '아직 없음'}
             <label className="block text-sm font-medium text-gray-700 mb-2">
               오늘 업무 만족도: <span className="text-brand-600 font-bold">{satisfaction}</span>
             </label>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                 <button
                   key={n}

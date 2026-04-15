@@ -87,12 +87,12 @@ export default function RecruitmentJobs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">채용공고 관리</h1>
           <p className="text-sm text-gray-500 mt-0.5">부서별 채용공고를 관리합니다</p>
         </div>
-        <Button onClick={() => navigate('/admin/recruitment/jobs/new')}>
+        <Button className="shrink-0" onClick={() => navigate('/admin/recruitment/jobs/new')}>
           <Plus className="h-4 w-4 mr-1" /> 새 공고
         </Button>
       </div>

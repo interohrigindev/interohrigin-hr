@@ -38,6 +38,6 @@ body {
   .grid-cols-3 { grid-template-columns: repeat(2, 1fr); }
   .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
 
-  /* Badge 텍스트 줄바꿈 방지 */
-  [class*="badge"], [class*="Badge"] { white-space: nowrap; font-size: 0.625rem; }
+  /* 버튼 텍스트 줄바꿈 방지 */
+  button, [role="button"] { white-space: nowrap; }
 }
