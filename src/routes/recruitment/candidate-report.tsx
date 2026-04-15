@@ -1255,7 +1255,7 @@ ${surveyText || '응답 없음'}
                   )}
 
                   {/* AI 추천 정보 */}
-                  <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 text-sm">
                     <div className="p-2 bg-gray-50 rounded text-center">
                       <p className="text-xs text-gray-500">추천 부서</p>
                       <p className="font-medium">{analysis.suggested_department || '-'}</p>
@@ -1457,7 +1457,7 @@ ${surveyText || '응답 없음'}
                   )}
 
                   {/* 추천 정보 */}
-                  <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 text-sm">
                     <div className="p-2 bg-gray-50 rounded text-center">
                       <p className="text-xs text-gray-500">추천 부서</p>
                       <p className="font-medium">{report.department_recommendation || '-'}</p>

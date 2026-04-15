@@ -342,25 +342,19 @@ export default function RecruitmentDashboard() {
                   {hired.map((c) => {
                     const posting = postings.find((p) => p.id === c.job_posting_id)
                     return (
-                      <div key={c.id} className="flex items-center justify-between py-3 px-2 hover:bg-green-50/50 rounded-lg transition-colors">
-                        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}>
-                          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                      <div key={c.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 px-2 hover:bg-green-50/50 rounded-lg transition-colors">
+                        <div className="flex items-center gap-3 cursor-pointer min-w-0" onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}>
+                          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
                             <CheckCircle className="h-4 w-4 text-green-600" />
                           </div>
-                          <div>
-                            <p className="font-medium text-sm text-gray-900">{c.name}</p>
-                            <p className="text-xs text-gray-500">{posting?.title || '공고 미배정'}</p>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm text-gray-900 truncate">{c.name}</p>
+                            <p className="text-xs text-gray-500 truncate">{posting?.title || '공고 미배정'} · {c.email}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-right mr-2">
-                            <p className="text-xs text-gray-500">{c.email}</p>
-                            <p className="text-[10px] text-gray-400">{formatDate(c.created_at)}</p>
-                          </div>
-                          <Button size="sm" onClick={(e) => { e.stopPropagation(); openRegisterDialog({ id: c.id, name: c.name, email: c.email, phone: c.phone || '' }) }}>
-                            <UserPlus className="h-3 w-3 mr-1" /> 직원 등록
-                          </Button>
-                        </div>
+                        <Button size="sm" className="shrink-0 self-end sm:self-auto" onClick={(e) => { e.stopPropagation(); openRegisterDialog({ id: c.id, name: c.name, email: c.email, phone: c.phone || '' }) }}>
+                          <UserPlus className="h-3 w-3 mr-1" /> 직원 등록
+                        </Button>
                       </div>
                     )
                   })}
