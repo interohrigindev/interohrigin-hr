@@ -390,11 +390,20 @@ export default function OrganizationPage() {
                               </span>
 
                               {/* 아바타 */}
-                              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600 shrink-0 overflow-hidden mr-3">
+                              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-blue-600 shrink-0 overflow-hidden mr-3">
                                 {emp.avatar_url ? (
-                                  <img src={emp.avatar_url} alt={emp.name} className="w-full h-full object-cover" />
+                                  <img
+                                    src={emp.avatar_url}
+                                    alt={emp.name}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      const el = e.currentTarget
+                                      el.style.display = 'none'
+                                      el.parentElement!.textContent = emp.name[0]
+                                    }}
+                                  />
                                 ) : (
-                                  <span className="text-blue-600">{emp.name[0]}</span>
+                                  emp.name[0]
                                 )}
                               </div>
 
