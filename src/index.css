@@ -7,3 +7,8 @@ body {
   min-height: 100vh;
   font-family: 'Pretendard', 'Noto Sans KR', system-ui, -apple-system, sans-serif;
 }
+
+/* PWA 하단 safe area (iPhone 노치 대응) */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
