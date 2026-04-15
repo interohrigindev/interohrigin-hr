@@ -129,6 +129,8 @@ export default function ProbationResults() {
   const [editLeaderSummary, setEditLeaderSummary] = useState('')
   const [editExecOneLiner, setEditExecOneLiner] = useState('')
   const [editStrengths, setEditStrengths] = useState('')
+  const [editAiAssessment, setEditAiAssessment] = useState('')
+  const [editGeneratingAI, setEditGeneratingAI] = useState(false)
 
   function openEditDialog(ev: EvalWithEmployee) {
     setEditEval(ev)
@@ -141,7 +143,68 @@ export default function ProbationResults() {
     setEditLeaderSummary(ev.leader_summary || '')
     setEditExecOneLiner(ev.exec_one_liner || '')
     setEditStrengths(ev.strengths || '')
+    setEditAiAssessment(ev.ai_assessment || '')
     setEditDialogOpen(true)
+  }
+
+  async function generateEditAI() {
+    if (!editEval) return
+    setEditGeneratingAI(true)
+    try {
+      const config = await getAIConfigForFeature('probation_eval')
+      if (!config) { toast('AI 설정이 필요합니다.', 'error'); setEditGeneratingAI(false); return }
+
+      const empName = editEval.employee_name || '미정'
+      const scoreStr = PROBATION_CRITERIA.map((c) => `${c.label}: ${editScores[c.key] || 0}/${MAX_SCORE_PER_ITEM}`).join(', ')
+      const total = getTotalScore(editScores)
+
+      // 본인의 이전 회차 평가만 비교
+      const prevEvals = evaluations.filter(
+        (e) => e.employee_id === editEval.employee_id
+          && e.evaluator_id === editEval.evaluator_id
+          && e.evaluator_role === editEval.evaluator_role
+          && e.id !== editEval.id
+      )
+      const prevSummary = prevEvals.length > 0
+        ? prevEvals.map((e) => {
+            const s = e.scores as Record<string, number>
+            const t = getTotalScore(s)
+            return `${STAGE_SHORT[e.stage as ProbationStage] || e.stage}: ${t}/100, 권고=${e.continuation_recommendation || '없음'}`
+          }).join('\n')
+        : '이전 평가 없음'
+
+      const STAGE_LABELS: Record<string, string> = { round1: '1회차 (입사 2주)', round2: '2회차 (입사 6주)', round3: '3회차 (입사 10주)' }
+
+      const prompt = `수습 직원 평가 분석을 해주세요.
+
+직원: ${empName}
+현재 단계: ${STAGE_LABELS[editEval.stage] || editEval.stage}
+평가자 역할: ${EVALUATOR_LABELS[editEval.evaluator_role as ProbationEvaluatorRole] || editEval.evaluator_role}
+현재 평가 점수 (각 20점 만점, 총 100점): ${scoreStr}
+총점: ${total}/100
+칭찬할 점: ${editPraise || '없음'}
+보완 점: ${editImprovement || '없음'}
+평가 코멘트: ${editComments || '없음'}
+
+이전 평가 기록 (동일 평가자):
+${prevSummary}
+
+다음 내용을 포함하여 3~5문장으로 분석해주세요:
+1. 현재 단계에서의 전반적 평가 (100점 기준)
+2. 강점과 보완이 필요한 영역
+3. 이전 평가 대비 변화 추이 (있는 경우)
+4. 수습 통과 가능성 및 권고 사항
+
+마크다운 없이 일반 텍스트로 작성해주세요.`
+
+      const result = await generateAIContent(config, prompt)
+      setEditAiAssessment(result.content.trim())
+      toast('AI 평가가 재생성되었습니다.', 'success')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '알 수 없는 오류'
+      toast('AI 평가 생성 실패: ' + message, 'error')
+    }
+    setEditGeneratingAI(false)
   }
 
   async function handleSaveEdit() {
@@ -155,6 +218,7 @@ export default function ProbationResults() {
       exec_one_liner: (editEval.evaluator_role === 'executive' || editEval.evaluator_role === 'ceo') ? (editExecOneLiner || null) : editEval.exec_one_liner,
       strengths: (editEval.evaluator_role === 'executive' || editEval.evaluator_role === 'ceo') ? (editStrengths || null) : editEval.strengths,
       continuation_recommendation: editRecommendation,
+      ai_assessment: editAiAssessment || null,
     }).eq('id', editEval.id)
 
     if (error) { toast('수정 실패: ' + error.message, 'error'); return }
@@ -787,6 +851,25 @@ ${evalsSummary}
                 <Textarea label="강점" value={editStrengths} onChange={(e) => setEditStrengths(e.target.value)} rows={2} />
               </>
             )}
+
+            {/* AI 재평가 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">AI 평가 (참고용)</span>
+                <Button variant="outline" size="sm" onClick={generateEditAI} disabled={editGeneratingAI}>
+                  {editGeneratingAI ? (
+                    <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 분석 중...</>
+                  ) : (
+                    <><Sparkles className="h-3 w-3 mr-1" /> AI 재평가</>
+                  )}
+                </Button>
+              </div>
+              {editAiAssessment && (
+                <div className="p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800 whitespace-pre-wrap">{editAiAssessment}</p>
+                </div>
+              )}
+            </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t">
               <Button variant="outline" onClick={() => setEditDialogOpen(false)}>취소</Button>
