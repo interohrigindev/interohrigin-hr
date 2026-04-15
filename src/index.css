@@ -12,3 +12,29 @@ body {
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* ─── 모바일 전역 최적화 ─── */
+@media (max-width: 767px) {
+  /* 테이블 가로 스크롤 보장 */
+  table { font-size: 0.8125rem; }
+  th, td { white-space: nowrap; padding: 0.375rem 0.5rem; }
+
+  /* 카드/패널 오버플로 방지 */
+  .overflow-x-auto { -webkit-overflow-scrolling: touch; }
+
+  /* h1 타이틀 크기 조절 */
+  h1 { font-size: 1.25rem !important; }
+
+  /* 다이얼로그 모바일 최적화 */
+  [role="dialog"], .dialog-content {
+    max-width: calc(100vw - 1rem) !important;
+    margin: 0 auto;
+  }
+
+  /* 그리드 1열 폴백 */
+  .grid-cols-3 { grid-template-columns: repeat(2, 1fr); }
+  .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
+
+  /* Badge 텍스트 줄바꿈 방지 */
+  [class*="badge"], [class*="Badge"] { white-space: nowrap; font-size: 0.625rem; }
+}

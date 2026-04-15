@@ -302,14 +302,15 @@ export default function ProjectDetailPage() {
             <h1 className="text-xl font-bold text-gray-900">{project.project_name}</h1>
             <Badge className={PROJECT_STATUS_COLORS[project.status]}>{PROJECT_STATUS_LABELS[project.status]}</Badge>
           </div>
-          <p className="text-sm text-gray-500">
-            {project.brand} · {project.category} · 출시: {project.launch_date || '미정'} · 참여: {project.assignee_names?.join(', ')}
+          <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">
+            {project.brand} · {project.category} · 출시: {project.launch_date || '미정'}
+            {project.assignee_names && project.assignee_names.length > 0 && ` · 참여: ${project.assignee_names.join(', ')}`}
             {project.manager_name && ` · 담당: ${project.manager_name}`}
             {project.leader_name && ` · 리더: ${project.leader_name}`}
             {project.executive_name && ` · 이사: ${project.executive_name}`}
           </p>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 self-start">
           <Button size="sm" variant="outline" onClick={openEditDialog}>
             <Pencil className="h-3.5 w-3.5 mr-1" /> 수정
           </Button>
@@ -472,7 +473,8 @@ export default function ProjectDetailPage() {
           ) : (
             /* ── 기본 보기 ── */
             <>
-            <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${Math.min(stages.length, 7)}, minmax(0, 1fr))` }}>
+            <div className="overflow-x-auto -mx-4 px-4 pb-2">
+            <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(5rem, 1fr))`, minWidth: stages.length > 4 ? `${stages.length * 5.5}rem` : undefined }}>
               {stages.map((stage) => {
                 const today = new Date()
                 const deadline = stage.deadline ? new Date(stage.deadline) : null
@@ -551,6 +553,7 @@ export default function ProjectDetailPage() {
                   </div>
                 )
               })}
+            </div>
             </div>
 
             {/* 파이프라인 인력 할당 현황 — 탭 + 차트 */}
@@ -719,7 +722,7 @@ export default function ProjectDetailPage() {
       </Card>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
         {([
           { key: 'updates' as const, icon: FileText, label: '업데이트', count: regularUpdates.length },
           { key: 'tasks' as const, icon: ListChecks, label: '작업', count: linkedTasks.length },
@@ -729,11 +732,11 @@ export default function ProjectDetailPage() {
           <button
             key={key}
             onClick={() => setActiveTab(key)}
-            className={`flex items-center gap-1 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-1 px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === key ? 'text-brand-700 border-brand-500' : 'text-gray-500 border-transparent hover:text-gray-700'
             }`}
           >
-            <Icon className="h-4 w-4" /> {label}
+            <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> {label}
             {count !== undefined && <Badge variant="default" className="text-[10px] ml-1">{count}</Badge>}
           </button>
         ))}
