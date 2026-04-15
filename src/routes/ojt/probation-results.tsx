@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Sparkles, Loader2, TrendingUp, AlertTriangle, CheckCircle, XCircle, Users, ChevronDown, ChevronUp } from 'lucide-react'
+import { Sparkles, Loader2, TrendingUp, AlertTriangle, CheckCircle, XCircle, Users, ChevronDown, ChevronUp, Pencil } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
+import { Textarea } from '@/components/ui/Textarea'
 import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { ProgressBar } from '@/components/ui/ProgressBar'
@@ -116,6 +117,51 @@ export default function ProbationResults() {
 
   // Filter
   const [filterEmployee, setFilterEmployee] = useState('')
+
+  // Edit dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editEval, setEditEval] = useState<EvalWithEmployee | null>(null)
+  const [editScores, setEditScores] = useState<Record<string, number>>({})
+  const [editComments, setEditComments] = useState('')
+  const [editPraise, setEditPraise] = useState('')
+  const [editImprovement, setEditImprovement] = useState('')
+  const [editRecommendation, setEditRecommendation] = useState<ContinuationRecommendation>('continue')
+  const [editLeaderSummary, setEditLeaderSummary] = useState('')
+  const [editExecOneLiner, setEditExecOneLiner] = useState('')
+  const [editStrengths, setEditStrengths] = useState('')
+
+  function openEditDialog(ev: EvalWithEmployee) {
+    setEditEval(ev)
+    const s = ev.scores as Record<string, number>
+    setEditScores({ ...s })
+    setEditComments(ev.comments || '')
+    setEditPraise(ev.praise || '')
+    setEditImprovement(ev.improvement || '')
+    setEditRecommendation((ev.continuation_recommendation as ContinuationRecommendation) || 'continue')
+    setEditLeaderSummary(ev.leader_summary || '')
+    setEditExecOneLiner(ev.exec_one_liner || '')
+    setEditStrengths(ev.strengths || '')
+    setEditDialogOpen(true)
+  }
+
+  async function handleSaveEdit() {
+    if (!editEval) return
+    const { error } = await supabase.from('probation_evaluations').update({
+      scores: editScores,
+      comments: editComments || null,
+      praise: editPraise || null,
+      improvement: editImprovement || null,
+      leader_summary: editEval.evaluator_role === 'leader' ? (editLeaderSummary || null) : editEval.leader_summary,
+      exec_one_liner: (editEval.evaluator_role === 'executive' || editEval.evaluator_role === 'ceo') ? (editExecOneLiner || null) : editEval.exec_one_liner,
+      strengths: (editEval.evaluator_role === 'executive' || editEval.evaluator_role === 'ceo') ? (editStrengths || null) : editEval.strengths,
+      continuation_recommendation: editRecommendation,
+    }).eq('id', editEval.id)
+
+    if (error) { toast('수정 실패: ' + error.message, 'error'); return }
+    toast('평가가 수정되었습니다.', 'success')
+    setEditDialogOpen(false)
+    fetchData()
+  }
 
   // Expand/collapse
   const [expandedEmployees, setExpandedEmployees] = useState<Set<string>>(new Set())
@@ -426,6 +472,12 @@ ${evalsSummary}
                                       </span>
                                     )}
                                   </div>
+                                  {/* 수정 버튼: 본인 평가이거나 admin/ceo일 때 */}
+                                  {(ev.evaluator_id === profile?.id || profile?.role === 'admin' || profile?.role === 'ceo') && (
+                                    <Button size="sm" variant="outline" onClick={() => openEditDialog(ev)}>
+                                      <Pencil className="h-3 w-3 mr-1" /> 수정
+                                    </Button>
+                                  )}
                                 </div>
                                 {/* 5 criteria scores */}
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-3">
@@ -639,6 +691,111 @@ ${evalsSummary}
             )}
           </div>
         </div>
+      </Dialog>
+
+      {/* ─── Edit Evaluation Dialog ─────────────────────────────── */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        title={`평가 수정 — ${editEval?.employee_name || ''}`}
+        className="max-w-2xl max-h-[90vh] overflow-y-auto"
+      >
+        {editEval && (
+          <div className="space-y-5">
+            {/* 메타 정보 */}
+            <div className="flex items-center gap-3 text-sm text-gray-600">
+              <Badge variant="primary">{STAGE_SHORT[editEval.stage as ProbationStage] || editEval.stage}</Badge>
+              <Badge variant="default">{EVALUATOR_LABELS[editEval.evaluator_role as ProbationEvaluatorRole] || editEval.evaluator_role}</Badge>
+              <span>총점: <strong className="text-brand-600">{PROBATION_CRITERIA.reduce((sum, c) => sum + (editScores[c.key] || 0), 0)}/100</strong></span>
+            </div>
+
+            {/* 점수 수정 */}
+            <div className="space-y-3">
+              {PROBATION_CRITERIA.map((c, idx) => {
+                const val = editScores[c.key] || 0
+                const grade = getProbationGrade(val)
+                return (
+                  <div key={c.key} className="border rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <span className="text-sm font-semibold text-gray-900">{idx + 1}. {c.label}</span>
+                        <p className="text-xs text-gray-500">{c.desc}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${PROBATION_GRADE_CONFIG[grade].bg}`}>{grade}</span>
+                        <span className="text-sm font-bold text-brand-600">{val}점</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
+                        const isSelected = val === n
+                        let bg = 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        if (isSelected) {
+                          if (n >= 18) bg = 'bg-brand-600 text-white'
+                          else if (n >= 14) bg = 'bg-blue-600 text-white'
+                          else if (n >= 10) bg = 'bg-emerald-600 text-white'
+                          else if (n >= 6) bg = 'bg-amber-600 text-white'
+                          else bg = 'bg-red-600 text-white'
+                        }
+                        return (
+                          <button
+                            key={n}
+                            onClick={() => setEditScores(prev => ({ ...prev, [c.key]: n }))}
+                            className={`w-7 h-7 rounded text-xs font-medium transition-all ${bg}`}
+                          >
+                            {n}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* 수습 지속 권고 */}
+            <Select
+              label="수습 지속 권고"
+              value={editRecommendation}
+              onChange={(e) => setEditRecommendation(e.target.value as ContinuationRecommendation)}
+              options={[
+                { value: 'continue', label: '계속 근무 권고' },
+                { value: 'warning', label: '경고/주의' },
+                { value: 'terminate', label: '수습 종료 권고' },
+              ]}
+            />
+
+            {/* 코멘트 수정 */}
+            <Textarea
+              label="총평"
+              value={editComments}
+              onChange={(e) => setEditComments(e.target.value)}
+              rows={3}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Textarea label="칭찬할 점" value={editPraise} onChange={(e) => setEditPraise(e.target.value)} rows={2} />
+              <Textarea label="보완할 점" value={editImprovement} onChange={(e) => setEditImprovement(e.target.value)} rows={2} />
+            </div>
+
+            {/* 역할별 추가 필드 */}
+            {editEval.evaluator_role === 'leader' && (
+              <Textarea label="리더 총평" value={editLeaderSummary} onChange={(e) => setEditLeaderSummary(e.target.value)} rows={2} />
+            )}
+            {(editEval.evaluator_role === 'executive' || editEval.evaluator_role === 'ceo') && (
+              <>
+                <Textarea label="한줄 코멘트" value={editExecOneLiner} onChange={(e) => setEditExecOneLiner(e.target.value)} rows={2} />
+                <Textarea label="강점" value={editStrengths} onChange={(e) => setEditStrengths(e.target.value)} rows={2} />
+              </>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>취소</Button>
+              <Button onClick={handleSaveEdit}>
+                <Pencil className="h-4 w-4 mr-1" /> 수정 저장
+              </Button>
+            </div>
+          </div>
+        )}
       </Dialog>
     </div>
   )

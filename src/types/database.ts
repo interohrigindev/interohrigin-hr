@@ -37,6 +37,15 @@ export interface Department {
   created_at: string
 }
 
+// ─── employee_teams 테이블 (복수 팀 소속) ───────────────────────
+export interface EmployeeTeam {
+  id: string
+  employee_id: string
+  department_id: string
+  is_primary: boolean
+  created_at: string
+}
+
 // ─── evaluation_periods 테이블 ──────────────────────────────────
 export type PeriodStatus = 'draft' | 'in_progress' | 'completed'
 

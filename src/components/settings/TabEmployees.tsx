@@ -118,6 +118,9 @@ export default function TabEmployees() {
     hanja_name: '',
   })
 
+  // 추가 소속 팀
+  const [editExtraTeams, setEditExtraTeams] = useState<string[]>([])
+
   // 비밀번호 변경
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const [passwordTarget, setPasswordTarget] = useState<Employee | null>(null)
@@ -390,6 +393,13 @@ export default function TabEmployees() {
       hanja_name = profile.hanja_name ?? ''
     }
 
+    // 추가 소속 팀 로드
+    const { data: teamsData } = await supabase
+      .from('employee_teams')
+      .select('department_id')
+      .eq('employee_id', emp.id)
+    setEditExtraTeams((teamsData || []).map((t: any) => t.department_id))
+
     setEditForm({
       department_id: emp.department_id ?? '',
       role: emp.role,
@@ -433,7 +443,16 @@ export default function TabEmployees() {
       return
     }
 
-    // employee_profiles 업데이트
+    // 추가 소속 팀 동기화 (employee_teams)
+    // 기존 전체 삭제 후 재삽입
+    await supabase.from('employee_teams').delete().eq('employee_id', editingEmployee.id)
+    if (editExtraTeams.length > 0) {
+      await supabase.from('employee_teams').insert(
+        editExtraTeams.map((deptId) => ({ employee_id: editingEmployee.id, department_id: deptId }))
+      )
+    }
+
+    // employee_profiles 업데이���
     if (editForm.mbti || editForm.blood_type || editForm.hanja_name) {
       const { error: profileErr } = await supabase.from('employee_profiles').upsert({
         employee_id: editingEmployee.id,
@@ -1303,6 +1322,42 @@ export default function TabEmployees() {
               value={editForm.role}
               onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
             />
+          </div>
+
+          {/* 추가 소속 팀 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">추가 소속 팀 (복수 선택 가능)</label>
+            <div className="flex flex-wrap gap-2">
+              {departments.filter((d) => d.parent_id && d.id !== editForm.department_id).map((team) => {
+                const parentDept = departments.find((p) => p.id === team.parent_id)
+                const isSelected = editExtraTeams.includes(team.id)
+                return (
+                  <button
+                    key={team.id}
+                    type="button"
+                    onClick={() => {
+                      setEditExtraTeams((prev) =>
+                        isSelected ? prev.filter((id) => id !== team.id) : [...prev, team.id]
+                      )
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                      isSelected
+                        ? 'bg-brand-100 border-brand-300 text-brand-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                    }`}
+                  >
+                    {parentDept ? `${parentDept.name} / ` : ''}{team.name}
+                    {isSelected && ' ✓'}
+                  </button>
+                )
+              })}
+              {departments.filter((d) => d.parent_id && d.id !== editForm.department_id).length === 0 && (
+                <span className="text-xs text-gray-400">등록된 팀이 없습니다.</span>
+              )}
+            </div>
+            {editExtraTeams.length > 0 && (
+              <p className="text-xs text-brand-600 mt-1">{editExtraTeams.length}개 추가 팀 선택됨</p>
+            )}
           </div>
 
           {/* 직무 / 입사구분 / 연봉 */}

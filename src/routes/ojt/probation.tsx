@@ -94,16 +94,21 @@ export default function ProbationManage() {
   const [aiAssessment, setAiAssessment] = useState('')
   const [generatingAI, setGeneratingAI] = useState(false)
 
+  // employee_teams: 복수 소속 팀 매핑
+  const [employeeTeams, setEmployeeTeams] = useState<{ employee_id: string; department_id: string }[]>([])
+
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [evalRes, empRes, deptRes, hrRes] = await Promise.all([
+    const [evalRes, empRes, deptRes, hrRes, teamsRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position').eq('is_active', true).order('name'),
       supabase.from('departments').select('id, name'),
       supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
+      supabase.from('employee_teams').select('employee_id, department_id'),
     ])
 
     if (deptRes.data) setDepartments(deptRes.data)
+    if (teamsRes.data) setEmployeeTeams(teamsRes.data)
 
     if (empRes.data) {
       // HR 상세 정보 병합
@@ -212,7 +217,13 @@ ${prevSummary}
   async function handleSaveEval() {
     if (!selectedEmployeeId) { toast('직원을 선택하세요.', 'error'); return }
 
-    const { error } = await supabase.from('probation_evaluations').insert({
+    // 기존 평가 존재 여부 확인 (upsert 메시지 구분용)
+    const existing = evaluations.find(
+      (ev) => ev.employee_id === selectedEmployeeId && ev.stage === selectedStage
+        && ev.evaluator_id === (profile?.id || null) && ev.evaluator_role === selectedRole
+    )
+
+    const { error } = await supabase.from('probation_evaluations').upsert({
       employee_id: selectedEmployeeId,
       stage: selectedStage,
       evaluator_id: profile?.id || null,
@@ -227,10 +238,10 @@ ${prevSummary}
       strengths: (selectedRole === 'executive' || selectedRole === 'ceo') ? (strengthsText || null) : null,
       ai_assessment: aiAssessment || null,
       continuation_recommendation: recommendation,
-    })
+    }, { onConflict: 'employee_id,stage,evaluator_id,evaluator_role' })
 
     if (error) { toast('평가 저장 실패: ' + error.message, 'error'); return }
-    toast('수습 평가가 저장되었습니다.', 'success')
+    toast(existing ? '평가가 수정되었습니다.' : '수습 평가가 저장되었습니다.', 'success')
     setEvalDialogOpen(false)
     fetchData()
   }
@@ -310,7 +321,19 @@ ${prevSummary}
                       return (
                         <tr key={emp.id} className="border-b border-gray-100 hover:bg-gray-50">
                           <td className="py-2.5 px-3 font-semibold text-gray-900">{emp.name}</td>
-                          <td className="py-2.5 px-3 text-gray-600">{emp.department_id ? (departments.find(d => d.id === emp.department_id)?.name || '-') : '-'}</td>
+                          <td className="py-2.5 px-3 text-gray-600">{(() => {
+                            const deptNames: string[] = []
+                            if (emp.department_id) {
+                              const d = departments.find(d => d.id === emp.department_id)
+                              if (d) deptNames.push(d.name)
+                            }
+                            const extraTeams = employeeTeams.filter(t => t.employee_id === emp.id && t.department_id !== emp.department_id)
+                            for (const t of extraTeams) {
+                              const d = departments.find(d => d.id === t.department_id)
+                              if (d) deptNames.push(d.name)
+                            }
+                            return deptNames.length > 0 ? deptNames.join(', ') : '-'
+                          })()}</td>
                           <td className="py-2.5 px-3 text-center">
                             <span className={`text-xs px-2 py-0.5 rounded-full ${emp.employment_type === 'probation' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
                               {EMPLOYMENT_TYPE_LABELS[emp.employment_type || ''] || emp.employment_type || '-'}
