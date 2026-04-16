@@ -81,23 +81,19 @@ export default function ProjectBoardPage() {
     let result = [...projects]
 
     // 본인이 참여자/담당/매니저/리더/임원/파이프라인 담당인 프로젝트만 (전체보기 OFF일 때)
+    console.log('[필터 진입]', { showAll, profileId: profile?.id, profileRole: profile?.role, total: result.length })
     if (!showAll && profile?.id) {
       const myId = profile.id
-      const before = result.length
       result = result.filter((p) => {
         const inAssignee = p.assignee_ids?.includes(myId)
         const isManager = p.manager_id === myId
         const isLeader = p.leader_id === myId
         const isExec = p.executive_id === myId
         const inStage = p.stages?.some((s) => s.stage_assignee_ids?.includes(myId))
-        if (inAssignee || isManager || isLeader || isExec || inStage) {
-          return true
-        }
-        return false
+        const pass = inAssignee || isManager || isLeader || isExec || inStage
+        console.log(`  [${p.project_name}] pass=${pass}`, { inAssignee, isManager, isLeader, isExec, inStage, assignee_ids: p.assignee_ids })
+        return pass
       })
-      if (before !== result.length) {
-        console.log(`[필터] ${profile.name}(${myId}) — ${before}→${result.length}개`)
-      }
     }
 
     if (filterBrand) result = result.filter((p) => p.brand === filterBrand)
