@@ -80,20 +80,16 @@ export default function ProjectBoardPage() {
   const filtered = useMemo(() => {
     let result = [...projects]
 
-    // 본인이 담당자/참여자/매니저/리더/임원/파이프라인 담당인 프로젝트만 (전체보기 OFF일 때)
+    // 본인이 참여자/담당/매니저/리더/임원/파이프라인 담당인 프로젝트만 (전체보기 OFF일 때)
     if (!showAll && profile?.id) {
       const myId = profile.id
-      result = result.filter((p) => {
-        const match =
-          p.assignee_ids?.includes(myId) ||
-          p.manager_id === myId ||
-          p.leader_id === myId ||
-          p.executive_id === myId ||
-          p.created_by === myId ||
-          p.stages?.some((s) => s.stage_assignee_ids?.includes(myId))
-        return match
-      })
-      console.log(`[프로젝트 필터] myId=${myId}, 전체=${projects.length}, 필터 후=${result.length}`)
+      result = result.filter((p) =>
+        p.assignee_ids?.includes(myId) ||
+        p.manager_id === myId ||
+        p.leader_id === myId ||
+        p.executive_id === myId ||
+        p.stages?.some((s) => s.stage_assignee_ids?.includes(myId))
+      )
     }
 
     if (filterBrand) result = result.filter((p) => p.brand === filterBrand)
