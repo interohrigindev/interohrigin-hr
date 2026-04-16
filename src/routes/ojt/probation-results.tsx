@@ -536,8 +536,11 @@ ${evalsSummary}
                                       </span>
                                     )}
                                   </div>
-                                  {/* 수정 버튼: 본인 평가이거나 admin/ceo일 때 */}
-                                  {(ev.evaluator_id === profile?.id || profile?.role === 'admin' || profile?.role === 'ceo') && (
+                                  {/* 수정 버튼: 본인 평가이거나 수습 평가자 역할(리더/이사/임원/대표/관리자) */}
+                                  {(
+                                    ev.evaluator_id === profile?.id ||
+                                    ['admin', 'ceo', 'division_head', 'director', 'leader'].includes(profile?.role || '')
+                                  ) && (
                                     <Button size="sm" variant="outline" className="shrink-0" onClick={() => openEditDialog(ev)}>
                                       <Pencil className="h-3 w-3 mr-1" /> 수정
                                     </Button>
