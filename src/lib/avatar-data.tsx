@@ -21,200 +21,349 @@ const g = { stroke: C, strokeWidth: S, fill: 'none', strokeLinecap: 'round' as c
    ════════════════════════════════════════════ */
 export const ZODIAC: AvatarDef[] = [
   {
+    // 쥐 — 큰 둥근 귀, 뾰족한 얼굴, 긴 수염, 분홍 귀속
     key: 'avatar-01', label: '쥐', bg: '#E8E0D8',
     render: (cx, cy) => (
       <g {...g}>
-        <circle cx={cx - 10} cy={cy - 16} r="7" />
-        <circle cx={cx + 10} cy={cy - 16} r="7" />
-        <ellipse cx={cx} cy={cy + 2} rx="14" ry="16" />
-        <circle cx={cx - 5} cy={cy - 2} r="1.5" fill={C} />
-        <circle cx={cx + 5} cy={cy - 2} r="1.5" fill={C} />
-        <ellipse cx={cx} cy={cy + 5} rx="2" ry="1.5" fill={P} />
-        <path d={`M${cx - 12} ${cy + 4} L${cx - 7} ${cy + 3}`} />
-        <path d={`M${cx - 11} ${cy + 7} L${cx - 7} ${cy + 6}`} />
-        <path d={`M${cx + 12} ${cy + 4} L${cx + 7} ${cy + 3}`} />
-        <path d={`M${cx + 11} ${cy + 7} L${cx + 7} ${cy + 6}`} />
+        {/* 큰 둥근 귀 */}
+        <circle cx={cx - 12} cy={cy - 16} r="9" />
+        <circle cx={cx - 12} cy={cy - 16} r="5" fill={P} opacity="0.4" stroke="none" />
+        <circle cx={cx + 12} cy={cy - 16} r="9" />
+        <circle cx={cx + 12} cy={cy - 16} r="5" fill={P} opacity="0.4" stroke="none" />
+        {/* 뾰족한 얼굴 */}
+        <ellipse cx={cx} cy={cy + 2} rx="13" ry="15" />
+        {/* 눈 — 반짝이는 큰 눈 */}
+        <circle cx={cx - 5} cy={cy - 2} r="2.5" fill={C} />
+        <circle cx={cx - 4} cy={cy - 3} r="1" fill="white" />
+        <circle cx={cx + 5} cy={cy - 2} r="2.5" fill={C} />
+        <circle cx={cx + 6} cy={cy - 3} r="1" fill="white" />
+        {/* 분홍 코 */}
+        <ellipse cx={cx} cy={cy + 5} rx="2.5" ry="2" fill={P} stroke={C} strokeWidth="1" />
+        {/* 긴 수염 3쌍 */}
+        <line x1={cx - 14} y1={cy + 2} x2={cx - 6} y2={cy + 4} />
+        <line x1={cx - 13} y1={cy + 5} x2={cx - 6} y2={cy + 6} />
+        <line x1={cx - 12} y1={cy + 8} x2={cx - 6} y2={cy + 8} />
+        <line x1={cx + 14} y1={cy + 2} x2={cx + 6} y2={cy + 4} />
+        <line x1={cx + 13} y1={cy + 5} x2={cx + 6} y2={cy + 6} />
+        <line x1={cx + 12} y1={cy + 8} x2={cx + 6} y2={cy + 8} />
+        {/* 입 */}
+        <path d={`M${cx} ${cy + 7} L${cx - 2} ${cy + 10}`} />
+        <path d={`M${cx} ${cy + 7} L${cx + 2} ${cy + 10}`} />
       </g>
     ),
   },
   {
+    // 소 — 굵은 뿔, 큰 코, 반점, 꽃 귀
     key: 'avatar-02', label: '소', bg: '#F4A261',
     render: (cx, cy) => (
       <g {...g}>
-        <path d={`M${cx - 16} ${cy - 16} Q${cx - 20} ${cy - 24} ${cx - 14} ${cy - 22}`} strokeWidth="2.5" />
-        <path d={`M${cx + 16} ${cy - 16} Q${cx + 20} ${cy - 24} ${cx + 14} ${cy - 22}`} strokeWidth="2.5" />
-        <ellipse cx={cx} cy={cy} rx="17" ry="16" />
-        <circle cx={cx - 6} cy={cy - 4} r="1.8" fill={C} />
-        <circle cx={cx + 6} cy={cy - 4} r="1.8" fill={C} />
-        <ellipse cx={cx} cy={cy + 6} rx="8" ry="5" strokeWidth="1.5" />
-        <circle cx={cx - 2} cy={cy + 6} r="1" fill={C} />
-        <circle cx={cx + 2} cy={cy + 6} r="1" fill={C} />
+        {/* 굵은 뿔 */}
+        <path d={`M${cx - 14} ${cy - 14} Q${cx - 22} ${cy - 26} ${cx - 10} ${cy - 24}`} strokeWidth="3" stroke="#E8B730" />
+        <path d={`M${cx + 14} ${cy - 14} Q${cx + 22} ${cy - 26} ${cx + 10} ${cy - 24}`} strokeWidth="3" stroke="#E8B730" />
+        {/* 꽃 귀 */}
+        <ellipse cx={cx - 18} cy={cy - 8} rx="4" ry="7" transform={`rotate(-20 ${cx - 18} ${cy - 8})`} />
+        <ellipse cx={cx + 18} cy={cy - 8} rx="4" ry="7" transform={`rotate(20 ${cx + 18} ${cy - 8})`} />
+        {/* 큰 얼굴 */}
+        <circle cx={cx} cy={cy} r="17" />
+        {/* 반점 */}
+        <circle cx={cx - 8} cy={cy - 8} r="4" fill="#8B6914" opacity="0.25" stroke="none" />
+        <circle cx={cx + 6} cy={cy - 10} r="3" fill="#8B6914" opacity="0.25" stroke="none" />
+        {/* 눈 */}
+        <circle cx={cx - 6} cy={cy - 4} r="2" fill={C} />
+        <circle cx={cx - 5.5} cy={cy - 4.5} r="0.7" fill="white" />
+        <circle cx={cx + 6} cy={cy - 4} r="2" fill={C} />
+        <circle cx={cx + 6.5} cy={cy - 4.5} r="0.7" fill="white" />
+        {/* 큰 코 — 소 특유의 넓은 코 */}
+        <ellipse cx={cx} cy={cy + 6} rx="9" ry="6" fill="#F5DEB3" stroke={C} strokeWidth="1.5" />
+        <ellipse cx={cx - 3} cy={cy + 6} rx="2" ry="1.5" fill={C} />
+        <ellipse cx={cx + 3} cy={cy + 6} rx="2" ry="1.5" fill={C} />
+        {/* 입 */}
+        <path d={`M${cx - 3} ${cy + 10} Q${cx} ${cy + 13} ${cx + 3} ${cy + 10}`} />
       </g>
     ),
   },
   {
+    // 호랑이 — 왕(王) 이마, 뚜렷한 줄무늬, 둥근 귀
     key: 'avatar-03', label: '호랑이', bg: '#E8B730',
     render: (cx, cy) => (
       <g {...g}>
-        <path d={`M${cx - 14} ${cy - 8} L${cx - 10} ${cy - 22} L${cx - 3} ${cy - 12}`} />
-        <path d={`M${cx + 14} ${cy - 8} L${cx + 10} ${cy - 22} L${cx + 3} ${cy - 12}`} />
-        <circle cx={cx} cy={cy} r="16" />
-        <circle cx={cx - 6} cy={cy - 3} r="1.8" fill={C} />
-        <circle cx={cx + 6} cy={cy - 3} r="1.8" fill={C} />
-        <ellipse cx={cx} cy={cy + 4} rx="2" ry="1.5" fill={P} />
-        <path d={`M${cx} ${cy + 5.5} L${cx - 2} ${cy + 8}`} />
-        <path d={`M${cx} ${cy + 5.5} L${cx + 2} ${cy + 8}`} />
-        <path d={`M${cx - 3} ${cy - 14} L${cx} ${cy - 10} L${cx + 3} ${cy - 14}`} strokeWidth="2" />
-        <path d={`M${cx - 10} ${cy - 2} Q${cx - 6} ${cy + 2} ${cx - 10} ${cy + 4}`} strokeWidth="1.2" />
-        <path d={`M${cx + 10} ${cy - 2} Q${cx + 6} ${cy + 2} ${cx + 10} ${cy + 4}`} strokeWidth="1.2" />
+        {/* 둥근 귀 */}
+        <circle cx={cx - 14} cy={cy - 16} r="7" />
+        <circle cx={cx - 14} cy={cy - 16} r="4" fill="#E8B730" stroke="none" />
+        <circle cx={cx + 14} cy={cy - 16} r="7" />
+        <circle cx={cx + 14} cy={cy - 16} r="4" fill="#E8B730" stroke="none" />
+        {/* 얼굴 */}
+        <circle cx={cx} cy={cy} r="17" />
+        {/* 이마 왕(王) 줄무늬 */}
+        <line x1={cx - 6} y1={cy - 14} x2={cx + 6} y2={cy - 14} strokeWidth="2.2" />
+        <line x1={cx} y1={cy - 16} x2={cx} y2={cy - 10} strokeWidth="2.2" />
+        <line x1={cx - 5} y1={cy - 11} x2={cx + 5} y2={cy - 11} strokeWidth="2.2" />
+        {/* 볼 줄무늬 */}
+        <path d={`M${cx - 16} ${cy - 2} L${cx - 10} ${cy}`} strokeWidth="1.5" />
+        <path d={`M${cx - 17} ${cy + 2} L${cx - 10} ${cy + 3}`} strokeWidth="1.5" />
+        <path d={`M${cx + 16} ${cy - 2} L${cx + 10} ${cy}`} strokeWidth="1.5" />
+        <path d={`M${cx + 17} ${cy + 2} L${cx + 10} ${cy + 3}`} strokeWidth="1.5" />
+        {/* 큰 눈 */}
+        <circle cx={cx - 6} cy={cy - 3} r="2.5" fill={C} />
+        <circle cx={cx - 5} cy={cy - 3.5} r="1" fill="white" />
+        <circle cx={cx + 6} cy={cy - 3} r="2.5" fill={C} />
+        <circle cx={cx + 7} cy={cy - 3.5} r="1" fill="white" />
+        {/* 코 */}
+        <path d={`M${cx - 2.5} ${cy + 4} L${cx} ${cy + 2} L${cx + 2.5} ${cy + 4} Z`} fill={P} stroke={C} strokeWidth="1" />
+        {/* Y자 입 */}
+        <path d={`M${cx} ${cy + 4} L${cx} ${cy + 7}`} />
+        <path d={`M${cx} ${cy + 7} L${cx - 3} ${cy + 10}`} />
+        <path d={`M${cx} ${cy + 7} L${cx + 3} ${cy + 10}`} />
       </g>
     ),
   },
   {
+    // 토끼 — 매우 길고 큰 귀, 분홍 귀속, 솜뭉치 볼
     key: 'avatar-04', label: '토끼', bg: '#C9A0DC',
     render: (cx, cy) => (
       <g {...g}>
-        <ellipse cx={cx - 8} cy={cy - 22} rx="5" ry="14" />
-        <ellipse cx={cx + 8} cy={cy - 22} rx="5" ry="14" />
-        <circle cx={cx} cy={cy} r="16" />
-        <circle cx={cx - 5} cy={cy - 3} r="1.5" fill={C} />
-        <circle cx={cx + 5} cy={cy - 3} r="1.5" fill={C} />
-        <ellipse cx={cx} cy={cy + 3} rx="2" ry="1.5" fill={P} />
-        <path d={`M${cx} ${cy + 4.5} L${cx - 3} ${cy + 7}`} />
-        <path d={`M${cx} ${cy + 4.5} L${cx + 3} ${cy + 7}`} />
-        <circle cx={cx - 9} cy={cy + 2} r="2.5" fill={P} opacity="0.35" />
-        <circle cx={cx + 9} cy={cy + 2} r="2.5" fill={P} opacity="0.35" />
+        {/* 매우 긴 귀 */}
+        <ellipse cx={cx - 7} cy={cy - 24} rx="5.5" ry="16" />
+        <ellipse cx={cx - 7} cy={cy - 24} rx="3" ry="12" fill={P} opacity="0.35" stroke="none" />
+        <ellipse cx={cx + 7} cy={cy - 24} rx="5.5" ry="16" />
+        <ellipse cx={cx + 7} cy={cy - 24} rx="3" ry="12" fill={P} opacity="0.35" stroke="none" />
+        {/* 둥근 얼굴 */}
+        <circle cx={cx} cy={cy + 2} r="16" />
+        {/* 큰 눈 */}
+        <circle cx={cx - 5} cy={cy - 1} r="2.5" fill={C} />
+        <circle cx={cx - 4} cy={cy - 2} r="1" fill="white" />
+        <circle cx={cx + 5} cy={cy - 1} r="2.5" fill={C} />
+        <circle cx={cx + 6} cy={cy - 2} r="1" fill="white" />
+        {/* 핑크 볼터치 */}
+        <circle cx={cx - 10} cy={cy + 4} r="3" fill={P} opacity="0.4" stroke="none" />
+        <circle cx={cx + 10} cy={cy + 4} r="3" fill={P} opacity="0.4" stroke="none" />
+        {/* 분홍 ▽ 코 */}
+        <path d={`M${cx - 2} ${cy + 4} L${cx} ${cy + 6.5} L${cx + 2} ${cy + 4} Z`} fill={P} stroke={C} strokeWidth="1" />
+        {/* Y자 입 */}
+        <path d={`M${cx} ${cy + 6.5} L${cx} ${cy + 8}`} />
+        <path d={`M${cx} ${cy + 8} L${cx - 3} ${cy + 11}`} />
+        <path d={`M${cx} ${cy + 8} L${cx + 3} ${cy + 11}`} />
       </g>
     ),
   },
   {
+    // 용 — 뿔, 비늘, 수염, 날카로운 눈, 콧구멍에서 연기
     key: 'avatar-05', label: '용', bg: '#2EAE8F',
     render: (cx, cy) => (
       <g {...g}>
-        <path d={`M${cx - 10} ${cy - 20} L${cx - 6} ${cy - 14}`} strokeWidth="2.5" />
-        <path d={`M${cx - 6} ${cy - 22} L${cx - 4} ${cy - 15}`} strokeWidth="2.5" />
-        <path d={`M${cx + 10} ${cy - 20} L${cx + 6} ${cy - 14}`} strokeWidth="2.5" />
-        <path d={`M${cx + 6} ${cy - 22} L${cx + 4} ${cy - 15}`} strokeWidth="2.5" />
+        {/* 뿔 */}
+        <path d={`M${cx - 10} ${cy - 14} L${cx - 14} ${cy - 26} L${cx - 6} ${cy - 18}`} fill="#E8B730" stroke={C} strokeWidth="1.5" />
+        <path d={`M${cx + 10} ${cy - 14} L${cx + 14} ${cy - 26} L${cx + 6} ${cy - 18}`} fill="#E8B730" stroke={C} strokeWidth="1.5" />
+        {/* 얼굴 */}
         <ellipse cx={cx} cy={cy} rx="16" ry="17" />
-        <circle cx={cx - 6} cy={cy - 4} r="2.5" fill="white" stroke={C} strokeWidth="1.5" />
-        <circle cx={cx - 6} cy={cy - 4} r="1.2" fill={C} />
-        <circle cx={cx + 6} cy={cy - 4} r="2.5" fill="white" stroke={C} strokeWidth="1.5" />
-        <circle cx={cx + 6} cy={cy - 4} r="1.2" fill={C} />
-        <circle cx={cx - 3} cy={cy + 6} r="1" fill={C} />
-        <circle cx={cx + 3} cy={cy + 6} r="1" fill={C} />
-        <path d={`M${cx - 6} ${cy + 10} Q${cx} ${cy + 14} ${cx + 6} ${cy + 10}`} />
+        {/* 이마 비늘 */}
+        <path d={`M${cx - 5} ${cy - 14} L${cx} ${cy - 10} L${cx + 5} ${cy - 14}`} strokeWidth="1.5" />
+        <path d={`M${cx - 3} ${cy - 12} L${cx} ${cy - 9} L${cx + 3} ${cy - 12}`} strokeWidth="1.2" />
+        {/* 날카로운 눈 */}
+        <ellipse cx={cx - 7} cy={cy - 3} rx="3.5" ry="2.5" fill="white" stroke={C} strokeWidth="1.5" />
+        <circle cx={cx - 6} cy={cy - 3} r="1.8" fill={C} />
+        <circle cx={cx - 5.5} cy={cy - 3.5} r="0.6" fill="#E8B730" />
+        <ellipse cx={cx + 7} cy={cy - 3} rx="3.5" ry="2.5" fill="white" stroke={C} strokeWidth="1.5" />
+        <circle cx={cx + 8} cy={cy - 3} r="1.8" fill={C} />
+        <circle cx={cx + 8.5} cy={cy - 3.5} r="0.6" fill="#E8B730" />
+        {/* 콧구멍 */}
+        <circle cx={cx - 3} cy={cy + 6} r="1.5" fill={C} />
+        <circle cx={cx + 3} cy={cy + 6} r="1.5" fill={C} />
+        {/* 콧구멍 연기 */}
+        <path d={`M${cx - 5} ${cy + 4} Q${cx - 7} ${cy + 1} ${cx - 5} ${cy - 1}`} strokeWidth="1" opacity="0.4" />
+        <path d={`M${cx + 5} ${cy + 4} Q${cx + 7} ${cy + 1} ${cx + 5} ${cy - 1}`} strokeWidth="1" opacity="0.4" />
+        {/* 수염 */}
+        <path d={`M${cx - 16} ${cy + 6} Q${cx - 10} ${cy + 10} ${cx - 6} ${cy + 8}`} strokeWidth="1.2" />
+        <path d={`M${cx + 16} ${cy + 6} Q${cx + 10} ${cy + 10} ${cx + 6} ${cy + 8}`} strokeWidth="1.2" />
+        {/* 입 */}
+        <path d={`M${cx - 6} ${cy + 11} Q${cx} ${cy + 15} ${cx + 6} ${cy + 11}`} />
       </g>
     ),
   },
   {
+    // 뱀 — 또아리 튼 몸, 갈라진 혀, 가늘한 눈
     key: 'avatar-06', label: '뱀', bg: '#7EC8B0',
     render: (cx, cy) => (
       <g {...g}>
-        <circle cx={cx} cy={cy - 2} r="15" />
-        <circle cx={cx - 5} cy={cy - 6} r="1.5" fill={C} />
-        <circle cx={cx + 5} cy={cy - 6} r="1.5" fill={C} />
-        <path d={`M${cx - 3} ${cy} Q${cx} ${cy + 3} ${cx + 3} ${cy}`} />
-        <path d={`M${cx - 2} ${cy + 6} L${cx} ${cy + 4} L${cx + 2} ${cy + 6}`} fill="red" stroke="red" strokeWidth="1" />
-        <path d={`M${cx} ${cy + 14} Q${cx - 8} ${cy + 18} ${cx - 4} ${cy + 22}`} strokeWidth="2.5" />
-        <circle cx={cx - 8} cy={cy + 1} r="2" fill={P} opacity="0.35" />
-        <circle cx={cx + 8} cy={cy + 1} r="2" fill={P} opacity="0.35" />
+        {/* 또아리 튼 몸통 */}
+        <path d={`M${cx + 8} ${cy + 18} Q${cx + 20} ${cy + 14} ${cx + 18} ${cy + 4} Q${cx + 16} ${cy - 6} ${cx + 6} ${cy - 4} Q${cx - 4} ${cy - 2} ${cx - 8} ${cy + 6} Q${cx - 12} ${cy + 14} ${cx - 2} ${cy + 16} Q${cx + 6} ${cy + 18} ${cx + 8} ${cy + 12}`} strokeWidth="4" stroke="#7EC8B0" />
+        <path d={`M${cx + 8} ${cy + 18} Q${cx + 20} ${cy + 14} ${cx + 18} ${cy + 4} Q${cx + 16} ${cy - 6} ${cx + 6} ${cy - 4} Q${cx - 4} ${cy - 2} ${cx - 8} ${cy + 6} Q${cx - 12} ${cy + 14} ${cx - 2} ${cy + 16} Q${cx + 6} ${cy + 18} ${cx + 8} ${cy + 12}`} strokeWidth="2" />
+        {/* 머리 */}
+        <ellipse cx={cx} cy={cy - 10} rx="10" ry="8" />
+        {/* 몸 무늬 */}
+        <circle cx={cx + 14} cy={cy + 2} r="2" fill="#2EAE8F" opacity="0.4" stroke="none" />
+        <circle cx={cx - 6} cy={cy + 10} r="2" fill="#2EAE8F" opacity="0.4" stroke="none" />
+        {/* 가늘한 눈 */}
+        <ellipse cx={cx - 4} cy={cy - 12} rx="2" ry="1.2" fill={C} />
+        <ellipse cx={cx + 4} cy={cy - 12} rx="2" ry="1.2" fill={C} />
+        {/* 갈라진 빨간 혀 */}
+        <path d={`M${cx} ${cy - 3} L${cx} ${cy + 2}`} stroke="red" strokeWidth="1.5" />
+        <path d={`M${cx} ${cy + 2} L${cx - 2} ${cy + 5}`} stroke="red" strokeWidth="1.2" />
+        <path d={`M${cx} ${cy + 2} L${cx + 2} ${cy + 5}`} stroke="red" strokeWidth="1.2" />
+        {/* 입 */}
+        <path d={`M${cx - 5} ${cy - 5} Q${cx} ${cy - 2} ${cx + 5} ${cy - 5}`} />
       </g>
     ),
   },
   {
+    // 말 — 긴 얼굴, 갈기, 큰 콧구멍
     key: 'avatar-07', label: '말', bg: '#E87461',
     render: (cx, cy) => (
       <g {...g}>
-        <path d={`M${cx - 4} ${cy - 18} Q${cx} ${cy - 26} ${cx + 4} ${cy - 18}`} strokeWidth="3" />
-        <path d={`M${cx - 2} ${cy - 20} Q${cx} ${cy - 28} ${cx + 2} ${cy - 20}`} strokeWidth="2" />
-        <ellipse cx={cx} cy={cy} rx="14" ry="17" />
-        <circle cx={cx - 5} cy={cy - 5} r="1.5" fill={C} />
-        <circle cx={cx + 5} cy={cy - 5} r="1.5" fill={C} />
-        <ellipse cx={cx} cy={cy + 7} rx="6" ry="4" strokeWidth="1.5" />
-        <circle cx={cx - 1.5} cy={cy + 7} r="0.8" fill={C} />
-        <circle cx={cx + 1.5} cy={cy + 7} r="0.8" fill={C} />
-        <path d={`M${cx - 14} ${cy - 10} L${cx - 8} ${cy - 20} L${cx - 4} ${cy - 10}`} />
-        <path d={`M${cx + 14} ${cy - 10} L${cx + 8} ${cy - 20} L${cx + 4} ${cy - 10}`} />
+        {/* 뾰족한 귀 */}
+        <path d={`M${cx - 12} ${cy - 12} L${cx - 8} ${cy - 24} L${cx - 4} ${cy - 14}`} />
+        <path d={`M${cx + 12} ${cy - 12} L${cx + 8} ${cy - 24} L${cx + 4} ${cy - 14}`} />
+        {/* 갈기 (왼쪽에 풍성하게) */}
+        <path d={`M${cx - 4} ${cy - 20} Q${cx - 14} ${cy - 22} ${cx - 12} ${cy - 14}`} strokeWidth="3" stroke="#8B4513" opacity="0.6" />
+        <path d={`M${cx - 6} ${cy - 18} Q${cx - 16} ${cy - 16} ${cx - 14} ${cy - 8}`} strokeWidth="3" stroke="#8B4513" opacity="0.6" />
+        <path d={`M${cx - 8} ${cy - 14} Q${cx - 18} ${cy - 10} ${cx - 16} ${cy - 2}`} strokeWidth="3" stroke="#8B4513" opacity="0.6" />
+        {/* 긴 얼굴 */}
+        <ellipse cx={cx} cy={cy + 2} rx="13" ry="18" />
+        {/* 눈 */}
+        <circle cx={cx - 5} cy={cy - 6} r="2" fill={C} />
+        <circle cx={cx - 4.5} cy={cy - 6.5} r="0.7" fill="white" />
+        <circle cx={cx + 5} cy={cy - 6} r="2" fill={C} />
+        <circle cx={cx + 5.5} cy={cy - 6.5} r="0.7" fill="white" />
+        {/* 큰 주둥이 + 콧구멍 */}
+        <ellipse cx={cx} cy={cy + 10} rx="8" ry="6" fill="#F5DEB3" stroke={C} strokeWidth="1.5" />
+        <ellipse cx={cx - 3} cy={cy + 9} rx="1.5" ry="2" fill={C} />
+        <ellipse cx={cx + 3} cy={cy + 9} rx="1.5" ry="2" fill={C} />
+        {/* 입 */}
+        <path d={`M${cx - 4} ${cy + 13} Q${cx} ${cy + 16} ${cx + 4} ${cy + 13}`} />
       </g>
     ),
   },
   {
+    // 양 — 풍성한 곱슬 털, 작은 얼굴, 구불구불 울
     key: 'avatar-08', label: '양', bg: '#A8D8EA',
     render: (cx, cy) => (
       <g {...g}>
-        <circle cx={cx - 10} cy={cy - 14} r="5" />
-        <circle cx={cx} cy={cy - 17} r="5" />
-        <circle cx={cx + 10} cy={cy - 14} r="5" />
-        <circle cx={cx - 14} cy={cy - 6} r="5" />
-        <circle cx={cx + 14} cy={cy - 6} r="5" />
-        <ellipse cx={cx} cy={cy + 2} rx="12" ry="14" />
-        <circle cx={cx - 4} cy={cy - 1} r="1.5" fill={C} />
-        <circle cx={cx + 4} cy={cy - 1} r="1.5" fill={C} />
-        <circle cx={cx - 7} cy={cy + 5} r="2.5" fill={P} opacity="0.4" />
-        <circle cx={cx + 7} cy={cy + 5} r="2.5" fill={P} opacity="0.4" />
-        <path d={`M${cx - 2} ${cy + 7} Q${cx} ${cy + 10} ${cx + 2} ${cy + 7}`} />
+        {/* 풍성한 곱슬 울 — 더 많은 원 */}
+        <circle cx={cx - 12} cy={cy - 16} r="6" fill="white" stroke={C} strokeWidth="1.2" />
+        <circle cx={cx} cy={cy - 19} r="6" fill="white" stroke={C} strokeWidth="1.2" />
+        <circle cx={cx + 12} cy={cy - 16} r="6" fill="white" stroke={C} strokeWidth="1.2" />
+        <circle cx={cx - 16} cy={cy - 8} r="6" fill="white" stroke={C} strokeWidth="1.2" />
+        <circle cx={cx + 16} cy={cy - 8} r="6" fill="white" stroke={C} strokeWidth="1.2" />
+        <circle cx={cx - 16} cy={cy + 2} r="5" fill="white" stroke={C} strokeWidth="1.2" />
+        <circle cx={cx + 16} cy={cy + 2} r="5" fill="white" stroke={C} strokeWidth="1.2" />
+        <circle cx={cx - 12} cy={cy + 10} r="5" fill="white" stroke={C} strokeWidth="1.2" />
+        <circle cx={cx + 12} cy={cy + 10} r="5" fill="white" stroke={C} strokeWidth="1.2" />
+        {/* 작은 베이지 얼굴 */}
+        <ellipse cx={cx} cy={cy + 2} rx="10" ry="12" fill="#F5DEB3" stroke={C} strokeWidth="1.5" />
+        {/* 눈 */}
+        <circle cx={cx - 3.5} cy={cy - 1} r="1.8" fill={C} />
+        <circle cx={cx - 3} cy={cy - 1.5} r="0.6" fill="white" />
+        <circle cx={cx + 3.5} cy={cy - 1} r="1.8" fill={C} />
+        <circle cx={cx + 4} cy={cy - 1.5} r="0.6" fill="white" />
+        {/* 핑크 볼 */}
+        <circle cx={cx - 7} cy={cy + 4} r="2.5" fill={P} opacity="0.5" stroke="none" />
+        <circle cx={cx + 7} cy={cy + 4} r="2.5" fill={P} opacity="0.5" stroke="none" />
+        {/* 입 */}
+        <path d={`M${cx - 2} ${cy + 6} Q${cx} ${cy + 9} ${cx + 2} ${cy + 6}`} />
       </g>
     ),
   },
   {
+    // 원숭이 — 하트형 안면, 큰 귀, 갈색 머리
     key: 'avatar-09', label: '원숭이', bg: '#F28B82',
     render: (cx, cy) => (
       <g {...g}>
-        <circle cx={cx - 18} cy={cy - 2} r="6" />
-        <circle cx={cx + 18} cy={cy - 2} r="6" />
-        <circle cx={cx} cy={cy} r="16" />
-        <ellipse cx={cx} cy={cy + 2} rx="10" ry="9" fill="white" stroke={C} strokeWidth="1.2" />
-        <circle cx={cx - 5} cy={cy - 3} r="1.5" fill={C} />
-        <circle cx={cx + 5} cy={cy - 3} r="1.5" fill={C} />
-        <ellipse cx={cx} cy={cy + 4} rx="3" ry="2" />
-        <path d={`M${cx - 2} ${cy + 7} Q${cx} ${cy + 10} ${cx + 2} ${cy + 7}`} />
+        {/* 큰 둥근 귀 + 안쪽 색 */}
+        <circle cx={cx - 20} cy={cy - 2} r="8" />
+        <circle cx={cx - 20} cy={cy - 2} r="5" fill="#F5DEB3" stroke="none" />
+        <circle cx={cx + 20} cy={cy - 2} r="8" />
+        <circle cx={cx + 20} cy={cy - 2} r="5" fill="#F5DEB3" stroke="none" />
+        {/* 머리 (갈색) */}
+        <circle cx={cx} cy={cy} r="17" />
+        {/* 연한 하트형 안면 */}
+        <path d={`M${cx - 10} ${cy - 6} Q${cx - 10} ${cy + 14} ${cx} ${cy + 14} Q${cx + 10} ${cy + 14} ${cx + 10} ${cy - 6} Q${cx + 6} ${cy - 10} ${cx} ${cy - 6} Q${cx - 6} ${cy - 10} ${cx - 10} ${cy - 6}`} fill="#F5DEB3" stroke={C} strokeWidth="1.2" />
+        {/* 큰 눈 */}
+        <circle cx={cx - 5} cy={cy - 2} r="2.5" fill={C} />
+        <circle cx={cx - 4.5} cy={cy - 2.5} r="1" fill="white" />
+        <circle cx={cx + 5} cy={cy - 2} r="2.5" fill={C} />
+        <circle cx={cx + 5.5} cy={cy - 2.5} r="1" fill="white" />
+        {/* 납작한 코 */}
+        <ellipse cx={cx} cy={cy + 4} rx="3" ry="2" fill="#D2691E" opacity="0.5" stroke={C} strokeWidth="1" />
+        {/* 큰 웃는 입 */}
+        <path d={`M${cx - 5} ${cy + 7} Q${cx} ${cy + 12} ${cx + 5} ${cy + 7}`} />
       </g>
     ),
   },
   {
+    // 닭 — 빨간 벼슬, 노란 부리, 빨간 수염(육수), 풍성한 몸
     key: 'avatar-10', label: '닭', bg: '#F4A261',
     render: (cx, cy) => (
       <g {...g}>
-        <path d={`M${cx - 3} ${cy - 18} Q${cx - 6} ${cy - 26} ${cx} ${cy - 22} Q${cx + 6} ${cy - 26} ${cx + 3} ${cy - 18}`} fill="red" stroke="red" strokeWidth="1.2" />
-        <circle cx={cx} cy={cy} r="17" />
-        <circle cx={cx - 5} cy={cy - 3} r="1.8" fill={C} />
-        <circle cx={cx + 5} cy={cy - 3} r="1.8" fill={C} />
-        <path d={`M${cx - 4} ${cy + 3} L${cx} ${cy + 7} L${cx + 4} ${cy + 3}`} fill="#F4A261" stroke="#E8963A" />
-        <path d={`M${cx - 2} ${cy + 8} Q${cx} ${cy + 12} ${cx + 2} ${cy + 8}`} fill="red" stroke="red" strokeWidth="1" />
-        <circle cx={cx - 9} cy={cy + 2} r="3" fill={P} opacity="0.35" />
-        <circle cx={cx + 9} cy={cy + 2} r="3" fill={P} opacity="0.35" />
+        {/* 빨간 벼슬 (3개 봉우리) */}
+        <path d={`M${cx - 4} ${cy - 16} Q${cx - 6} ${cy - 28} ${cx} ${cy - 22} Q${cx + 2} ${cy - 30} ${cx + 4} ${cy - 22} Q${cx + 8} ${cy - 28} ${cx + 6} ${cy - 16}`} fill="#FF3B30" stroke={C} strokeWidth="1.2" />
+        {/* 둥근 머리 */}
+        <circle cx={cx} cy={cy - 2} r="17" />
+        {/* 눈 */}
+        <circle cx={cx - 5} cy={cy - 5} r="2" fill={C} />
+        <circle cx={cx - 4.5} cy={cy - 5.5} r="0.7" fill="white" />
+        <circle cx={cx + 5} cy={cy - 5} r="2" fill={C} />
+        <circle cx={cx + 5.5} cy={cy - 5.5} r="0.7" fill="white" />
+        {/* 핑크볼 */}
+        <circle cx={cx - 10} cy={cy} r="2.5" fill={P} opacity="0.4" stroke="none" />
+        <circle cx={cx + 10} cy={cy} r="2.5" fill={P} opacity="0.4" stroke="none" />
+        {/* 노란 뾰족 부리 */}
+        <path d={`M${cx - 5} ${cy + 1} L${cx} ${cy + 7} L${cx + 5} ${cy + 1}`} fill="#FFD700" stroke={C} strokeWidth="1.5" />
+        {/* 빨간 육수 */}
+        <path d={`M${cx - 2} ${cy + 7} Q${cx} ${cy + 14} ${cx + 2} ${cy + 7}`} fill="#FF3B30" stroke={C} strokeWidth="1" />
       </g>
     ),
   },
   {
+    // 개 — 늘어진 귀, 큰 코, 혀, 목걸이
     key: 'avatar-11', label: '개', bg: '#B5B843',
     render: (cx, cy) => (
       <g {...g}>
-        <ellipse cx={cx - 16} cy={cy - 4} rx="6" ry="12" transform={`rotate(-15 ${cx - 16} ${cy - 4})`} />
-        <ellipse cx={cx + 16} cy={cy - 4} rx="6" ry="12" transform={`rotate(15 ${cx + 16} ${cy - 4})`} />
+        {/* 축 늘어진 귀 */}
+        <ellipse cx={cx - 18} cy={cy - 2} rx="6" ry="14" transform={`rotate(-10 ${cx - 18} ${cy - 2})`} fill="#D2B48C" opacity="0.3" stroke={C} />
+        <ellipse cx={cx + 18} cy={cy - 2} rx="6" ry="14" transform={`rotate(10 ${cx + 18} ${cy - 2})`} fill="#D2B48C" opacity="0.3" stroke={C} />
+        {/* 머리 */}
         <circle cx={cx} cy={cy} r="16" />
-        <circle cx={cx - 5} cy={cy - 3} r="2" fill={C} />
-        <circle cx={cx + 5} cy={cy - 3} r="2" fill={C} />
-        <circle cx={cx - 4.5} cy={cy - 3.5} r="0.7" fill="white" />
-        <circle cx={cx + 5.5} cy={cy - 3.5} r="0.7" fill="white" />
-        <ellipse cx={cx} cy={cy + 3.5} rx="2.5" ry="2" fill={C} />
-        <path d={`M${cx - 2} ${cy + 7} Q${cx} ${cy + 12} ${cx + 2} ${cy + 7}`} fill={P} />
+        {/* 이마 반점 */}
+        <circle cx={cx} cy={cy - 10} r="5" fill="#D2B48C" opacity="0.25" stroke="none" />
+        {/* 반짝이는 큰 눈 */}
+        <circle cx={cx - 6} cy={cy - 3} r="3" fill={C} />
+        <circle cx={cx - 5} cy={cy - 4} r="1.2" fill="white" />
+        <circle cx={cx + 6} cy={cy - 3} r="3" fill={C} />
+        <circle cx={cx + 7} cy={cy - 4} r="1.2" fill="white" />
+        {/* 큰 까만 코 */}
+        <ellipse cx={cx} cy={cy + 4} rx="3.5" ry="2.5" fill={C} />
+        {/* 내민 혀 */}
+        <path d={`M${cx - 3} ${cy + 8} Q${cx} ${cy + 15} ${cx + 3} ${cy + 8}`} fill={P} stroke={C} strokeWidth="1" />
+        {/* 입 */}
+        <path d={`M${cx} ${cy + 6} L${cx - 5} ${cy + 8}`} />
+        <path d={`M${cx} ${cy + 6} L${cx + 5} ${cy + 8}`} />
       </g>
     ),
   },
   {
+    // 돼지 — 큰 코, 둥근 콧구멍, 동글한 귀, 핑크 톤
     key: 'avatar-12', label: '돼지', bg: '#F28B82',
     render: (cx, cy) => (
       <g {...g}>
-        <circle cx={cx - 14} cy={cy - 12} r="6" />
-        <circle cx={cx + 14} cy={cy - 12} r="6" />
+        {/* 동그란 귀 */}
+        <ellipse cx={cx - 14} cy={cy - 14} r="7" fill={P} opacity="0.3" stroke={C} />
+        <ellipse cx={cx + 14} cy={cy - 14} r="7" fill={P} opacity="0.3" stroke={C} />
+        {/* 둥근 얼굴 */}
         <circle cx={cx} cy={cy} r="17" />
-        <circle cx={cx - 6} cy={cy - 4} r="1.5" fill={C} />
-        <circle cx={cx + 6} cy={cy - 4} r="1.5" fill={C} />
-        <ellipse cx={cx} cy={cy + 4} rx="6" ry="4" fill={P} opacity="0.5" stroke={C} strokeWidth="1.2" />
-        <circle cx={cx - 2} cy={cy + 4} r="1" fill={C} />
-        <circle cx={cx + 2} cy={cy + 4} r="1" fill={C} />
-        <path d={`M${cx - 3} ${cy + 10} Q${cx} ${cy + 13} ${cx + 3} ${cy + 10}`} />
+        {/* 큰 눈 */}
+        <circle cx={cx - 6} cy={cy - 5} r="2.5" fill={C} />
+        <circle cx={cx - 5.5} cy={cy - 5.5} r="1" fill="white" />
+        <circle cx={cx + 6} cy={cy - 5} r="2.5" fill={C} />
+        <circle cx={cx + 6.5} cy={cy - 5.5} r="1" fill="white" />
+        {/* 핑크 볼 */}
+        <circle cx={cx - 11} cy={cy + 2} r="3" fill={P} opacity="0.4" stroke="none" />
+        <circle cx={cx + 11} cy={cy + 2} r="3" fill={P} opacity="0.4" stroke="none" />
+        {/* 크고 둥근 돼지코 */}
+        <ellipse cx={cx} cy={cy + 4} rx="7" ry="5" fill={P} stroke={C} strokeWidth="1.5" />
+        <ellipse cx={cx - 2.5} cy={cy + 4} rx="2" ry="1.5" fill={C} />
+        <ellipse cx={cx + 2.5} cy={cy + 4} rx="2" ry="1.5" fill={C} />
+        {/* 입 */}
+        <path d={`M${cx - 3} ${cy + 11} Q${cx} ${cy + 14} ${cx + 3} ${cy + 11}`} />
       </g>
     ),
   },
