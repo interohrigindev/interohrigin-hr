@@ -127,23 +127,23 @@ export function AvatarPicker({ value, onChange }: AvatarPickerProps) {
           {AVATAR_CATEGORIES.map(cat => (
             <div key={cat.title}>
               <p className="mb-1.5 text-xs font-semibold text-gray-500">{cat.title}</p>
-              <div className="grid grid-cols-6 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 {cat.avatars.map(avatar => {
                   const isSelected = selectedKey === avatar.key
                   return (
                     <button
                       key={avatar.key}
                       type="button"
-                      title={avatar.label}
                       onClick={() => onChange(`/avatars/${avatar.key}.svg`)}
                       className={cn(
-                        'rounded-full p-0.5 transition-all',
+                        'flex items-center gap-2 rounded-lg px-1.5 py-1 transition-all',
                         isSelected
-                          ? 'ring-2 ring-brand-500 ring-offset-2 scale-110'
-                          : 'hover:ring-2 hover:ring-gray-300 hover:ring-offset-1'
+                          ? 'ring-2 ring-brand-500 bg-brand-50'
+                          : 'hover:bg-gray-50'
                       )}
                     >
-                      {renderAvatarSvg(avatar.key, 40)}
+                      {renderAvatarSvg(avatar.key, 32)}
+                      <span className="text-xs text-gray-700 truncate">{avatar.label}</span>
                     </button>
                   )
                 })}
