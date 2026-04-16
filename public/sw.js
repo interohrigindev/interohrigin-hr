@@ -1,4 +1,4 @@
-const CACHE_NAME = 'io-hr-v1'
+const CACHE_NAME = 'io-hr-v2'
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
