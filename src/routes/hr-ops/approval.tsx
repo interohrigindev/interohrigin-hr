@@ -76,7 +76,7 @@ interface ApprovalTemplate {
 
 /* ────── Constants ────── */
 
-type TabKey = 'my_requests' | 'pending_approval' | 'all'
+type TabKey = 'my_requests' | 'pending_approval' | 'all' | 'template_manage'
 
 const DOC_TYPE_CONFIG: Record<string, { label: string; icon: string; hasAmount: boolean }> = {
   leave:         { label: '연차/반차/조퇴 신청', icon: '🗓', hasAmount: false },
@@ -840,7 +840,10 @@ export default function ApprovalManagementPage() {
           {([
             { key: 'my_requests' as TabKey, label: '내 신청', count: stats.myRequests },
             { key: 'pending_approval' as TabKey, label: '결재 대기', count: stats.pendingApproval },
-            ...(isAdmin ? [{ key: 'all' as TabKey, label: '전체', count: documents.length }] : []),
+            ...(isAdmin ? [
+              { key: 'all' as TabKey, label: '전체', count: documents.length },
+              { key: 'template_manage' as TabKey, label: '결재선 관리', count: 0 },
+            ] : []),
           ]).map(({ key, label, count }) => (
             <button
               key={key}
@@ -867,8 +870,13 @@ export default function ApprovalManagementPage() {
         </div>
       </div>
 
+      {/* 결재선 관리 탭 */}
+      {activeTab === 'template_manage' && (
+        <ApprovalTemplateManager templates={templates} employees={allEmployees} onRefresh={fetchData} />
+      )}
+
       {/* Document List */}
-      <div className="space-y-2">
+      {activeTab !== 'template_manage' && <div className="space-y-2">
         {filteredDocuments.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center text-gray-400 text-sm">
@@ -931,7 +939,7 @@ export default function ApprovalManagementPage() {
             )
           })
         )}
-      </div>
+      </div>}
 
       {/* ── Detail Dialog ── */}
       <Dialog
@@ -1396,6 +1404,160 @@ export default function ApprovalManagementPage() {
           )}
         </div>
       </Dialog>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════
+   결재선 관리 컴포넌트 (관리자 전용)
+   ═══════════════════════════════════════════════════════════ */
+
+const ROLE_OPTIONS = [
+  { value: 'leader', label: '팀장/리더' },
+  { value: 'executive', label: '이사/임원' },
+  { value: 'ceo', label: '대표' },
+  { value: 'hr_admin', label: '인사/경영지원' },
+  { value: 'finance', label: '재무회계' },
+]
+
+function ApprovalTemplateManager({
+  templates,
+  onRefresh,
+}: {
+  templates: ApprovalTemplate[]
+  employees: Employee[]
+  onRefresh: () => void
+}) {
+  const { toast } = useToast()
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editSteps, setEditSteps] = useState<{ role: string; label: string }[]>([])
+
+  function startEdit(tmpl: ApprovalTemplate) {
+    setEditingId(tmpl.id)
+    setEditSteps([...tmpl.steps])
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditSteps([])
+  }
+
+  async function saveEdit(tmplId: string) {
+    const { error } = await supabase.from('approval_templates').update({
+      steps: editSteps,
+    }).eq('id', tmplId)
+    if (error) { toast('저장 실패: ' + error.message, 'error'); return }
+    toast('결재선이 수정되었습니다.', 'success')
+    setEditingId(null)
+    onRefresh()
+  }
+
+  function addStep() {
+    setEditSteps([...editSteps, { role: 'leader', label: '팀장' }])
+  }
+
+  function removeStep(idx: number) {
+    setEditSteps(editSteps.filter((_, i) => i !== idx))
+  }
+
+  function updateStep(idx: number, field: 'role' | 'label', value: string) {
+    setEditSteps(editSteps.map((s, i) => i === idx ? { ...s, [field]: value } : s))
+  }
+
+  // 양식별 이모지
+  const typeIcon: Record<string, string> = {
+    leave: '🗓', overtime: '🌙', expense: '💰', business_trip: '✈',
+    general: '📄', purchase: '🛒', personnel: '👤', resign: '📋',
+    expense_high: '💰',
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">양식별 결재선 템플릿을 수정할 수 있습니다.</p>
+      </div>
+
+      {templates.map((tmpl) => {
+        const isEditing = editingId === tmpl.id
+
+        return (
+          <Card key={tmpl.id} className={isEditing ? 'ring-2 ring-brand-400' : ''}>
+            <CardContent className="py-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{typeIcon[tmpl.doc_type] || '📋'}</span>
+                  <h3 className="font-semibold text-gray-900 text-sm">{tmpl.name}</h3>
+                  <Badge variant={tmpl.is_active ? 'success' : 'default'}>
+                    {tmpl.is_active ? '활성' : '비활성'}
+                  </Badge>
+                  {tmpl.condition_field && (
+                    <Badge variant="info" className="text-[10px]">
+                      조건: {tmpl.condition_field} {tmpl.condition_operator} {tmpl.condition_value}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  {isEditing ? (
+                    <>
+                      <Button size="sm" onClick={() => saveEdit(tmpl.id)}>저장</Button>
+                      <Button size="sm" variant="outline" onClick={cancelEdit}>취소</Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => startEdit(tmpl)}>수정</Button>
+                  )}
+                </div>
+              </div>
+
+              {/* 결재 흐름 */}
+              {isEditing ? (
+                <div className="space-y-2">
+                  {editSteps.map((step, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
+                      <span className="text-xs text-gray-400 w-6 text-center">{idx + 1}</span>
+                      <select
+                        value={step.role}
+                        onChange={(e) => updateStep(idx, 'role', e.target.value)}
+                        className="text-xs border border-gray-200 rounded px-2 py-1"
+                      >
+                        {ROLE_OPTIONS.map(r => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={step.label}
+                        onChange={(e) => updateStep(idx, 'label', e.target.value)}
+                        className="text-xs border border-gray-200 rounded px-2 py-1 flex-1"
+                        placeholder="표시 이름"
+                      />
+                      <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                    </div>
+                  ))}
+                  <button onClick={addStep} className="text-xs text-brand-600 hover:text-brand-700 font-medium">+ 단계 추가</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs text-gray-500">신청자</span>
+                  {tmpl.steps.map((step, idx) => (
+                    <span key={idx} className="flex items-center gap-1.5">
+                      <span className="text-gray-300">→</span>
+                      <Badge variant="default" className="text-[11px]">{step.label}</Badge>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })}
+
+      {templates.length === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center text-gray-400 text-sm">
+            등록된 결재선 템플릿이 없습니다
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
