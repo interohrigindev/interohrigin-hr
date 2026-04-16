@@ -72,7 +72,7 @@ export default function ProjectBoardPage() {
   // Unique brands
   const brands = useMemo(() => [...new Set(projects.map((p) => p.brand))], [projects])
 
-  // 권한별 기본 필터: 관리자/임원은 전체, 일반 직원/리더는 본인 관련만
+  // 권한별 필터: 관리자/임원은 "전체 보기" 토글 가능, 기본은 본인 관련만
   const isPrivileged = isAdmin || (profile?.role && ['director', 'division_head', 'ceo', 'admin'].includes(profile.role))
   const [showAll, setShowAll] = useState(false)
 
@@ -80,8 +80,8 @@ export default function ProjectBoardPage() {
   const filtered = useMemo(() => {
     let result = [...projects]
 
-    // 일반 직원/리더: 본인이 담당자/참여자/매니저/리더/임원/파이프라인 담당인 프로젝트만
-    if (!isPrivileged && !showAll && profile?.id) {
+    // 본인이 담당자/참여자/매니저/리더/임원/파이프라인 담당인 프로젝트만 (전체보기 OFF일 때)
+    if (!showAll && profile?.id) {
       result = result.filter((p) =>
         p.assignee_ids?.includes(profile.id) ||
         p.manager_id === profile.id ||
