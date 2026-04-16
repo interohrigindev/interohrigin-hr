@@ -163,8 +163,97 @@ export default function CEOReport() {
     setLoading(false)
   }
 
-  function handlePrintPdf() {
-    window.print()
+  async function handlePrintPdf() {
+    if (!data) return
+    try {
+      const { default: jsPDF } = await import('jspdf')
+      const { registerKoreanFonts } = await import('@/lib/pdf-fonts')
+      const pdf = new jsPDF()
+      registerKoreanFonts(pdf)
+      const fontFamily = 'NotoSansKR'
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const margin = 20
+      let y = 25
+
+      // 제목
+      pdf.setFont(fontFamily, 'bold')
+      pdf.setFontSize(18)
+      pdf.text('CEO 경영 리포트', pageWidth / 2, y, { align: 'center' })
+      y += 8
+      pdf.setFontSize(10)
+      pdf.setFont(fontFamily, 'normal')
+      pdf.setTextColor(128, 128, 128)
+      pdf.text(`인터오리진 | ${today}`, pageWidth / 2, y, { align: 'center' })
+      pdf.setTextColor(0, 0, 0)
+      y += 12
+
+      // KPI 카드 데이터
+      const kpis = [
+        `전체 직원: ${data.totalEmployees}명`,
+        `수습: ${data.probationEmployees.length}명`,
+        `진행 공고: ${data.activePostings}건`,
+        `지원자: ${data.candidateCount}명`,
+        `프로젝트: ${data.projects.length}건`,
+      ]
+      pdf.setFontSize(10)
+      pdf.setFont(fontFamily, 'normal')
+      pdf.text(kpis.join('  |  '), pageWidth / 2, y, { align: 'center' })
+      y += 10
+
+      pdf.setDrawColor(200, 200, 200)
+      pdf.line(margin, y, pageWidth - margin, y)
+      y += 8
+
+      // AI 분석 결과
+      if (aiAnalysis) {
+        pdf.setFont(fontFamily, 'bold')
+        pdf.setFontSize(13)
+        pdf.text('AI 경영 분석', margin, y)
+        y += 8
+
+        pdf.setFont(fontFamily, 'normal')
+        pdf.setFontSize(9)
+        // 마크다운 제거 후 줄바꿈 처리
+        const plainText = aiAnalysis
+          .replace(/#{1,4}\s/g, '')
+          .replace(/\*\*/g, '')
+          .replace(/\*/g, '')
+          .replace(/- /g, '• ')
+        const lines = pdf.splitTextToSize(plainText, pageWidth - margin * 2)
+        for (const line of lines) {
+          if (y > 275) { pdf.addPage(); y = 20 }
+          pdf.text(line, margin, y)
+          y += 4.5
+        }
+      }
+
+      // 프로젝트 현황
+      if (data.projects.length > 0) {
+        if (y > 250) { pdf.addPage(); y = 20 }
+        y += 5
+        pdf.setFont(fontFamily, 'bold')
+        pdf.setFontSize(13)
+        pdf.text('프로젝트 현황', margin, y)
+        y += 8
+        pdf.setFont(fontFamily, 'normal')
+        pdf.setFontSize(9)
+        for (const p of data.projects.slice(0, 15)) {
+          if (y > 275) { pdf.addPage(); y = 20 }
+          const stagesDone = p.stages?.filter((s: any) => s.status === 'completed').length || 0
+          const stagesTotal = p.stages?.length || 0
+          const pct = stagesTotal > 0 ? Math.round((stagesDone / stagesTotal) * 100) : 0
+          pdf.text(`• ${p.project_name} — ${p.status} (${pct}% 완료)`, margin + 2, y)
+          y += 5
+        }
+      }
+
+      pdf.save(`CEO_리포트_${today.replace(/\./g, '')}.pdf`)
+      toast('PDF가 다운로드되었습니다.', 'success')
+    } catch (err) {
+      console.error('PDF 생성 실패:', err)
+      // 폴백: 브라우저 인쇄
+      window.print()
+    }
   }
 
   function handleCopyLink() {
