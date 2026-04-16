@@ -15,6 +15,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { calculateAnnualLeave } from '@/lib/leave-calculator'
 
 /* ─── Types ─────────────────────────────────────────── */
 
@@ -295,7 +296,38 @@ export default function LeaveManagementPage() {
           <h1 className="text-2xl font-bold text-gray-900">연차 관리</h1>
           <p className="text-sm text-gray-500 mt-0.5">직원별 연차 현황을 관리합니다 ({currentYear}년)</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {isAdmin && (
+            <Button variant="outline" onClick={async () => {
+              // 입사일 기반 연차 자동 계산 + hr_details 일괄 업데이트
+              let updated = 0
+              for (const emp of employees) {
+                if (!emp.hire_date) continue
+                const calc = calculateAnnualLeave(emp.hire_date)
+                const hr = hrDetails.find(h => h.employee_id === emp.id)
+                if (hr) {
+                  await supabase.from('hr_details').update({
+                    annual_leave_total: calc.totalDays,
+                    annual_leave_remaining: calc.totalDays - (hr.annual_leave_used || 0),
+                    annual_leave_basis: calc.description,
+                  }).eq('id', hr.id)
+                } else {
+                  await supabase.from('hr_details').insert({
+                    employee_id: emp.id,
+                    annual_leave_total: calc.totalDays,
+                    annual_leave_used: 0,
+                    annual_leave_remaining: calc.totalDays,
+                    annual_leave_basis: calc.description,
+                  })
+                }
+                updated++
+              }
+              toast(`${updated}명의 연차가 입사일 기준으로 자동 계산되었습니다.`, 'success')
+              fetchData()
+            }}>
+              <CalendarPlus className="h-4 w-4 mr-1" /> 연차 자동 계산
+            </Button>
+          )}
           {isAdmin && (
             <Button variant="outline" onClick={() => {
               const data = filteredData.map(emp => ({
