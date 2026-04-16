@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/Badge'
 import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
-import { AvatarPicker, resolveAvatarSrc } from '@/components/ui/AvatarPicker'
+import { AvatarPicker } from '@/components/ui/AvatarPicker'
+import { extractAvatarKey, renderAvatarSvg } from '@/lib/avatar-data'
 import { ROLE_LABELS } from '@/lib/constants'
 import { useAuth } from '@/hooks/useAuth'
 import { generateEmail, generateEmailPrefix, generateAlternativeEmails, DOMAIN } from '@/lib/email-generator'
@@ -787,7 +788,7 @@ export default function TabEmployees() {
                 </thead>
                 <tbody>
                   {filteredEmployees.map((emp) => {
-                    const avatarSrc = resolveAvatarSrc(emp.avatar_url)
+                    const avatarKey = extractAvatarKey(emp.avatar_url)
                     return (
                       <tr
                         key={emp.id}
@@ -800,8 +801,10 @@ export default function TabEmployees() {
                         </td>
                         <td className="px-6 py-3 font-medium text-gray-900">
                           <div className="flex items-center gap-2">
-                            {avatarSrc ? (
-                              <img src={avatarSrc} alt="" className="h-7 w-7 rounded-full" />
+                            {avatarKey ? (
+                              renderAvatarSvg(avatarKey, 28)
+                            ) : emp.avatar_url && emp.avatar_url.startsWith('http') ? (
+                              <img src={emp.avatar_url} alt="" className="h-7 w-7 rounded-full object-cover" />
                             ) : (
                               <div className="h-7 w-7 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-500">
                                 {emp.name.charAt(0)}
