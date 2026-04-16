@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CalendarDays, Sparkles, Save, ChevronLeft, ChevronRight, Send } from 'lucide-react'
+import { CalendarDays, Sparkles, Save, ChevronLeft, ChevronRight, Send, ArrowRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
+import { Dialog } from '@/components/ui/Dialog'
 import { Spinner, PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
@@ -110,7 +112,20 @@ export default function DailyReportPage() {
   const [satisfactionComment, setSatisfactionComment] = useState('')
   const [blockers, setBlockers] = useState('')
 
+  // 결재 전송 다이얼로그
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
+  const [approvalLeaderId, setApprovalLeaderId] = useState('')
+  const [approvalDirectorId, setApprovalDirectorId] = useState('')
+  const [approvalSending, setApprovalSending] = useState(false)
+  const [allEmployees, setAllEmployees] = useState<{ id: string; name: string; role: string; department_id: string | null }[]>([])
+
   const employeeId = profile?.id
+
+  // 결재선 선택용 직원 로드
+  useEffect(() => {
+    supabase.from('employees').select('id, name, role, department_id').eq('is_active', true).order('name')
+      .then(({ data }) => { if (data) setAllEmployees(data) })
+  }, [])
 
   const fetchData = useCallback(async () => {
     if (!employeeId) return
@@ -460,30 +475,7 @@ ${completedText || '아직 없음'}
             저장
           </Button>
           {report?.id && (
-            <Button
-              variant="outline"
-              onClick={async () => {
-                // 결재 전송 — approval_documents 테이블에 업무보고 건 생성
-                const { error } = await supabase.from('approval_documents').insert({
-                  type: 'daily_report',
-                  title: `일일 업무보고 (${selectedDate})`,
-                  content: JSON.stringify({
-                    report_id: report.id,
-                    report_date: selectedDate,
-                    completed: completed,
-                    in_progress: inProgress,
-                    planned: planned,
-                  }),
-                  requester_id: profile?.id,
-                  status: 'pending',
-                })
-                if (error) {
-                  toast('결재 전송 실패: ' + error.message, 'error')
-                } else {
-                  toast('결재가 전송되었습니다.', 'success')
-                }
-              }}
-            >
+            <Button variant="outline" onClick={() => setApprovalDialogOpen(true)}>
               <Send className="h-4 w-4" /> 결재 전송
             </Button>
           )}
@@ -626,6 +618,109 @@ ${completedText || '아직 없음'}
 
       {/* 상위자 코멘트 (리더/임원/대표 → 직원 피드백) */}
       {report?.id && <ReportComments reportId={report.id} />}
+
+      {/* ── 결재 전송 다이얼로그 ── */}
+      <Dialog open={approvalDialogOpen} onClose={() => setApprovalDialogOpen(false)} title="결재선 지정 및 전송" className="max-w-md">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">업무보고 ({selectedDate})를 결재 전송합니다. 결재선을 지정해주세요.</p>
+
+          {/* 결재 흐름 미리보기 */}
+          <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+            <Badge variant="primary">나 ({profile?.name})</Badge>
+            <ArrowRight className="h-3 w-3" />
+            <Badge variant={approvalLeaderId ? 'success' : 'default'}>
+              {approvalLeaderId ? allEmployees.find(e => e.id === approvalLeaderId)?.name : '리더 선택'}
+            </Badge>
+            {approvalDirectorId && (
+              <>
+                <ArrowRight className="h-3 w-3" />
+                <Badge variant="success">
+                  {allEmployees.find(e => e.id === approvalDirectorId)?.name}
+                </Badge>
+              </>
+            )}
+          </div>
+
+          <Select
+            label="1단계: 팀장/리더 *"
+            value={approvalLeaderId}
+            onChange={(e) => setApprovalLeaderId(e.target.value)}
+            options={[
+              { value: '', label: '선택하세요' },
+              ...allEmployees
+                .filter(e => ['leader', 'director', 'division_head', 'ceo', 'admin'].includes(e.role))
+                .map(e => ({ value: e.id, label: `${e.name} (${e.role === 'leader' ? '리더' : e.role === 'director' ? '이사' : e.role === 'ceo' ? '대표' : e.role})` })),
+            ]}
+          />
+
+          <Select
+            label="2단계: 이사/임원 (선택)"
+            value={approvalDirectorId}
+            onChange={(e) => setApprovalDirectorId(e.target.value)}
+            options={[
+              { value: '', label: '없음 (리더 결재만)' },
+              ...allEmployees
+                .filter(e => ['director', 'division_head', 'ceo'].includes(e.role))
+                .map(e => ({ value: e.id, label: `${e.name} (${e.role === 'director' ? '이사' : e.role === 'ceo' ? '대표' : '본부장'})` })),
+            ]}
+          />
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setApprovalDialogOpen(false)}>취소</Button>
+            <Button
+              disabled={!approvalLeaderId || approvalSending}
+              onClick={async () => {
+                if (!report?.id || !profile?.id || !approvalLeaderId) return
+                setApprovalSending(true)
+                try {
+                  const steps = [
+                    { step_order: 1, approver_id: approvalLeaderId, approver_role: 'leader', action: 'pending' },
+                  ]
+                  if (approvalDirectorId) {
+                    steps.push({ step_order: 2, approver_id: approvalDirectorId, approver_role: 'executive', action: 'pending' })
+                  }
+
+                  // 1) approval_documents 생성
+                  const { data: doc, error: docErr } = await supabase.from('approval_documents').insert({
+                    doc_type: 'general',
+                    title: `일일 업무보고 (${selectedDate})`,
+                    content: {
+                      report_id: report.id,
+                      report_date: selectedDate,
+                      completed,
+                      in_progress: inProgress,
+                      planned,
+                    },
+                    requester_id: profile.id,
+                    department: profile.department_id || '',
+                    status: 'submitted',
+                    current_step: 1,
+                    total_steps: steps.length,
+                    submitted_at: new Date().toISOString(),
+                  }).select().single()
+
+                  if (docErr) throw docErr
+
+                  // 2) approval_steps 생성
+                  const { error: stepErr } = await supabase.from('approval_steps').insert(
+                    steps.map(s => ({ ...s, document_id: doc.id }))
+                  )
+                  if (stepErr) throw stepErr
+
+                  toast('결재가 전송되었습니다.', 'success')
+                  setApprovalDialogOpen(false)
+                } catch (err: unknown) {
+                  toast('결재 전송 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
+                }
+                setApprovalSending(false)
+              }}
+            >
+              {approvalSending ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
+              결재 전송
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
 }

@@ -544,15 +544,22 @@ export default function ProjectDetailPage() {
                             <div className="p-2 border-b border-gray-100">
                               <input
                                 type="text"
-                                placeholder="이름 검색..."
+                                placeholder="이름 또는 부서 검색..."
                                 className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 bg-gray-50"
                                 autoFocus
                                 onChange={(e) => {
                                   const q = e.target.value.toLowerCase()
-                                  const items = e.target.closest('[ref]')?.parentElement?.querySelectorAll('[data-emp-name]') || []
-                                  items.forEach((el) => {
+                                  // DOM 직접 탐색으로 필터링
+                                  const container = assigneeDropdownRef.current
+                                  if (!container) return
+                                  container.querySelectorAll('[data-emp-name]').forEach((el) => {
                                     const name = (el as HTMLElement).dataset.empName || ''
                                     ;(el as HTMLElement).style.display = name.includes(q) ? '' : 'none'
+                                  })
+                                  // 부서 헤더도 필터링
+                                  container.querySelectorAll('[data-dept-group]').forEach((group) => {
+                                    const visibleItems = group.querySelectorAll('[data-emp-name]:not([style*="display: none"])')
+                                    ;(group as HTMLElement).style.display = visibleItems.length > 0 || !q ? '' : 'none'
                                   })
                                 }}
                               />
@@ -582,12 +589,12 @@ export default function ProjectDetailPage() {
                             {/* 부서별 목록 */}
                             <div className="max-h-60 overflow-y-auto py-1">
                               {Array.from(grouped.entries()).map(([deptName, emps]) => (
-                                <div key={deptName}>
+                                <div key={deptName} data-dept-group>
                                   <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase sticky top-0 bg-white">{deptName}</p>
                                   {emps.map((emp) => (
                                     <button
                                       key={emp.id}
-                                      data-emp-name={emp.name.toLowerCase()}
+                                      data-emp-name={`${emp.name.toLowerCase()} ${(deptMap.get(emp.department_id || '') || '').toLowerCase()}`}
                                       onClick={async (e) => {
                                         e.stopPropagation()
                                         const currentIds = stage.stage_assignee_ids || []

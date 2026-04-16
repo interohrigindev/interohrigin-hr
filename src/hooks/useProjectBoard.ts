@@ -173,16 +173,28 @@ export function useProjectBoard(statusFilter?: string) {
     department: string
     stages: TemplateStage[]
   }): Promise<{ error: string | null }> {
-    const templateType = 'custom_' + Date.now()
+    // 중복 체크 — 같은 부서 + 같은 이름의 템플릿이 이미 있으면 업데이트
+    const existing = templates.find(t => t.department === data.department && t.name === data.name)
     const totalDays = data.stages.reduce((sum, s) => sum + s.default_duration_days, 0)
-    const { error } = await supabase.from('project_templates').insert({
-      name: data.name,
-      template_type: templateType,
-      department: data.department,
-      stages: data.stages.map((s) => ({ name: s.name, order: s.order, default_duration_days: s.default_duration_days })),
-      avg_total_days: totalDays,
-    })
-    if (error) return { error: error.message }
+    const stagesData = data.stages.map((s) => ({ name: s.name, order: s.order, default_duration_days: s.default_duration_days }))
+
+    if (existing) {
+      const { error } = await supabase.from('project_templates').update({
+        stages: stagesData,
+        avg_total_days: totalDays,
+      }).eq('id', existing.id)
+      if (error) return { error: error.message }
+    } else {
+      const templateType = 'custom_' + Date.now()
+      const { error } = await supabase.from('project_templates').insert({
+        name: data.name,
+        template_type: templateType,
+        department: data.department,
+        stages: stagesData,
+        avg_total_days: totalDays,
+      })
+      if (error) return { error: error.message }
+    }
     await fetchData()
     return { error: null }
   }
