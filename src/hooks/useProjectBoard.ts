@@ -65,7 +65,21 @@ export function useProjectBoard(statusFilter?: string) {
       executive_name: p.executive_id ? empMap.get(p.executive_id) : undefined,
     }))
 
-    setProjects(enriched)
+    // ─── 본인 관련 프로젝트 필터링 (관리자 제외) ───
+    const myId = profile?.id
+    const myRole = profile?.role
+    const privileged = myRole && ['director', 'division_head', 'ceo', 'admin'].includes(myRole)
+    const filtered = (myId && !privileged)
+      ? enriched.filter((p) =>
+          p.assignee_ids?.includes(myId) ||
+          p.manager_id === myId ||
+          p.leader_id === myId ||
+          p.executive_id === myId ||
+          p.stages?.some((s: PipelineStage) => s.stage_assignee_ids?.includes(myId))
+        )
+      : enriched
+
+    setProjects(filtered)
     setTemplates((tmplRes.data || []) as ProjectTemplate[])
     setPermissions((permRes.data || []) as BoardPermission[])
     setEmployees(emps)

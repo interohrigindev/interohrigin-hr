@@ -1,49 +1,24 @@
-const CACHE_NAME = 'io-hr-v2'
-const PRECACHE_URLS = [
-  '/',
-  '/manifest.json',
-  '/favicon.svg',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-]
+const CACHE_NAME = 'io-hr-v3'
 
-// 설치 — 기본 리소스 캐시
+// 설치 — 이전 캐시 모두 삭제 후 즉시 활성화
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
+    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
   )
   self.skipWaiting()
 })
 
-// 활성화 — 이전 캐시 정리
+// 활성화 — 모든 캐시 정리
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
   )
   self.clients.claim()
 })
 
-// 네트워크 우선, 실패 시 캐시 (Network First)
-self.addEventListener('fetch', (event) => {
-  // API 요청은 캐시하지 않음
-  if (event.request.url.includes('/rest/') || event.request.url.includes('/api/')) {
-    return
-  }
-
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // 성공 응답 캐시
-        if (response.status === 200) {
-          const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
-        }
-        return response
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/')))
-  )
+// 네트워크 전용 — JS/CSS는 Vite 해시로 캐시 버스팅되므로 SW 캐시 불필요
+self.addEventListener('fetch', () => {
+  // 기본 동작 (네트워크 직접 요청) — 캐시 개입 안 함
 })
 
 // 푸시 알림 수신
