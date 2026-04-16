@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   FileText, Download, Search, Plus,
-  Award, Calendar, Printer,
+  Award, Calendar, Printer, Upload,
 } from 'lucide-react'
 import jsPDF from 'jspdf'
 import { registerKoreanFonts } from '@/lib/pdf-fonts'
@@ -71,9 +71,40 @@ export default function CertificatesPage() {
   const [issueCertType, setIssueCertType] = useState('employment')
   const [issuePurpose, setIssuePurpose] = useState('')
 
+  // 인감 이미지
+  const [sealImageUrl, setSealImageUrl] = useState<string | null>(null)
+  const [sealUploading, setSealUploading] = useState(false)
+
   useEffect(() => {
     fetchData()
+    // 인감 이미지 로드
+    loadSealImage()
   }, [profile?.id])
+
+  async function loadSealImage() {
+    const { data } = await supabase.from('company_settings').select('value').eq('key', 'seal_image_url').maybeSingle()
+    if (data?.value) setSealImageUrl(data.value)
+  }
+
+  async function handleSealUpload(file: File) {
+    setSealUploading(true)
+    const path = `company/seal_${Date.now()}.${file.name.split('.').pop()}`
+    const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    if (uploadErr) { toast('인감 업로드 실패: ' + uploadErr.message, 'error'); setSealUploading(false); return }
+
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+
+    // company_settings에 저장 (upsert)
+    const { data: existing } = await supabase.from('company_settings').select('id').eq('key', 'seal_image_url').maybeSingle()
+    if (existing) {
+      await supabase.from('company_settings').update({ value: publicUrl }).eq('id', existing.id)
+    } else {
+      await supabase.from('company_settings').insert({ key: 'seal_image_url', value: publicUrl })
+    }
+    setSealImageUrl(publicUrl)
+    setSealUploading(false)
+    toast('인감 이미지가 등록되었습니다.', 'success')
+  }
 
   async function fetchData() {
     if (!profile?.id) return
@@ -231,14 +262,36 @@ export default function CertificatesPage() {
     pdf.setFont(fontFamily, 'normal')
     pdf.text('대표이사', centerX, y, { align: 'center' })
 
-    // Seal circle placeholder
-    pdf.setDrawColor(200, 0, 0)
-    pdf.setLineWidth(0.5)
-    pdf.circle(centerX + 30, y - 4, 12)
-    pdf.setFontSize(8)
-    pdf.setTextColor(200, 0, 0)
-    pdf.setFont(fontFamily, 'normal')
-    pdf.text('인', centerX + 30, y - 3, { align: 'center' })
+    // 인감 이미지 적용 (스캔본 등록 시) 또는 플레이스홀더
+    if (sealImageUrl) {
+      try {
+        const sealRes = await fetch(sealImageUrl)
+        const sealBlob = await sealRes.blob()
+        const sealBase64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(reader.result as string)
+          reader.readAsDataURL(sealBlob)
+        })
+        const ext = sealImageUrl.split('.').pop()?.toLowerCase()
+        const imgFormat = ext === 'png' ? 'PNG' : 'JPEG'
+        pdf.addImage(sealBase64, imgFormat, centerX + 18, y - 16, 24, 24)
+      } catch {
+        // 이미지 로드 실패 시 플레이스홀더
+        pdf.setDrawColor(200, 0, 0)
+        pdf.setLineWidth(0.5)
+        pdf.circle(centerX + 30, y - 4, 12)
+        pdf.setFontSize(8)
+        pdf.setTextColor(200, 0, 0)
+        pdf.text('인', centerX + 30, y - 3, { align: 'center' })
+      }
+    } else {
+      pdf.setDrawColor(200, 0, 0)
+      pdf.setLineWidth(0.5)
+      pdf.circle(centerX + 30, y - 4, 12)
+      pdf.setFontSize(8)
+      pdf.setTextColor(200, 0, 0)
+      pdf.text('인', centerX + 30, y - 3, { align: 'center' })
+    }
     pdf.setTextColor(0, 0, 0) // reset
 
     return pdf
@@ -369,6 +422,40 @@ export default function CertificatesPage() {
           <Plus className="h-4 w-4 mr-1" /> 증명서 발급
         </Button>
       </div>
+
+      {/* 인감 관리 (관리자) */}
+      {isAdmin && (
+        <Card className="border border-dashed border-gray-300">
+          <CardContent className="py-3 px-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {sealImageUrl ? (
+                <img src={sealImageUrl} alt="인감" className="w-12 h-12 rounded-lg border object-contain" />
+              ) : (
+                <div className="w-12 h-12 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs">인감</div>
+              )}
+              <div>
+                <p className="text-sm font-medium text-gray-700">{sealImageUrl ? '인감 등록됨' : '인감 미등록'}</p>
+                <p className="text-xs text-gray-400">스캔본(PNG/JPG)을 업로드하면 증명서에 자동 날인됩니다</p>
+              </div>
+            </div>
+            <label className="shrink-0">
+              <Button variant="outline" size="sm" disabled={sealUploading} onClick={() => {}}>
+                <Upload className="h-3.5 w-3.5 mr-1" /> {sealUploading ? '업로드 중...' : sealImageUrl ? '변경' : '등록'}
+              </Button>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleSealUpload(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 통계 카드 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
