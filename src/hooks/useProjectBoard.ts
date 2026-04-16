@@ -8,7 +8,7 @@ import type {
 } from '@/types/project-board'
 
 interface EmployeeBasic { id: string; name: string; department_id: string | null }
-interface DepartmentBasic { id: string; name: string }
+interface DepartmentBasic { id: string; name: string; parent_id: string | null }
 
 export function useProjectBoard(statusFilter?: string) {
   const { profile } = useAuth()
@@ -49,7 +49,7 @@ export function useProjectBoard(statusFilter?: string) {
       supabase.from('project_templates').select('*').order('name'),
       supabase.from('board_permissions').select('*'),
       supabase.from('employees').select('id, name, department_id').eq('is_active', true).order('name'),
-      supabase.from('departments').select('id, name').order('name'),
+      supabase.from('departments').select('id, name, parent_id').order('name'),
     ])
 
     const emps = (empRes.data || []) as EmployeeBasic[]

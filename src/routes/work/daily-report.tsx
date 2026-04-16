@@ -237,11 +237,22 @@ export default function DailyReportPage() {
       setCompleted(autoCompleted)
 
       // ─── 진행중 섹션 자동 채우기 ───────────────────────
-      const autoInProgress: DailyReportTask[] = (currentInProgress || []).map((t: Task) => ({
-        id: t.id,
-        title: t.title,
-        status: 'in_progress' as const,
-      }))
+      // 진행중 작업의 프로젝트 이름도 가져오기
+      const inProgressBoardIds = [...new Set((currentInProgress || []).filter((t: Task) => t.linked_board_id).map((t: Task) => t.linked_board_id))]
+      let inProgressProjectNames: Record<string, string> = {}
+      if (inProgressBoardIds.length > 0) {
+        const { data: ipProjData } = await supabase.from('project_boards').select('id, project_name').in('id', inProgressBoardIds)
+        if (ipProjData) inProgressProjectNames = Object.fromEntries(ipProjData.map((p: { id: string; project_name: string }) => [p.id, p.project_name]))
+      }
+
+      const autoInProgress: DailyReportTask[] = (currentInProgress || []).map((t: Task) => {
+        const projName = t.linked_board_id ? inProgressProjectNames[t.linked_board_id] : null
+        return {
+          id: t.id,
+          title: projName ? `[${projName}] ${t.title}` : t.title,
+          status: 'in_progress' as const,
+        }
+      })
       setInProgress(autoInProgress)
 
       // ─── 이월/계획 ────────────────────────────────────
@@ -266,8 +277,20 @@ export default function DailyReportPage() {
         setCarryover([])
       }
 
-      // 계획 섹션은 비워두고 사용자가 추가
-      setPlanned([])
+      // 계획 섹션: todo 상태 작업 자동 채우기
+      const { data: todoTasks } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('assignee_id', employeeId)
+        .eq('status', 'todo')
+        .order('due_date')
+        .limit(10)
+      const autoPlanned: DailyReportTask[] = (todoTasks || []).map((t: Task) => ({
+        id: t.id,
+        title: t.title,
+        status: 'todo' as const,
+      }))
+      setPlanned(autoPlanned)
     }
 
     setLoading(false)

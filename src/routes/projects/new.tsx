@@ -12,9 +12,7 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
-import { generateAIContent } from '@/lib/ai-client'
-import type { AIConfig } from '@/lib/ai-client'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import type { TemplateStage } from '@/types/project-board'
 
 const FULL_ACCESS_ROLES = ['ceo', 'director', 'division_head', 'admin']
@@ -56,7 +54,7 @@ export default function NewProjectPage() {
   const [aiLoading, setAiLoading] = useState(false)
 
   const isFullAccess = profile?.role && FULL_ACCESS_ROLES.includes(profile.role)
-  const shareableDepts = departments.filter((d) => !EXCLUDED_DEPTS.includes(d.name))
+  const shareableDepts = departments.filter((d) => !EXCLUDED_DEPTS.includes(d.name) && !d.parent_id)
 
   const deptTemplates = selectedDept ? getTemplatesForDepartment(selectedDept) : []
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId)
@@ -148,24 +146,12 @@ export default function NewProjectPage() {
 
     setAiLoading(true)
     try {
-      // ai_settings에서 활성 설정 가져오기
-      const { data: settings } = await supabase
-        .from('ai_settings')
-        .select('*')
-        .eq('is_active', true)
-        .limit(1)
-        .single()
+      const aiConfig = await getAIConfigForFeature('pipeline_suggest')
 
-      if (!settings) {
+      if (!aiConfig) {
         toast('AI 설정이 없습니다. 관리자 설정에서 API 키를 등록하세요.', 'error')
         setAiLoading(false)
         return
-      }
-
-      const aiConfig: AIConfig = {
-        provider: settings.provider,
-        apiKey: settings.api_key,
-        model: settings.model,
       }
 
       const prompt = `당신은 프로젝트 관리 전문가입니다. 아래 프로젝트 정보를 바탕으로 최적의 파이프라인 단계를 제안해주세요.

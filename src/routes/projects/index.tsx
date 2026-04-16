@@ -80,14 +80,15 @@ export default function ProjectBoardPage() {
   const filtered = useMemo(() => {
     let result = [...projects]
 
-    // 일반 직원/리더: 본인이 담당자/참여자/매니저/리더/임원인 프로젝트만
+    // 일반 직원/리더: 본인이 담당자/참여자/매니저/리더/임원/파이프라인 담당인 프로젝트만
     if (!isPrivileged && !showAll && profile?.id) {
       result = result.filter((p) =>
         p.assignee_ids?.includes(profile.id) ||
         p.manager_id === profile.id ||
         p.leader_id === profile.id ||
         p.executive_id === profile.id ||
-        p.created_by === profile.id
+        p.created_by === profile.id ||
+        p.stages?.some((s) => s.stage_assignee_ids?.includes(profile.id))
       )
     }
 

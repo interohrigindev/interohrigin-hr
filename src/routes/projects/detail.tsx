@@ -148,8 +148,14 @@ export default function ProjectDetailPage() {
 
   async function toggleTaskStatus(task: Task) {
     const next: Record<TaskStatus, TaskStatus> = { todo: 'in_progress', in_progress: 'done', done: 'todo', cancelled: 'todo' }
-    await supabase.from('tasks').update({ status: next[task.status] }).eq('id', task.id)
-    loadTasks()
+    const newStatus = next[task.status]
+    // 낙관적 업데이트
+    setLinkedTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: newStatus } : t))
+    const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id)
+    if (error) {
+      toast('상태 변경 실패: ' + error.message, 'error')
+      loadTasks() // 실패 시 원복
+    }
   }
 
   function toggleExpandTask(taskId: string) {
@@ -522,7 +528,7 @@ export default function ProjectDetailPage() {
                         </span>
                       </button>
                       {assigneeDropdownStageId === stage.id && (
-                        <div ref={assigneeDropdownRef} className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-1.5 w-44 max-h-48 overflow-y-auto">
+                        <div ref={assigneeDropdownRef} className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-2 w-56 max-h-72 overflow-y-auto" style={{ top: 'auto', left: 'auto' }}>
                           {employees.map((emp) => (
                             <button
                               key={emp.id}
