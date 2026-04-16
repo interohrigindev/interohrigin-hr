@@ -83,13 +83,21 @@ export default function ProjectBoardPage() {
     // 본인이 참여자/담당/매니저/리더/임원/파이프라인 담당인 프로젝트만 (전체보기 OFF일 때)
     if (!showAll && profile?.id) {
       const myId = profile.id
-      result = result.filter((p) =>
-        p.assignee_ids?.includes(myId) ||
-        p.manager_id === myId ||
-        p.leader_id === myId ||
-        p.executive_id === myId ||
-        p.stages?.some((s) => s.stage_assignee_ids?.includes(myId))
-      )
+      const before = result.length
+      result = result.filter((p) => {
+        const inAssignee = p.assignee_ids?.includes(myId)
+        const isManager = p.manager_id === myId
+        const isLeader = p.leader_id === myId
+        const isExec = p.executive_id === myId
+        const inStage = p.stages?.some((s) => s.stage_assignee_ids?.includes(myId))
+        if (inAssignee || isManager || isLeader || isExec || inStage) {
+          return true
+        }
+        return false
+      })
+      if (before !== result.length) {
+        console.log(`[필터] ${profile.name}(${myId}) — ${before}→${result.length}개`)
+      }
     }
 
     if (filterBrand) result = result.filter((p) => p.brand === filterBrand)
