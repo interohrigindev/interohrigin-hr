@@ -38,7 +38,7 @@ import {
   Columns3,
   Plus,
   CalendarPlus,
-  Clock,
+  // Clock, // 근태 메뉴 숨김으로 미사용
   FileCheck,
   Award,
   Wallet,
@@ -206,7 +206,7 @@ const navGroups: NavGroup[] = [
     icon: <Building className="h-5 w-5" />,
     items: [
       { to: '/admin/leave', label: '연차 관리', icon: <CalendarPlus className="h-4 w-4" />, end: true },
-      { to: '/admin/attendance', label: '근태 관리', icon: <Clock className="h-4 w-4" /> },
+      // { to: '/admin/attendance', label: '근태 관리', icon: <Clock className="h-4 w-4" /> }, // Sprint 0: 이번 배포 제외
       { to: '/admin/approval', label: '전자 결재', icon: <FileCheck className="h-4 w-4" /> },
       { to: '/admin/certificates', label: '증명서 발급', icon: <Award className="h-4 w-4" /> },
       { to: '/admin/organization', label: '조직도', icon: <Users className="h-4 w-4" /> },

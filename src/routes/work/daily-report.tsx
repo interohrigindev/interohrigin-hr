@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CalendarDays, Sparkles, Save, ChevronLeft, ChevronRight } from 'lucide-react'
+import { CalendarDays, Sparkles, Save, ChevronLeft, ChevronRight, Send } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -454,10 +454,40 @@ ${completedText || '아직 없음'}
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">일일 업무 보고서</h1>
-        <Button className="shrink-0" onClick={handleSave} disabled={saving}>
-          {saving ? <Spinner size="sm" /> : <Save className="h-4 w-4" />}
-          저장
-        </Button>
+        <div className="flex gap-2 shrink-0">
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <Spinner size="sm" /> : <Save className="h-4 w-4" />}
+            저장
+          </Button>
+          {report?.id && (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                // 결재 전송 — approval_documents 테이블에 업무보고 건 생성
+                const { error } = await supabase.from('approval_documents').insert({
+                  type: 'daily_report',
+                  title: `일일 업무보고 (${selectedDate})`,
+                  content: JSON.stringify({
+                    report_id: report.id,
+                    report_date: selectedDate,
+                    completed: completed,
+                    in_progress: inProgress,
+                    planned: planned,
+                  }),
+                  requester_id: profile?.id,
+                  status: 'pending',
+                })
+                if (error) {
+                  toast('결재 전송 실패: ' + error.message, 'error')
+                } else {
+                  toast('결재가 전송되었습니다.', 'success')
+                }
+              }}
+            >
+              <Send className="h-4 w-4" /> 결재 전송
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Date selector */}
@@ -482,6 +512,9 @@ ${completedText || '아직 없음'}
         </Button>
         {report && <Badge variant="success">저장됨</Badge>}
       </div>
+
+      {/* 전일 피드백 */}
+      <YesterdayFeedback employeeId={employeeId} selectedDate={selectedDate} />
 
       {/* AI Priority */}
       <Card>
@@ -719,6 +752,72 @@ function ReportComments({ reportId }: { reportId: string }) {
         {comments.length === 0 && !canComment && (
           <p className="text-xs text-gray-400 text-center py-4">코멘트가 없습니다.</p>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── 전일 피드백 배너 ───────────────────────────────────────────
+import { MessageCircle } from 'lucide-react'
+
+function YesterdayFeedback({ employeeId, selectedDate }: { employeeId?: string; selectedDate: string }) {
+  const [feedbacks, setFeedbacks] = useState<{ author_name: string; content: string; created_at: string }[]>([])
+
+  useEffect(() => {
+    if (!employeeId) return
+    async function load() {
+      // 전일 보고서 찾기
+      const yesterday = new Date(new Date(selectedDate).getTime() - 86400000).toISOString().slice(0, 10)
+      const { data: yesterdayReport } = await supabase
+        .from('daily_reports')
+        .select('id')
+        .eq('employee_id', employeeId)
+        .eq('report_date', yesterday)
+        .maybeSingle()
+
+      if (!yesterdayReport?.id) { setFeedbacks([]); return }
+
+      // 해당 보고서의 코멘트 가져오기
+      const { data: comments } = await supabase
+        .from('report_comments')
+        .select('content, created_at, author_id')
+        .eq('report_id', yesterdayReport.id)
+        .neq('author_id', employeeId) // 본인 코멘트 제외
+        .order('created_at')
+
+      if (!comments || comments.length === 0) { setFeedbacks([]); return }
+
+      // 작성자 이름 조회
+      const authorIds = [...new Set(comments.map((c: any) => c.author_id))]
+      const { data: authors } = await supabase.from('employees').select('id, name').in('id', authorIds)
+      const nameMap = new Map((authors || []).map((a: any) => [a.id, a.name]))
+
+      setFeedbacks(comments.map((c: any) => ({
+        author_name: nameMap.get(c.author_id) || '관리자',
+        content: c.content,
+        created_at: c.created_at,
+      })))
+    }
+    load()
+  }, [employeeId, selectedDate])
+
+  if (feedbacks.length === 0) return null
+
+  return (
+    <Card className="border-amber-200 bg-amber-50/50">
+      <CardContent className="py-3">
+        <div className="flex items-center gap-2 mb-2">
+          <MessageCircle className="h-4 w-4 text-amber-600" />
+          <span className="text-sm font-semibold text-amber-800">전일 피드백 ({feedbacks.length}건)</span>
+        </div>
+        <div className="space-y-1.5">
+          {feedbacks.map((f, i) => (
+            <div key={i} className="flex items-start gap-2 text-sm">
+              <span className="font-medium text-amber-700 shrink-0">{f.author_name}:</span>
+              <span className="text-gray-700">{f.content}</span>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   )

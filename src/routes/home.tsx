@@ -229,6 +229,9 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
         <p className="text-sm text-gray-500 mt-1">오늘도 좋은 하루 되세요.</p>
       </div>
 
+      {/* 내 업무 현황 카드 */}
+      <MyWorkKPI userId={profile?.id} />
+
       {/* CEO 긴급 업무 배너 */}
       <UrgentTasksBanner navigate={navigate} />
 
@@ -440,6 +443,66 @@ function UrgentTasksBanner({ navigate }: { navigate: ReturnType<typeof useNaviga
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ─── 내 업무 현황 카드 (직원/관리자 공통) ──────────────────────────
+import { CheckCircle, ListTodo, MessageCircle } from 'lucide-react'
+
+function MyWorkKPI({ userId }: { userId?: string }) {
+  const navigate = useNavigate()
+  const [kpi, setKpi] = useState({ done: 0, inProgress: 0, projects: 0, feedbacks: 0 })
+
+  useEffect(() => {
+    if (!userId) return
+    async function load() {
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+
+      const [doneRes, progressRes, projRes, feedbackRes] = await Promise.all([
+        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('assignee_id', userId).eq('status', 'done'),
+        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('assignee_id', userId).eq('status', 'in_progress'),
+        supabase.from('project_boards').select('id', { count: 'exact', head: true }).contains('assignee_ids', [userId]),
+        // 전일 업무보고에 달린 코멘트 수
+        supabase.from('daily_reports').select('id, comments').eq('employee_id', userId).eq('report_date', yesterday).maybeSingle(),
+      ])
+
+      const comments = (feedbackRes.data?.comments as unknown[] || [])
+
+      setKpi({
+        done: doneRes.count || 0,
+        inProgress: progressRes.count || 0,
+        projects: projRes.count || 0,
+        feedbacks: comments.length,
+      })
+    }
+    load()
+  }, [userId])
+
+  const cards = [
+    { label: '완료 작업', value: kpi.done, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '/admin/work/tasks' },
+    { label: '진행중 작업', value: kpi.inProgress, icon: ListTodo, color: 'text-blue-600', bg: 'bg-blue-50', path: '/admin/work/tasks' },
+    { label: '내 프로젝트', value: kpi.projects, icon: FolderKanban, color: 'text-brand-600', bg: 'bg-brand-50', path: '/admin/projects' },
+    { label: '전일 피드백', value: kpi.feedbacks, icon: MessageCircle, color: 'text-amber-600', bg: 'bg-amber-50', path: '/work/daily-report' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {cards.map(c => (
+        <button key={c.label} onClick={() => navigate(c.path)} className="text-left">
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="py-4 flex items-center gap-3">
+              <div className={cn('rounded-lg p-2', c.bg)}>
+                <c.icon className={cn('h-5 w-5', c.color)} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{c.value}</p>
+                <p className="text-xs text-gray-500">{c.label}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </button>
+      ))}
     </div>
   )
 }
