@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { AnimalAvatar } from '@/components/ui/AnimalAvatar'
 
 /* ─── 타입 ───────────────────────────────────────── */
 
@@ -390,22 +391,7 @@ export default function OrganizationPage() {
                               </span>
 
                               {/* 아바타 */}
-                              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-blue-600 shrink-0 overflow-hidden mr-3">
-                                {emp.avatar_url ? (
-                                  <img
-                                    src={emp.avatar_url}
-                                    alt={emp.name}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      const el = e.currentTarget
-                                      el.style.display = 'none'
-                                      el.parentElement!.textContent = emp.name[0]
-                                    }}
-                                  />
-                                ) : (
-                                  emp.name[0]
-                                )}
-                              </div>
+                              <AnimalAvatar name={emp.name} size={40} className="mr-3" />
 
                               {/* 이름 + 역할 배지 */}
                               <div className="flex items-center gap-2 flex-1 min-w-0">
