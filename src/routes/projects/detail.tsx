@@ -527,34 +527,95 @@ export default function ProjectDetailPage() {
                             : '담당자 지정'}
                         </span>
                       </button>
-                      {assigneeDropdownStageId === stage.id && (
-                        <div ref={assigneeDropdownRef} className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-2 w-56 max-h-72 overflow-y-auto" style={{ top: 'auto', left: 'auto' }}>
-                          {employees.map((emp) => (
-                            <button
-                              key={emp.id}
-                              onClick={async (e) => {
-                                e.stopPropagation()
-                                const currentIds = stage.stage_assignee_ids || []
-                                const newIds = currentIds.includes(emp.id)
-                                  ? currentIds.filter((eid) => eid !== emp.id)
-                                  : [...currentIds, emp.id]
-                                await supabase.from('pipeline_stages').update({ stage_assignee_ids: newIds }).eq('id', stage.id)
-                                toast('담당자가 변경되었습니다', 'success')
-                                refresh()
-                              }}
-                              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-[11px] hover:bg-gray-100 ${
-                                assigneeIds.includes(emp.id) ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
-                              }`}
-                            >
-                              <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold shrink-0">
-                                {emp.name[0]}
+                      {assigneeDropdownStageId === stage.id && (() => {
+                        // 부서별 그룹핑
+                        const deptMap = new Map<string, string>()
+                        departments.forEach((d) => deptMap.set(d.id, d.name))
+                        const grouped = new Map<string, typeof employees>()
+                        employees.forEach((emp) => {
+                          const deptName = emp.department_id ? (deptMap.get(emp.department_id) || '기타') : '미배정'
+                          if (!grouped.has(deptName)) grouped.set(deptName, [])
+                          grouped.get(deptName)!.push(emp)
+                        })
+
+                        return (
+                          <div ref={assigneeDropdownRef} className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-2xl w-64" style={{ top: 'auto', left: 'auto' }}>
+                            {/* 검색 */}
+                            <div className="p-2 border-b border-gray-100">
+                              <input
+                                type="text"
+                                placeholder="이름 검색..."
+                                className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 bg-gray-50"
+                                autoFocus
+                                onChange={(e) => {
+                                  const q = e.target.value.toLowerCase()
+                                  const items = e.target.closest('[ref]')?.parentElement?.querySelectorAll('[data-emp-name]') || []
+                                  items.forEach((el) => {
+                                    const name = (el as HTMLElement).dataset.empName || ''
+                                    ;(el as HTMLElement).style.display = name.includes(q) ? '' : 'none'
+                                  })
+                                }}
+                              />
+                            </div>
+                            {/* 선택된 담당자 */}
+                            {assigneeIds.length > 0 && (
+                              <div className="px-2 py-1.5 border-b border-gray-100 flex flex-wrap gap-1">
+                                {assigneeIds.map((aid) => {
+                                  const emp = employees.find((e) => e.id === aid)
+                                  return emp ? (
+                                    <span key={aid} className="inline-flex items-center gap-0.5 bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full">
+                                      {emp.name}
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation()
+                                          const newIds = (stage.stage_assignee_ids || []).filter((id) => id !== aid)
+                                          await supabase.from('pipeline_stages').update({ stage_assignee_ids: newIds }).eq('id', stage.id)
+                                          refresh()
+                                        }}
+                                        className="hover:text-red-500"
+                                      >×</button>
+                                    </span>
+                                  ) : null
+                                })}
                               </div>
-                              {emp.name}
-                              {assigneeIds.includes(emp.id) && <span className="ml-auto text-blue-500 text-[10px]">✓</span>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                            )}
+                            {/* 부서별 목록 */}
+                            <div className="max-h-60 overflow-y-auto py-1">
+                              {Array.from(grouped.entries()).map(([deptName, emps]) => (
+                                <div key={deptName}>
+                                  <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase sticky top-0 bg-white">{deptName}</p>
+                                  {emps.map((emp) => (
+                                    <button
+                                      key={emp.id}
+                                      data-emp-name={emp.name.toLowerCase()}
+                                      onClick={async (e) => {
+                                        e.stopPropagation()
+                                        const currentIds = stage.stage_assignee_ids || []
+                                        const newIds = currentIds.includes(emp.id)
+                                          ? currentIds.filter((eid) => eid !== emp.id)
+                                          : [...currentIds, emp.id]
+                                        await supabase.from('pipeline_stages').update({ stage_assignee_ids: newIds }).eq('id', stage.id)
+                                        toast(currentIds.includes(emp.id) ? `${emp.name} 제외` : `${emp.name} 추가`, 'success')
+                                        refresh()
+                                      }}
+                                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-gray-50 ${
+                                        assigneeIds.includes(emp.id) ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                                      }`}
+                                    >
+                                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${
+                                        assigneeIds.includes(emp.id) ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+                                      }`}>
+                                        {assigneeIds.includes(emp.id) ? '✓' : emp.name[0]}
+                                      </div>
+                                      <span className="truncate">{emp.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
                 )
