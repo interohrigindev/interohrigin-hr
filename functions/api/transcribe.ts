@@ -35,7 +35,8 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
+const MAX_INLINE_SIZE = 20 * 1024 * 1024 // 20MB — inlineData 한계
+const MAX_FILE_SIZE = 200 * 1024 * 1024  // 200MB — File API 사용 시
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -166,31 +167,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
 
     if (arrayBuffer.byteLength > MAX_FILE_SIZE) {
       return jsonResponse({
-        error: `파일 크기가 ${Math.round(arrayBuffer.byteLength / 1024 / 1024)}MB입니다. 최대 20MB까지 지원합니다.`,
+        error: `파일 크기가 ${Math.round(arrayBuffer.byteLength / 1024 / 1024)}MB입니다. 최대 200MB까지 지원합니다.`,
       }, 400)
     }
 
-    // 2. Base64 인코딩
-    const base64Data = arrayBufferToBase64(arrayBuffer)
-
-    // 3. Gemini 멀티모달 API 호출
-    const typeLabel = interviewType === 'video' ? '화상면접' : '대면면접'
-
-    // 지원자 컨텍스트 구성
-    let candidateContext = `지원자: ${candidateName}\n면접 유형: ${typeLabel}`
-    if (context) {
-      if (context.postingTitle) candidateContext += `\n지원 직무: ${context.postingTitle}`
-      if (context.postingRequirements) candidateContext += `\n직무 요건:\n${context.postingRequirements}`
-      if (context.talentProfiles) candidateContext += `\n인재상:\n${context.talentProfiles}`
-      if (context.resumeSummary) candidateContext += `\n이력서 분석 요약:\n${context.resumeSummary}`
-      if (context.surveyAnswers) candidateContext += `\n사전 질의서 응답:\n${context.surveyAnswers}`
-      if (context.previousAnalysis) candidateContext += `\n이전 면접 분석:\n${context.previousAnalysis}`
-    }
-
-    const contextPrompt = `${candidateContext}\n\n위 지원자 정보를 참고하여, 지원 직무와 인재상에 부합하는지를 중점적으로 평가하세요.\n\n${ANALYSIS_PROMPT}`
-
-    // MIME 타입 매핑 (Gemini 호환)
-    // URL 경로에서 확장자 추출 (Storage 헤더의 MIME이 부정확할 수 있음)
+    // 2. MIME 타입 결정
     const urlPath = new URL(recordingUrl).pathname
     const fileExt = urlPath.split('.').pop()?.toLowerCase() || ''
     const extMimeMap: Record<string, string> = {
@@ -200,7 +181,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
     }
 
     let mimeType = extMimeMap[fileExt] || contentType
-    // contentType 기반 보정 (확장자 매핑이 안 된 경우)
     if (!extMimeMap[fileExt]) {
       if (mimeType.includes('webm')) mimeType = 'audio/webm'
       else if (mimeType.includes('mp4') || mimeType.includes('m4a')) mimeType = 'audio/mp4'
@@ -209,7 +189,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
       else if (mimeType.includes('ogg')) mimeType = 'audio/ogg'
     }
 
-    // Gemini가 지원하지 않는 MIME 타입 차단
     const supportedMimes = ['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/flac', 'video/mp4', 'video/webm']
     if (!supportedMimes.some((s) => mimeType.startsWith(s.split('/')[0]) && mimeType.includes(s.split('/')[1]))) {
       return jsonResponse({
@@ -217,24 +196,101 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
       }, 400)
     }
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-    const geminiRes = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
+    // 3. 지원자 컨텍스트 구성
+    const typeLabel = interviewType === 'video' ? '화상면접' : '대면면접'
+    let candidateContext = `지원자: ${candidateName}\n면접 유형: ${typeLabel}`
+    if (context) {
+      if (context.postingTitle) candidateContext += `\n지원 직무: ${context.postingTitle}`
+      if (context.postingRequirements) candidateContext += `\n직무 요건:\n${context.postingRequirements}`
+      if (context.talentProfiles) candidateContext += `\n인재상:\n${context.talentProfiles}`
+      if (context.resumeSummary) candidateContext += `\n이력서 분석 요약:\n${context.resumeSummary}`
+      if (context.surveyAnswers) candidateContext += `\n사전 질의서 응답:\n${context.surveyAnswers}`
+      if (context.previousAnalysis) candidateContext += `\n이전 면접 분석:\n${context.previousAnalysis}`
+    }
+    const contextPrompt = `${candidateContext}\n\n위 지원자 정보를 참고하여, 지원 직무와 인재상에 부합하는지를 중점적으로 평가하세요.\n\n${ANALYSIS_PROMPT}`
+
+    // 4. Gemini API 호출 — 파일 크기에 따라 분기
+    let geminiRes: Response
+
+    if (arrayBuffer.byteLength <= MAX_INLINE_SIZE) {
+      // ─── 20MB 이하: inlineData (기존 방식) ───
+      const base64Data = arrayBufferToBase64(arrayBuffer)
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+      geminiRes = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
             { inlineData: { mimeType, data: base64Data } },
             { text: contextPrompt },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 16384,
-          responseMimeType: 'application/json',
+          ] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 16384, responseMimeType: 'application/json' },
+        }),
+      })
+    } else {
+      // ─── 20MB 초과: Gemini File API 사용 ───
+      // Step 1: 파일 업로드
+      const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'X-Goog-Upload-Command': 'upload, finalize',
+          'X-Goog-Upload-Header-Content-Type': mimeType,
+          'Content-Type': mimeType,
         },
-      }),
-    })
+        body: arrayBuffer,
+      })
+
+      if (!uploadRes.ok) {
+        const uploadErr = await uploadRes.text().catch(() => '')
+        return jsonResponse({ error: `Gemini 파일 업로드 실패 (${uploadRes.status}): ${uploadErr.slice(0, 200)}` }, 500)
+      }
+
+      const uploadData = await uploadRes.json() as { file?: { uri?: string; name?: string; state?: string } }
+      const fileUri = uploadData.file?.uri
+      const fileName = uploadData.file?.name
+
+      if (!fileUri) {
+        return jsonResponse({ error: 'Gemini 파일 업로드 후 URI를 받지 못했습니다.' }, 500)
+      }
+
+      // Step 2: 파일 처리 대기 (최대 120초)
+      let fileReady = uploadData.file?.state === 'ACTIVE'
+      if (!fileReady && fileName) {
+        for (let i = 0; i < 24; i++) {
+          await new Promise((r) => setTimeout(r, 5000))
+          const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/files/${fileName}?key=${apiKey}`)
+          const checkData = await checkRes.json() as { state?: string }
+          if (checkData.state === 'ACTIVE') { fileReady = true; break }
+          if (checkData.state === 'FAILED') {
+            return jsonResponse({ error: 'Gemini 파일 처리 실패. 다른 형식으로 시도해주세요.' }, 500)
+          }
+        }
+      }
+
+      if (!fileReady) {
+        return jsonResponse({ error: '파일 처리 시간 초과. 파일 크기를 줄이거나 스크립트 파일로 분석해주세요.' }, 500)
+      }
+
+      // Step 3: generateContent with fileData
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+      geminiRes = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { fileData: { mimeType, fileUri } },
+            { text: contextPrompt },
+          ] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 16384, responseMimeType: 'application/json' },
+        }),
+      })
+
+      // 업로드 파일 정리 (비동기, 실패해도 무시)
+      if (fileName) {
+        fetch(`https://generativelanguage.googleapis.com/v1beta/files/${fileName}?key=${apiKey}`, { method: 'DELETE' }).catch(() => {})
+      }
+    }
 
     if (!geminiRes.ok) {
       const errData = await geminiRes.json().catch(() => ({})) as any

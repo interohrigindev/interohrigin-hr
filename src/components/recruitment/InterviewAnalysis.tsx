@@ -614,7 +614,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
           .from('interview_analyses')
           .update({ status: 'error', error_message: `서버 응답 파싱 실패 (HTTP ${res.status})` })
           .eq('id', analysisRecord.id)
-        throw new Error(`서버 응답 파싱 실패 (HTTP ${res.status}). 파일 크기가 20MB 이하인지 확인하세요.`)
+        throw new Error(`서버 응답 파싱 실패 (HTTP ${res.status}). 스크립트 파일로 분석을 시도해보세요.`)
       }
 
       if (!res.ok || !result.success) {
@@ -1071,18 +1071,53 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
 
                   {/* ── Step 2: AI 분석 버튼 ──── */}
                   {step === 'uploaded' && (
-                    <Button size="sm" onClick={() => handleAnalyze(group)} disabled={isAnalyzing}>
-                      {isAnalyzing ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" /> AI 분석 중... (1~3분
-                          소요)
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4 mr-1" /> AI 내용 분석
-                        </>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" onClick={() => handleAnalyze(group)} disabled={isAnalyzing}>
+                        {isAnalyzing ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" /> AI 분석 중... (대용량 파일은 2~5분)
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-1" /> AI 내용 분석
+                          </>
+                        )}
+                      </Button>
+                      {/* 스크립트 파일로 분석 — 대용량 영상 대체 옵션 */}
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg cursor-pointer transition-colors">
+                        <FileText className="h-3.5 w-3.5" />
+                        스크립트로 분석
+                        <input
+                          type="file"
+                          accept=".txt,.docx,.doc,.pdf"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            try {
+                              let text = ''
+                              if (file.name.endsWith('.txt')) {
+                                text = await file.text()
+                              } else if (file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
+                                const raw = new TextDecoder('utf-8', { fatal: false }).decode(await file.arrayBuffer())
+                                const matches = raw.match(/<w:t[^>]*>([^<]*)<\/w:t>/g)
+                                text = matches ? matches.map((m) => m.replace(/<[^>]+>/g, '')).join(' ') : await file.text()
+                              } else {
+                                text = await file.text()
+                              }
+                              if (!text.trim()) { toast('파일에서 텍스트를 추출할 수 없습니다.', 'error'); return }
+                              await handleAnalyzeFromMeetingNotes(group, text, file.name)
+                            } catch (err) {
+                              toast('스크립트 파일 처리 실패', 'error')
+                            }
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                      {group.recording && (group.recording as any).file_size > 20 * 1024 * 1024 && (
+                        <span className="text-[10px] text-amber-600">💡 대용량 파일 — Gemini File API로 분석합니다 (2~5분 소요)</span>
                       )}
-                    </Button>
+                    </div>
                   )}
 
                   {step === 'analyzing' && (
@@ -1095,19 +1130,55 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
                   )}
 
                   {step === 'error' && analysis && (
-                    <div className="flex items-center gap-2 p-2.5 bg-red-50 rounded-lg">
-                      <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
-                      <span className="text-sm text-red-600 flex-1">
-                        분석 오류: {analysis.error_message || '알 수 없는 오류'}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleAnalyze(group)}
-                        disabled={isAnalyzing}
-                      >
-                        재시도
-                      </Button>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 p-2.5 bg-red-50 rounded-lg">
+                        <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                        <span className="text-sm text-red-600 flex-1">
+                          분석 오류: {analysis.error_message || '알 수 없는 오류'}
+                        </span>
+                        <Button size="sm" variant="outline" onClick={() => handleAnalyze(group)} disabled={isAnalyzing}>
+                          재시도
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2 p-2.5 bg-amber-50 rounded-lg">
+                        <FileText className="h-4 w-4 text-amber-600 shrink-0" />
+                        <span className="text-xs text-amber-700 flex-1">
+                          영상 분석이 실패한 경우, 면접 스크립트(txt/docx) 파일로 대체 분석할 수 있습니다.
+                        </span>
+                        <label className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-lg cursor-pointer transition-colors shrink-0">
+                          <Upload className="h-3 w-3" /> 스크립트 업로드
+                          <input
+                            type="file"
+                            accept=".txt,.docx,.doc,.pdf"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0]
+                              if (!file) return
+                              try {
+                                let text = ''
+                                if (file.name.endsWith('.txt')) {
+                                  text = await file.text()
+                                } else if (file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
+                                  const raw = new TextDecoder('utf-8', { fatal: false }).decode(await file.arrayBuffer())
+                                  const matches = raw.match(/<w:t[^>]*>([^<]*)<\/w:t>/g)
+                                  text = matches ? matches.map((m) => m.replace(/<[^>]+>/g, '')).join(' ') : await file.text()
+                                } else {
+                                  text = await file.text()
+                                }
+                                if (!text.trim()) { toast('파일에서 텍스트를 추출할 수 없습니다.', 'error'); return }
+                                // 기존 에러 레코드 삭제 후 분석
+                                if (analysis?.id) {
+                                  await supabase.from('interview_analyses').delete().eq('id', analysis.id)
+                                }
+                                await handleAnalyzeFromMeetingNotes(group, text, file.name)
+                              } catch (err) {
+                                toast('스크립트 파일 처리 실패', 'error')
+                              }
+                              e.target.value = ''
+                            }}
+                          />
+                        </label>
+                      </div>
                     </div>
                   )}
 
