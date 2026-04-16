@@ -16,10 +16,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
-// 네트워크 전용 — JS/CSS는 Vite 해시로 캐시 버스팅되므로 SW 캐시 불필요
-self.addEventListener('fetch', () => {
-  // 기본 동작 (네트워크 직접 요청) — 캐시 개입 안 함
-})
+// fetch 핸들러 없음 — JS/CSS는 Vite 해시로 캐시 버스팅, 푸시 알림만 사용
 
 // 푸시 알림 수신
 self.addEventListener('push', (event) => {
