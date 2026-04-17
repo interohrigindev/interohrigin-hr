@@ -233,9 +233,35 @@ export default function ApprovalManagementPage() {
   const getDocTypeLabel = (t: string) => DOC_TYPE_CONFIG[t]?.label || t
   const getDocTypeIcon = (t: string) => DOC_TYPE_CONFIG[t]?.icon || '📄'
 
-  // Get the matching template for a doc_type
-  const getTemplateForDocType = (docType: string) =>
-    templates.find((t) => t.doc_type === docType)
+  // Get the matching template for a doc_type + amount condition
+  const getTemplateForDocType = (docType: string, amount?: number | null) => {
+    // 1순위: doc_type이 동일한 템플릿들 중 amount가 조건 만족하는 것 (예: expense + 50만원 이상)
+    const candidates = templates.filter((t) => t.doc_type === docType && t.is_active !== false)
+
+    // 조건이 있는 템플릿 우선 매칭
+    const conditional = candidates.filter(t => t.condition_field && t.condition_operator && t.condition_value)
+    if (amount != null && conditional.length > 0) {
+      for (const tmpl of conditional) {
+        const threshold = parseFloat(tmpl.condition_value || '0')
+        if (isNaN(threshold)) continue
+        const op = tmpl.condition_operator
+        const matches =
+          (op === '>=' && amount >= threshold) ||
+          (op === '>' && amount > threshold) ||
+          (op === '<=' && amount <= threshold) ||
+          (op === '<' && amount < threshold) ||
+          (op === '=' && amount === threshold)
+        if (matches) return tmpl
+      }
+    }
+
+    // 2순위: 조건이 없는 기본 템플릿 (expense 같이 이름 짧은 것)
+    const defaultTmpl = candidates.find(t => !t.condition_field)
+    if (defaultTmpl) return defaultTmpl
+
+    // 3순위: 아무거나
+    return candidates[0]
+  }
 
   const getApproverOptions = (role: string) => {
     if (role === 'ceo') return ceo ? [{ value: ceo.id, label: `${ceo.name} (대표)` }] : []
@@ -639,8 +665,9 @@ export default function ApprovalManagementPage() {
 
   /* ── Create New Document ── */
 
-  const selectedTemplate = newDocType ? getTemplateForDocType(newDocType) : null
   const hasAmount = DOC_TYPE_CONFIG[newDocType]?.hasAmount || false
+  const parsedAmount = hasAmount && newAmount ? parseInt(newAmount, 10) : null
+  const selectedTemplate = newDocType ? getTemplateForDocType(newDocType, parsedAmount) : null
 
   function resetNewForm() {
     setNewDocType('')
@@ -1528,20 +1555,31 @@ function ApprovalTemplateManager({
   const { toast } = useToast()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editSteps, setEditSteps] = useState<EditStep[]>([])
+  // 금액 조건 편집
+  const [editCondField, setEditCondField] = useState<string | null>(null)
+  const [editCondOp, setEditCondOp] = useState<string | null>(null)
+  const [editCondVal, setEditCondVal] = useState<string | null>(null)
 
   function startEdit(tmpl: ApprovalTemplate) {
     setEditingId(tmpl.id)
     setEditSteps([...(tmpl.steps as EditStep[])])
+    setEditCondField(tmpl.condition_field)
+    setEditCondOp(tmpl.condition_operator)
+    setEditCondVal(tmpl.condition_value)
   }
 
   function cancelEdit() {
     setEditingId(null)
     setEditSteps([])
+    setEditCondField(null); setEditCondOp(null); setEditCondVal(null)
   }
 
   async function saveEdit(tmplId: string) {
     const { error } = await supabase.from('approval_templates').update({
       steps: editSteps,
+      condition_field: editCondField || null,
+      condition_operator: editCondOp || null,
+      condition_value: editCondVal || null,
     }).eq('id', tmplId)
     if (error) { toast('저장 실패: ' + error.message, 'error'); return }
     toast('결재선이 수정되었습니다.', 'success')
@@ -1717,6 +1755,45 @@ function ApprovalTemplateManager({
                 {/* 편집 모드: 세로 리스트 + 드래그 */}
                 {isEditing ? (
                   <div className="space-y-1.5">
+                    {/* 금액 조건 (금액 필드가 있는 양식만) */}
+                    {(tmpl.doc_type === 'expense' || tmpl.doc_type === 'purchase') && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2">
+                        <p className="text-[10px] font-semibold text-amber-800 mb-1.5">💰 금액 조건 (선택)</p>
+                        <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                          <span className="text-gray-600">금액</span>
+                          <select
+                            value={editCondOp || ''}
+                            onChange={(e) => {
+                              setEditCondOp(e.target.value || null)
+                              if (e.target.value) setEditCondField('amount')
+                              else { setEditCondField(null); setEditCondVal(null) }
+                            }}
+                            className="text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white"
+                          >
+                            <option value="">조건 없음</option>
+                            <option value=">=">이상 (≥)</option>
+                            <option value=">">초과 (&gt;)</option>
+                            <option value="<">미만 (&lt;)</option>
+                            <option value="<=">이하 (≤)</option>
+                          </select>
+                          {editCondOp && (
+                            <>
+                              <input
+                                type="number"
+                                value={editCondVal || ''}
+                                onChange={(e) => setEditCondVal(e.target.value)}
+                                placeholder="500000"
+                                className="text-xs border border-gray-200 rounded px-1.5 py-0.5 w-24"
+                              />
+                              <span className="text-gray-600">원</span>
+                            </>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-amber-600 mt-1">
+                          예: "금액 &gt;= 500000" = 50만원 이상일 때 이 결재선 사용
+                        </p>
+                      </div>
+                    )}
                     <p className="text-[10px] text-gray-400 mb-1">드래그로 순서 변경</p>
                     {editSteps.map((step, idx) => {
                       const recommendedPool = getRecommendedEmployees(step.role)
