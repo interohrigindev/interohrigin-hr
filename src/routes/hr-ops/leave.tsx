@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { calculateAnnualLeave } from '@/lib/leave-calculator'
+import { annualLeavePromotionEmail } from '@/lib/email-templates'
 
 /* ─── Types ─────────────────────────────────────────── */
 
@@ -113,6 +114,7 @@ export default function LeaveManagementPage() {
   const [reqDirectorId, setReqDirectorId] = useState('')
   const [leaveTemplate, setLeaveTemplate] = useState<{ steps: { role: string; label: string }[] } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [sendingPromotionId, setSendingPromotionId] = useState<string | null>(null)
 
   // 결재라인 직원 목록 (역할별 필터)
   const leaders = useMemo(() => allEmployees.filter((e) => e.role && LEADER_ROLES.includes(e.role) && e.id !== profile?.id), [allEmployees, profile?.id])
@@ -534,35 +536,53 @@ export default function LeaveManagementPage() {
                   className={`${isUrgent ? 'border-red-200 bg-red-50/30' : isWarning ? 'border-amber-200 bg-amber-50/20' : 'hover:shadow-sm'} transition-shadow`}
                 >
                   <CardContent className="p-4">
-                    {/* 상단: 이름 + 상태 + 촉진 이메일 */}
-                    <div className="flex items-center justify-between mb-3 gap-2">
+                    {/* 상단: 이름 + 상태 */}
+                    <div className="flex items-center justify-between mb-2 gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">{emp.name[0]}</div>
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1">
-                            <p className="font-medium text-gray-900 text-sm truncate">{emp.name}</p>
-                            {(isUrgent || isWarning) && emp.email && (
-                              <button
-                                title="촉진 이메일 발송"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  const subject = encodeURIComponent(`[연차 촉진 안내] ${emp.name}님, 잔여 연차 ${emp.remainingAnnual}일`)
-                                  const body = encodeURIComponent(
-                                    `${emp.name}님,\n\n${currentYear}년 잔여 연차가 ${emp.remainingAnnual}일 (소진율 ${emp.usageRate}%) 남아있어 사용을 권장드립니다.\n\n근로기준법에 따른 연차 촉진 안내입니다.\n연차 사용 계획을 회신 부탁드립니다.\n\n감사합니다.\nHR`
-                                  )
-                                  window.location.href = `mailto:${emp.email}?subject=${subject}&body=${body}`
-                                }}
-                                className="text-[10px] text-amber-600 hover:text-amber-700 hover:bg-amber-100 rounded px-1"
-                              >
-                                ✉️
-                              </button>
-                            )}
-                          </div>
+                          <p className="font-medium text-gray-900 text-sm truncate">{emp.name}</p>
                           <p className="text-[10px] text-gray-500 truncate">{getDeptName(emp.department_id)}</p>
                         </div>
                       </div>
                       {isUrgent ? <Badge variant="danger" className="text-[10px] shrink-0">촉진 필요</Badge> : isWarning ? <Badge variant="warning" className="text-[10px] shrink-0">주의</Badge> : emp.usageRate >= 80 ? <Badge variant="success" className="text-[10px] shrink-0">양호</Badge> : <Badge variant="default" className="text-[10px] shrink-0">정상</Badge>}
                     </div>
+
+                    {/* 촉진 이메일 자동 전송 버튼 — 촉진/주의 대상만 */}
+                    {(isUrgent || isWarning) && emp.email && isAdmin && (
+                      <button
+                        disabled={sendingPromotionId === emp.id}
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          if (!confirm(`${emp.name}님께 연차 촉진 이메일을 자동 발송하시겠습니까?`)) return
+                          setSendingPromotionId(emp.id)
+                          try {
+                            const { subject, html } = annualLeavePromotionEmail(emp.name, emp.remainingAnnual, emp.usageRate, currentYear)
+                            const res = await fetch('/api/send-email', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ to: emp.email, subject, html }),
+                            })
+                            const result = await res.json()
+                            if (!res.ok || !result.success) {
+                              toast(`발송 실패: ${result.error || 'HTTP ' + res.status}`, 'error')
+                            } else {
+                              toast(`${emp.name}님께 연차 촉진 메일을 발송했습니다.`, 'success')
+                            }
+                          } catch (err) {
+                            toast('발송 중 오류: ' + (err instanceof Error ? err.message : '알 수 없음'), 'error')
+                          }
+                          setSendingPromotionId(null)
+                        }}
+                        className={`w-full mb-2 flex items-center justify-center gap-1.5 text-[11px] font-medium rounded-md px-2 py-1.5 transition-colors ${
+                          sendingPromotionId === emp.id
+                            ? 'bg-gray-100 text-gray-400 cursor-wait'
+                            : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                        }`}
+                      >
+                        {sendingPromotionId === emp.id ? '발송 중...' : '✉️ 연차촉진 이메일 전송'}
+                      </button>
+                    )}
 
                     {/* 중단: 잔여 큰 숫자 + 진행률 */}
                     <div className="mb-3">

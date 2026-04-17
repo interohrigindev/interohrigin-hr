@@ -362,3 +362,94 @@ export function interviewerNotificationEmail(
     `.trim(),
   }
 }
+
+/* ────────────────────────────────────────────────────
+   연차 촉진 안내
+   ──────────────────────────────────────────────────── */
+export function annualLeavePromotionEmail(
+  employeeName: string,
+  remainingDays: number,
+  usageRate: number,
+  currentYear: number,
+): { subject: string; html: string } {
+  const deadline = `${currentYear}년 12월 31일`
+  const severity = usageRate < 30 ? 'urgent' : 'warning'
+  const accentColor = severity === 'urgent' ? '#dc2626' : '#d97706'
+  const accentBg = severity === 'urgent' ? '#fef2f2' : '#fffbeb'
+  const accentBorder = severity === 'urgent' ? '#fecaca' : '#fde68a'
+
+  return {
+    subject: `[인터오리진아이앤씨] ${employeeName}님, ${currentYear}년 연차 사용 촉진 안내`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources · 연차 촉진 안내</p>
+    </div>
+
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${employeeName}</strong>님, 안녕하세요.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
+        근로기준법 제61조(연차유급휴가의 사용촉진)에 따라 연차 사용 촉진을 안내드립니다.
+      </p>
+
+      <div style="background:${accentBg};border:1px solid ${accentBorder};border-radius:12px;padding:24px;margin:20px 0;">
+        <p style="font-size:13px;color:${accentColor};margin:0 0 12px;font-weight:bold;">
+          ${severity === 'urgent' ? '⚠️ 긴급 — 연차 소진 필요' : '📋 연차 사용 권장'}
+        </p>
+        <table style="width:100%;font-size:14px;color:#374151;">
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;">잔여 연차</td>
+            <td style="padding:6px 0;text-align:right;font-weight:bold;color:${accentColor};font-size:18px;">${remainingDays}일</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;">현재 소진율</td>
+            <td style="padding:6px 0;text-align:right;font-weight:bold;color:#1f2937;">${usageRate}%</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;">사용 기한</td>
+            <td style="padding:6px 0;text-align:right;font-weight:bold;color:#1f2937;">${deadline}</td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:20px 0 12px;font-weight:bold;">
+        📌 안내 사항
+      </p>
+      <ul style="font-size:14px;color:#374151;line-height:1.8;margin:0 0 16px;padding-left:20px;">
+        <li>기한 내 미사용 연차는 소멸될 수 있습니다</li>
+        <li>HR 플랫폼 &gt; 연차 관리 메뉴에서 연차 신청이 가능합니다</li>
+        <li>업무 일정을 고려하여 리더/팀장과 협의 후 사용해 주세요</li>
+      </ul>
+
+      <div style="text-align:center;margin:28px 0;">
+        <a href="https://interohrigin-hr2.pages.dev/admin/leave"
+           style="display:inline-block;background:#6B3FA0;color:#ffffff;padding:14px 36px;
+                  border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">
+          연차 신청하러 가기
+        </a>
+      </div>
+
+      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:24px 0 0;">
+        업무 일정 조율이 어려운 경우 HR 담당자(admin@interohriginhr.com)에게 문의 부탁드립니다.
+      </p>
+    </div>
+
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진아이앤씨 HR 시스템에서 자동 발송되었습니다.<br>
+        문의: admin@interohriginhr.com
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim(),
+  }
+}
