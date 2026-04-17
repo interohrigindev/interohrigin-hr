@@ -1805,11 +1805,12 @@ function ApprovalTemplateManager({
                       <>
                         <Button size="sm" onClick={() => saveEdit(tmpl.id)}>저장</Button>
                         <Button size="sm" variant="outline" onClick={cancelEdit}>취소</Button>
+                        <Button size="sm" variant="outline" onClick={() => handleDeleteTemplate(tmpl.id, tmpl.name)} className="text-red-500 hover:bg-red-50">🗑 삭제</Button>
                       </>
                     ) : (
                       <>
                         <Button size="sm" variant="outline" onClick={() => startEdit(tmpl)}>수정</Button>
-                        <Button size="sm" variant="outline" onClick={() => handleDeleteTemplate(tmpl.id, tmpl.name)} className="text-red-500 hover:bg-red-50">삭제</Button>
+                        <Button size="sm" variant="outline" onClick={() => handleDeleteTemplate(tmpl.id, tmpl.name)} className="text-red-500 hover:bg-red-50">🗑 삭제</Button>
                       </>
                     )}
                   </div>
@@ -1832,12 +1833,17 @@ function ApprovalTemplateManager({
                 {/* 편집 모드: 세로 리스트 + 드래그 */}
                 {isEditing ? (
                   <div className="space-y-1.5">
-                    {/* 금액 조건 (금액 필드가 있는 양식만) */}
+                    {/* 💰 금액 조건 — 경비/구매 양식에서 필수 */}
                     {(tmpl.doc_type === 'expense' || tmpl.doc_type === 'purchase') && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2">
-                        <p className="text-[10px] font-semibold text-amber-800 mb-1.5">💰 금액 조건 (선택)</p>
-                        <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                          <span className="text-gray-600">금액</span>
+                      <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-lg p-3 mb-3 shadow-sm">
+                        <p className="text-sm font-bold text-amber-900 mb-2 flex items-center gap-1.5">
+                          💰 금액 조건 설정
+                          {editCondOp && editCondVal && (
+                            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">✓ 설정됨</span>
+                          )}
+                        </p>
+                        <div className="flex items-center gap-2 flex-wrap text-sm bg-white rounded-md p-2 border border-amber-200">
+                          <span className="text-gray-700 font-medium">신청 금액</span>
                           <select
                             value={editCondOp || ''}
                             onChange={(e) => {
@@ -1845,13 +1851,13 @@ function ApprovalTemplateManager({
                               if (e.target.value) setEditCondField('amount')
                               else { setEditCondField(null); setEditCondVal(null) }
                             }}
-                            className="text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white"
+                            className="text-sm border-2 border-amber-300 rounded px-2 py-1 bg-white font-semibold text-amber-800"
                           >
-                            <option value="">조건 없음</option>
-                            <option value=">=">이상 (≥)</option>
-                            <option value=">">초과 (&gt;)</option>
-                            <option value="<">미만 (&lt;)</option>
-                            <option value="<=">이하 (≤)</option>
+                            <option value="">조건 없음 (기본)</option>
+                            <option value=">=">≥ 이상</option>
+                            <option value=">">&gt; 초과</option>
+                            <option value="<">&lt; 미만</option>
+                            <option value="<=">≤ 이하</option>
                           </select>
                           {editCondOp && (
                             <>
@@ -1860,15 +1866,20 @@ function ApprovalTemplateManager({
                                 value={editCondVal || ''}
                                 onChange={(e) => setEditCondVal(e.target.value)}
                                 placeholder="500000"
-                                className="text-xs border border-gray-200 rounded px-1.5 py-0.5 w-24"
+                                className="text-sm border-2 border-amber-300 rounded px-2 py-1 w-28 font-semibold"
                               />
-                              <span className="text-gray-600">원</span>
+                              <span className="text-gray-700">원</span>
                             </>
                           )}
                         </div>
-                        <p className="text-[10px] text-amber-600 mt-1">
-                          예: "금액 &gt;= 500000" = 50만원 이상일 때 이 결재선 사용
+                        <p className="text-[11px] text-amber-700 mt-1.5">
+                          예: "≥ 500,000원" = 50만원 이상 신청 시 이 결재선이 자동 선택됩니다
                         </p>
+                        {(editCondOp !== tmpl.condition_operator || editCondVal !== tmpl.condition_value) && (
+                          <p className="text-[11px] text-red-600 mt-1 font-semibold">
+                            ⚠️ 변경사항이 있습니다. 상단 "저장" 버튼을 눌러야 적용됩니다.
+                          </p>
+                        )}
                       </div>
                     )}
                     <p className="text-[10px] text-gray-400 mb-1">드래그로 순서 변경</p>
