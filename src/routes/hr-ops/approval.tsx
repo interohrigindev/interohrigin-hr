@@ -1122,17 +1122,95 @@ export default function ApprovalManagementPage() {
               )}
 
               {/* Content */}
-              {doc.content && Object.keys(doc.content).length > 0 && (
-                <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
-                  <p className="text-xs font-medium text-gray-500 mb-2">신청 내용</p>
-                  {Object.entries(doc.content).map(([key, value]) => (
-                    <div key={key} className="flex text-sm">
-                      <span className="text-gray-500 w-28 shrink-0">{key}</span>
-                      <span className="text-gray-900">{String(value)}</span>
+              {doc.content && Object.keys(doc.content).length > 0 && (() => {
+                // 일일 업무보고는 전용 UI로 렌더링
+                if (doc.doc_type === 'daily_report') {
+                  const content = doc.content as {
+                    report_date?: string
+                    completed?: { title: string }[]
+                    in_progress?: { title: string }[]
+                    planned?: { title: string }[]
+                  }
+                  return (
+                    <div className="space-y-3">
+                      <div className="bg-gradient-to-br from-brand-50 to-purple-50 border border-brand-200 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-brand-800 flex items-center gap-1.5">
+                          📝 일일 업무보고 {content.report_date && <span className="text-brand-600">({content.report_date})</span>}
+                        </p>
+                      </div>
+
+                      {/* 완료 업무 */}
+                      {content.completed && content.completed.length > 0 && (
+                        <div className="border border-emerald-200 rounded-lg overflow-hidden">
+                          <div className="bg-emerald-50 px-3 py-2 border-b border-emerald-100">
+                            <p className="text-xs font-semibold text-emerald-800">✅ 완료 업무 ({content.completed.length}건)</p>
+                          </div>
+                          <ul className="px-3 py-2 space-y-1 bg-white">
+                            {content.completed.map((t, i) => (
+                              <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                                <span className="text-emerald-500 mt-0.5">✓</span>
+                                <span className="flex-1">{t.title}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* 진행중 업무 */}
+                      {content.in_progress && content.in_progress.length > 0 && (
+                        <div className="border border-blue-200 rounded-lg overflow-hidden">
+                          <div className="bg-blue-50 px-3 py-2 border-b border-blue-100">
+                            <p className="text-xs font-semibold text-blue-800">🔄 진행중 업무 ({content.in_progress.length}건)</p>
+                          </div>
+                          <ul className="px-3 py-2 space-y-1 bg-white">
+                            {content.in_progress.map((t, i) => (
+                              <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                                <span className="text-blue-500 mt-0.5">▸</span>
+                                <span className="flex-1">{t.title}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* 내일 계획 */}
+                      {content.planned && content.planned.length > 0 && (
+                        <div className="border border-amber-200 rounded-lg overflow-hidden">
+                          <div className="bg-amber-50 px-3 py-2 border-b border-amber-100">
+                            <p className="text-xs font-semibold text-amber-800">📅 내일 계획 ({content.planned.length}건)</p>
+                          </div>
+                          <ul className="px-3 py-2 space-y-1 bg-white">
+                            {content.planned.map((t, i) => (
+                              <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                                <span className="text-amber-500 mt-0.5">☐</span>
+                                <span className="flex-1">{t.title}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {(!content.completed || content.completed.length === 0) &&
+                       (!content.in_progress || content.in_progress.length === 0) &&
+                       (!content.planned || content.planned.length === 0) && (
+                        <p className="text-sm text-gray-400 text-center py-4">작성된 업무가 없습니다</p>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                  )
+                }
+                // 다른 양식은 기존 key-value 렌더링
+                return (
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+                    <p className="text-xs font-medium text-gray-500 mb-2">신청 내용</p>
+                    {Object.entries(doc.content).map(([key, value]) => (
+                      <div key={key} className="flex text-sm">
+                        <span className="text-gray-500 w-28 shrink-0">{key}</span>
+                        <span className="text-gray-900">{String(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
 
               {/* Attachments */}
               {doc.attachments && doc.attachments.length > 0 && (
@@ -1171,22 +1249,26 @@ export default function ApprovalManagementPage() {
                         step.action === 'rejected' ? { badge: 'danger' as const, label: '반려' } :
                         { badge: 'default' as const, label: '대기' }
                       return (
-                        <div key={step.id} className="flex items-start gap-2 text-sm">
+                        <div key={step.id} className="flex items-start gap-2 text-sm border-l-2 pl-2" style={{ borderColor: step.action === 'approved' ? '#10b981' : step.action === 'rejected' ? '#ef4444' : '#d1d5db' }}>
                           <Badge variant={stepCfg.badge} className="text-[10px] mt-0.5 shrink-0">
                             {step.step_order}. {stepCfg.label}
                           </Badge>
-                          <div className="min-w-0">
-                            <span className="text-gray-700">
-                              {getEmpName(step.approver_id)}
-                              <span className="text-[10px] text-gray-400 ml-1">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="text-gray-700 font-medium">
+                                {getEmpName(step.approver_id)}
+                              </span>
+                              <span className="text-[10px] text-gray-400">
                                 ({ROLE_LABELS[step.approver_role] || step.approver_role})
                               </span>
-                            </span>
+                              {step.acted_at && (
+                                <span className="text-[10px] text-gray-400">· {fmtDate(step.acted_at)}</span>
+                              )}
+                            </div>
                             {step.comment && (
-                              <p className="text-xs text-gray-500 mt-0.5">{step.comment}</p>
-                            )}
-                            {step.acted_at && (
-                              <p className="text-[10px] text-gray-400">{fmtDate(step.acted_at)}</p>
+                              <div className="mt-1 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 italic">
+                                💬 {step.comment}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -1198,13 +1280,16 @@ export default function ApprovalManagementPage() {
 
               {/* Action Area */}
               {isMyTurn && (
-                <div className="space-y-3 pt-2 border-t border-gray-100">
+                <div className="space-y-3 pt-3 mt-2 border-t-2 border-brand-200 bg-brand-50/30 -mx-6 px-6 py-4">
+                  <p className="text-sm font-bold text-brand-800">💬 결재자 코멘트</p>
                   <Textarea
-                    label="의견 (선택)"
+                    label={doc.doc_type === 'daily_report' ? '업무보고 피드백 (권장)' : '의견 (선택)'}
                     value={actionComment}
                     onChange={(e) => setActionComment(e.target.value)}
-                    placeholder="승인/반려 의견을 입력하세요"
-                    rows={2}
+                    placeholder={doc.doc_type === 'daily_report'
+                      ? '업무 진행 사항에 대한 피드백, 추가 지시사항, 칭찬/격려 등을 입력하세요'
+                      : '승인/반려 의견을 입력하세요'}
+                    rows={doc.doc_type === 'daily_report' ? 4 : 2}
                   />
                   <div className="flex justify-end gap-2">
                     <Button
