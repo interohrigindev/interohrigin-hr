@@ -33,6 +33,8 @@ export function usePeerReview(periodId?: string) {
       if (periodId) q = q.eq('period_id', periodId)
       return q
     }
+    // 관리자/리더만 전체 평가 열람 가능, 일반 직원은 빈 배열
+    const isPrivileged = profile.role && ['ceo', 'admin', 'director', 'division_head', 'leader'].includes(profile.role)
     const buildAllQuery = () => {
       let q = supabase.from('peer_reviews').select('*')
       if (periodId) q = q.eq('period_id', periodId)
@@ -43,7 +45,7 @@ export function usePeerReview(periodId?: string) {
       buildAssignQuery(),
       buildMyRevQuery(),
       buildForMeQuery(),
-      buildAllQuery(),
+      isPrivileged ? buildAllQuery() : Promise.resolve({ data: [] }),
     ])
 
     setAssignments((assignRes.data || []) as PeerReviewAssignment[])

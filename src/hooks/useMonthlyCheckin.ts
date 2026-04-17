@@ -15,10 +15,12 @@ export function useMonthlyCheckin(year?: number, month?: number) {
     if (!profile?.id) return
     setLoading(true)
 
-    // Fetch all checkins (admin/leader sees all, employee sees own)
+    // 관리자/리더만 전체 조회, 일반 직원은 본인 것만
+    const isPrivileged = profile.role && ['ceo', 'admin', 'director', 'division_head', 'leader'].includes(profile.role)
     let query = supabase.from('monthly_checkins').select('*').order('created_at', { ascending: false })
     if (year) query = query.eq('year', year)
     if (month) query = query.eq('month', month)
+    if (!isPrivileged) query = query.eq('employee_id', profile.id)
 
     const { data } = await query
     setCheckins((data || []) as MonthlyCheckin[])

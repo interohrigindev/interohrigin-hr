@@ -59,30 +59,53 @@ function getDaysRemaining(createdAt: string): number {
 
 function formatSummaryAsDocument(summary: string): string {
   if (!summary) return ''
+
+  // 섹션별 커스텀 스타일을 먼저 적용
   let html = summary
-    // 마크다운 헤더 → HTML
+    // 📋 핵심 요약 블럭 — 두드러지는 브랜드 색 카드
+    .replace(/^## 📋 (.+)$/gm, '<div class="mt-4 mb-5 p-4 bg-gradient-to-br from-brand-50 to-purple-50 border-l-4 border-brand-500 rounded-r-lg"><h3 class="text-sm font-bold text-brand-800 mb-2 flex items-center gap-1.5">📋 $1</h3><div class="text-sm text-gray-800 leading-relaxed"><<SECTION_CONTENT_START>>')
+    // 📁 프로젝트별 블럭
+    .replace(/^## 📁 (.+)$/gm, '<h3 class="text-base font-bold text-gray-900 mt-6 mb-3 pb-1.5 border-b-2 border-gray-300 flex items-center gap-1.5">📁 $1</h3>')
+    // ⚡ 즉시 조치 블럭
+    .replace(/^## ⚡ (.+)$/gm, '<h3 class="text-base font-bold text-red-700 mt-6 mb-3 pb-1.5 border-b-2 border-red-300 flex items-center gap-1.5">⚡ $1</h3>')
+    // 🔄 다음 미팅 블럭
+    .replace(/^## 🔄 (.+)$/gm, '<h3 class="text-base font-bold text-amber-700 mt-6 mb-3 pb-1.5 border-b-2 border-amber-300 flex items-center gap-1.5">🔄 $1</h3>')
+    // 💡 참고 블럭
+    .replace(/^## 💡 (.+)$/gm, '<h3 class="text-base font-bold text-blue-700 mt-6 mb-3 pb-1.5 border-b-2 border-blue-300 flex items-center gap-1.5">💡 $1</h3>')
+    // 기존 숫자 섹션
+    .replace(/^### \[(.+?)\]$/gm, '<div class="mt-3 mb-2 px-3 py-2 bg-gray-50 rounded-lg border-l-4 border-brand-400"><p class="text-sm font-bold text-gray-900">📌 $1</p></div>')
     .replace(/^### (.+)$/gm, '<h4 class="text-sm font-bold text-gray-800 mt-4 mb-1 flex items-center gap-1"><span class="w-1 h-4 bg-brand-500 rounded-full inline-block mr-1"></span>$1</h4>')
     .replace(/^## \d+\. (.+)$/gm, '<h3 class="text-base font-bold text-gray-900 mt-6 mb-2 pb-1 border-b border-gray-200">$1</h3>')
     .replace(/^## (.+)$/gm, '<h3 class="text-base font-bold text-gray-900 mt-5 mb-2 pb-1 border-b border-gray-200">$1</h3>')
     .replace(/^# (.+)$/gm, '<h2 class="text-lg font-bold text-gray-900 mt-4 mb-2">$1</h2>')
     // 볼드/이탤릭
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-gray-900">$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-gray-900 font-semibold">$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // 체크박스 아이템
-    .replace(/^- \[ \] (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-gray-400 mt-0.5 shrink-0">☐</span><span>$1</span></li>')
-    .replace(/^- \[x\] (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-green-500 mt-0.5 shrink-0">☑</span><span>$1</span></li>')
+    // 🚨 즉시 조치 아이템 (빨간 배경)
+    .replace(/^- 🚨 (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-red-800 py-1.5 px-2.5 my-1 bg-red-50 border border-red-200 rounded-md"><span class="shrink-0 mt-0.5">🚨</span><span class="flex-1">$1</span></li>')
+    // 체크박스 아이템 (할 일)
+    .replace(/^- \[ \] (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-1 px-2 bg-white border border-gray-200 rounded-md my-1"><span class="shrink-0 mt-0.5 text-gray-400">☐</span><span class="flex-1">$1</span></li>')
+    .replace(/^- \[x\] (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-500 py-1 px-2 bg-gray-50 rounded-md my-1 line-through"><span class="shrink-0 mt-0.5 text-green-500">☑</span><span class="flex-1">$1</span></li>')
     // 결정사항 (✅)
-    .replace(/^- ✅ (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-green-700 py-0.5 bg-green-50 rounded px-2"><span class="shrink-0">✅</span><span>$1</span></li>')
+    .replace(/^- ✅ (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-green-800 py-1 px-2.5 my-1 bg-green-50 border-l-3 border-green-500 rounded-r-md"><span class="shrink-0 mt-0.5">✅</span><span class="flex-1">$1</span></li>')
     // 협의필요 (⚠️)
-    .replace(/^- ⚠️ (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-amber-700 py-0.5 bg-amber-50 rounded px-2"><span class="shrink-0">⚠️</span><span>$1</span></li>')
+    .replace(/^- ⚠️ (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-amber-800 py-1 px-2.5 my-1 bg-amber-50 border-l-3 border-amber-500 rounded-r-md"><span class="shrink-0 mt-0.5">⚠️</span><span class="flex-1">$1</span></li>')
     // 제안/의견 (💡)
-    .replace(/^- 💡 (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-blue-700 py-0.5 bg-blue-50 rounded px-2"><span class="shrink-0">💡</span><span>$1</span></li>')
+    .replace(/^- 💡 (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-blue-800 py-1 px-2.5 my-1 bg-blue-50 border-l-3 border-blue-500 rounded-r-md"><span class="shrink-0 mt-0.5">💡</span><span class="flex-1">$1</span></li>')
     // 일반 리스트
-    .replace(/^- (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-brand-500 mt-1 shrink-0">•</span><span>$1</span></li>')
-    .replace(/^\d+\. (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-brand-600 font-semibold mt-0 shrink-0 w-5 text-right">▸</span><span>$1</span></li>')
+    .replace(/^- (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-brand-500 mt-1 shrink-0">•</span><span class="flex-1">$1</span></li>')
+    .replace(/^\d+\. (.+)$/gm, '<li class="flex items-start gap-2 text-sm text-gray-700 py-0.5"><span class="text-brand-600 font-semibold mt-0 shrink-0 w-5 text-right">▸</span><span class="flex-1">$1</span></li>')
     // 줄바꿈
     .replace(/\n\n/g, '</p><p class="mt-2">')
     .replace(/\n/g, '<br>')
+
+  // 핵심 요약 블럭 종료 처리 (다음 h3가 나오기 전까지만 블럭에 포함)
+  html = html.replace(/<<SECTION_CONTENT_START>>([\s\S]*?)(?=<h3)/, '$1</div></div>')
+  // 닫히지 않은 경우 끝에서 닫기
+  if (html.includes('<<SECTION_CONTENT_START>>')) {
+    html = html.replace(/<<SECTION_CONTENT_START>>([\s\S]*?)$/, '$1</div></div>')
+  }
+
   return `<div class="space-y-1">${html}</div>`
 }
 
@@ -386,7 +409,12 @@ export default function MeetingNotes() {
       supabase.from('meeting_records').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('id, name').eq('is_active', true),
     ])
-    const recs = (recRes.data || []) as MeetingRecord[]
+    const allRecs = (recRes.data || []) as MeetingRecord[]
+    // 본인 필터: 작성자 OR 참여자 포함 (관리자/임원은 전체)
+    const isPrivileged = profile?.role && ['ceo', 'admin', 'director', 'division_head'].includes(profile.role)
+    const recs = isPrivileged || !profile?.id
+      ? allRecs
+      : allRecs.filter(r => r.recorded_by === profile.id || (r.participant_ids || []).includes(profile.id))
     setRecords(recs)
     setEmployees((empRes.data || []) as Employee[])
 
