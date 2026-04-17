@@ -26,9 +26,10 @@ interface Employee {
   hire_date: string | null
   position: string | null
   role: string | null
+  email?: string | null
 }
 
-interface Department { id: string; name: string }
+interface Department { id: string; name: string; parent_id?: string | null }
 
 interface ApprovalStep {
   step: number
@@ -131,10 +132,10 @@ export default function LeaveManagementPage() {
     setLoading(true)
 
     // 결재라인 셀렉트용으로 전 직원은 항상 가져옴
-    const allEmpRes = await supabase.from('employees').select('id, name, department_id, hire_date, position, role').eq('is_active', true).order('name')
+    const allEmpRes = await supabase.from('employees').select('id, name, email, department_id, hire_date, position, role').eq('is_active', true).order('name')
     setAllEmployees((allEmpRes.data || []) as Employee[])
 
-    let empQuery = supabase.from('employees').select('id, name, department_id, hire_date, position, role').eq('is_active', true).order('name')
+    let empQuery = supabase.from('employees').select('id, name, email, department_id, hire_date, position, role').eq('is_active', true).order('name')
     let leaveQuery = supabase.from('employee_hr_details').select('*')
     let reqQuery = supabase.from('leave_requests').select('*').order('created_at', { ascending: false }).limit(200)
 
@@ -145,7 +146,7 @@ export default function LeaveManagementPage() {
       reqQuery = supabase.from('leave_requests').select('*').order('created_at', { ascending: false }).limit(200)
     }
 
-    const [empRes, deptRes, leaveRes, reqRes] = await Promise.all([empQuery, supabase.from('departments').select('id, name').order('name'), leaveQuery, reqQuery])
+    const [empRes, deptRes, leaveRes, reqRes] = await Promise.all([empQuery, supabase.from('departments').select('id, name, parent_id').order('name'), leaveQuery, reqQuery])
     const empData = (empRes.data || []) as Employee[]
     const reqData = (reqRes.data || []) as LeaveRequest[]
 
@@ -185,10 +186,21 @@ export default function LeaveManagementPage() {
 
   const filteredData = useMemo(() => {
     let result = employeeLeaveData
-    if (filterDept) result = result.filter((e) => getDeptName(e.department_id) === filterDept)
+    if (filterDept) {
+      const selectedDept = departments.find(d => d.name === filterDept)
+      if (selectedDept && !selectedDept.parent_id) {
+        // 본부 선택 → 본부 + 하위 팀 모두
+        const teamIds = departments.filter(d => d.parent_id === selectedDept.id).map(d => d.id)
+        const allIds = [selectedDept.id, ...teamIds]
+        result = result.filter((e) => allIds.includes(e.department_id || ''))
+      } else {
+        // 팀 선택 → 해당 팀만
+        result = result.filter((e) => getDeptName(e.department_id) === filterDept)
+      }
+    }
     if (searchQuery) { const q = searchQuery.toLowerCase(); result = result.filter((e) => e.name.toLowerCase().includes(q)) }
     return result
-  }, [employeeLeaveData, filterDept, searchQuery])
+  }, [employeeLeaveData, filterDept, searchQuery, departments])
 
   const totalEmployees = filteredData.length
   const avgUsageRate = totalEmployees > 0 ? Math.round(filteredData.reduce((s, e) => s + e.usageRate, 0) / totalEmployees) : 0
@@ -427,33 +439,85 @@ export default function LeaveManagementPage() {
         )}
       </div>
 
-      {/* 부서별 탭 (관리자만, overview 탭에서) */}
-      {activeTab === 'overview' && isAdmin && deptNames.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1">
-          <button
-            onClick={() => setFilterDept('')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-              !filterDept ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            전체 ({employeeLeaveData.length})
-          </button>
-          {deptNames.map((d) => {
-            const count = employeeLeaveData.filter(e => getDeptName(e.department_id) === d).length
-            return (
+      {/* 부서별 탭 — 본부 1차 + 팀 2차 계층 */}
+      {activeTab === 'overview' && isAdmin && departments.length > 0 && (() => {
+        const rootDepts = departments.filter(d => !d.parent_id)
+        const selectedDept = departments.find(d => d.name === filterDept)
+        const showingRoot = !selectedDept || !selectedDept.parent_id
+        const rootDeptOfSelected = selectedDept?.parent_id
+          ? departments.find(d => d.id === selectedDept.parent_id)
+          : selectedDept
+        const teams = rootDeptOfSelected
+          ? departments.filter(d => d.parent_id === rootDeptOfSelected.id)
+          : []
+
+        // 본부 하위 인원 모두 계산 (본부 + 팀 소속 모두)
+        const countForDept = (dept: Department) => {
+          const teamIds = departments.filter(d => d.parent_id === dept.id).map(d => d.id)
+          const allIds = [dept.id, ...teamIds]
+          return employeeLeaveData.filter(e => allIds.includes(e.department_id || '')).length
+        }
+
+        return (
+          <div className="space-y-2">
+            {/* 1차: 본부 */}
+            <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1">
               <button
-                key={d}
-                onClick={() => setFilterDept(d)}
+                onClick={() => setFilterDept('')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                  filterDept === d ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  !filterDept ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                {d} ({count})
+                전체 ({employeeLeaveData.length})
               </button>
-            )
-          })}
-        </div>
-      )}
+              {rootDepts.map((d) => {
+                const isSelected = filterDept === d.name || rootDeptOfSelected?.id === d.id
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => setFilterDept(d.name)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                      isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {d.name} ({countForDept(d)})
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* 2차: 팀 (본부 선택 시만) */}
+            {!showingRoot || teams.length > 0 ? (
+              rootDeptOfSelected && teams.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1 pl-4 border-l-2 border-blue-200">
+                  <button
+                    onClick={() => setFilterDept(rootDeptOfSelected.name)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                      filterDept === rootDeptOfSelected.name ? 'bg-blue-400 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    본부 전체
+                  </button>
+                  {teams.map((t) => {
+                    const teamCount = employeeLeaveData.filter(e => e.department_id === t.id).length
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => setFilterDept(t.name)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                          filterDept === t.name ? 'bg-blue-400 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        {t.name} ({teamCount})
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            ) : null}
+          </div>
+        )
+      })()}
 
       {/* ─── 연차 현황 그리드 (타일) ─────────────────────────── */}
       {activeTab === 'overview' && (
@@ -470,12 +534,30 @@ export default function LeaveManagementPage() {
                   className={`${isUrgent ? 'border-red-200 bg-red-50/30' : isWarning ? 'border-amber-200 bg-amber-50/20' : 'hover:shadow-sm'} transition-shadow`}
                 >
                   <CardContent className="p-4">
-                    {/* 상단: 이름 + 상태 */}
+                    {/* 상단: 이름 + 상태 + 촉진 이메일 */}
                     <div className="flex items-center justify-between mb-3 gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">{emp.name[0]}</div>
                         <div className="min-w-0">
-                          <p className="font-medium text-gray-900 text-sm truncate">{emp.name}</p>
+                          <div className="flex items-center gap-1">
+                            <p className="font-medium text-gray-900 text-sm truncate">{emp.name}</p>
+                            {(isUrgent || isWarning) && emp.email && (
+                              <button
+                                title="촉진 이메일 발송"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const subject = encodeURIComponent(`[연차 촉진 안내] ${emp.name}님, 잔여 연차 ${emp.remainingAnnual}일`)
+                                  const body = encodeURIComponent(
+                                    `${emp.name}님,\n\n${currentYear}년 잔여 연차가 ${emp.remainingAnnual}일 (소진율 ${emp.usageRate}%) 남아있어 사용을 권장드립니다.\n\n근로기준법에 따른 연차 촉진 안내입니다.\n연차 사용 계획을 회신 부탁드립니다.\n\n감사합니다.\nHR`
+                                  )
+                                  window.location.href = `mailto:${emp.email}?subject=${subject}&body=${body}`
+                                }}
+                                className="text-[10px] text-amber-600 hover:text-amber-700 hover:bg-amber-100 rounded px-1"
+                              >
+                                ✉️
+                              </button>
+                            )}
+                          </div>
                           <p className="text-[10px] text-gray-500 truncate">{getDeptName(emp.department_id)}</p>
                         </div>
                       </div>

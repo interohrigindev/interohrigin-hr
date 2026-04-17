@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   FileText, Download, Search, Plus,
   Award, Calendar, Printer, Upload,
@@ -74,6 +74,7 @@ export default function CertificatesPage() {
   // 인감 이미지
   const [sealImageUrl, setSealImageUrl] = useState<string | null>(null)
   const [sealUploading, setSealUploading] = useState(false)
+  const sealInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchData()
@@ -467,11 +468,17 @@ export default function CertificatesPage() {
                 <p className="text-xs text-gray-400">스캔본(PNG/JPG)을 업로드하면 증명서에 자동 날인됩니다</p>
               </div>
             </div>
-            <label className="shrink-0">
-              <Button variant="outline" size="sm" disabled={sealUploading} onClick={() => {}}>
+            <div className="shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={sealUploading}
+                onClick={() => sealInputRef.current?.click()}
+              >
                 <Upload className="h-3.5 w-3.5 mr-1" /> {sealUploading ? '업로드 중...' : sealImageUrl ? '변경' : '등록'}
               </Button>
               <input
+                ref={sealInputRef}
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 className="hidden"
@@ -481,7 +488,7 @@ export default function CertificatesPage() {
                   e.target.value = ''
                 }}
               />
-            </label>
+            </div>
           </CardContent>
         </Card>
       )}

@@ -28,7 +28,7 @@ interface Employee {
   department_id: string | null
 }
 
-interface Department { id: string; name: string }
+interface Department { id: string; name: string; parent_id?: string | null }
 
 interface ApprovalDocument {
   id: string
@@ -190,7 +190,7 @@ export default function ApprovalManagementPage() {
         .order('name'),
       supabase
         .from('departments')
-        .select('id, name')
+        .select('id, name, parent_id')
         .order('name'),
     ])
 
@@ -457,12 +457,20 @@ export default function ApprovalManagementPage() {
         getDocTypeLabel(d.doc_type).toLowerCase().includes(q),
       )
     }
-    // 부서 필터
+    // 부서 필터 — 본부 선택 시 하위 팀도 포함
     if (filterDept) {
+      const selectedDept = (departments as Department[]).find(dep => dep.name === filterDept)
+      let allowedDeptIds: Set<string> = new Set()
+      if (selectedDept) {
+        allowedDeptIds.add(selectedDept.id)
+        if (!selectedDept.parent_id) {
+          // 본부 → 하위 팀 모두 포함
+          ;(departments as Department[]).filter(d => d.parent_id === selectedDept.id).forEach(t => allowedDeptIds.add(t.id))
+        }
+      }
       result = result.filter((d) => {
         const emp = allEmployees.find((e) => e.id === d.requester_id)
-        const deptName = emp?.department_id ? (departments.find(dep => dep.id === emp.department_id)?.name || '') : '미배정'
-        return deptName === filterDept
+        return emp?.department_id && allowedDeptIds.has(emp.department_id)
       })
     }
     return result
@@ -879,33 +887,66 @@ export default function ApprovalManagementPage() {
         </div>
       </div>
 
-      {/* 부서별 탭 (결재선 관리 탭 제외) */}
+      {/* 부서별 탭 — 본부 1차 + 팀 2차 */}
       {activeTab !== 'template_manage' && isAdmin && (() => {
-        const deptNames = Array.from(new Set(
-          allEmployees.map(e => e.department_id ? (departments.find(d => d.id === e.department_id)?.name || '') : '미배정').filter(Boolean)
-        ))
-        if (deptNames.length === 0) return null
+        const rootDepts = (departments as (Department & { parent_id?: string | null })[]).filter(d => !d.parent_id)
+        if (rootDepts.length === 0) return null
+        const selectedDept = (departments as (Department & { parent_id?: string | null })[]).find(d => d.name === filterDept)
+        const rootDeptOfSelected = selectedDept?.parent_id
+          ? (departments as (Department & { parent_id?: string | null })[]).find(d => d.id === selectedDept.parent_id)
+          : selectedDept
+        const teams = rootDeptOfSelected
+          ? (departments as (Department & { parent_id?: string | null })[]).filter(d => d.parent_id === rootDeptOfSelected.id)
+          : []
         return (
-          <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1">
-            <button
-              onClick={() => setFilterDept('')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                !filterDept ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              전체
-            </button>
-            {deptNames.map((d) => (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1">
               <button
-                key={d}
-                onClick={() => setFilterDept(d)}
+                onClick={() => setFilterDept('')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                  filterDept === d ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  !filterDept ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                {d}
+                전체
               </button>
-            ))}
+              {rootDepts.map((d) => {
+                const isSelected = filterDept === d.name || rootDeptOfSelected?.id === d.id
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => setFilterDept(d.name)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                      isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {d.name}
+                  </button>
+                )
+              })}
+            </div>
+            {rootDeptOfSelected && teams.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1 pl-4 border-l-2 border-blue-200">
+                <button
+                  onClick={() => setFilterDept(rootDeptOfSelected.name)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                    filterDept === rootDeptOfSelected.name ? 'bg-blue-400 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  본부 전체
+                </button>
+                {teams.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setFilterDept(t.name)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                      filterDept === t.name ? 'bg-blue-400 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )
       })()}
@@ -1464,7 +1505,7 @@ const ROLE_OPTIONS = [
   { value: 'finance', label: '재무회계' },
 ]
 
-// 역할 → 자동 매칭할 직원 role 값
+// 역할 → 자동 매칭할 직원 role 값 (참고용. 실제 UI는 모든 직원에서 선택)
 const ROLE_EMPLOYEE_MATCH: Record<string, string[]> = {
   leader: ['leader'],
   executive: ['director', 'division_head'],
@@ -1531,11 +1572,48 @@ function ApprovalTemplateManager({
     }))
   }
 
-  // 역할에 해당하는 직원 풀 가져오기
-  function getEmployeesForRole(role: string): Employee[] {
+  // 역할에 해당하는 직원 풀 — 추천 직원은 상단, 전체 직원은 검색으로
+  function getRecommendedEmployees(role: string): Employee[] {
     const matchRoles = ROLE_EMPLOYEE_MATCH[role] || []
     if (matchRoles.length === 0) return employees
     return employees.filter(e => e.role && matchRoles.includes(e.role))
+  }
+
+  // 단계별 검색 쿼리 state (인덱스별 저장)
+  const [stepSearches, setStepSearches] = useState<Record<number, string>>({})
+
+  // 새 결재선 템플릿 추가
+  const [showNewTemplate, setShowNewTemplate] = useState(false)
+  const [newTmplDocType, setNewTmplDocType] = useState('general')
+  const [newTmplName, setNewTmplName] = useState('')
+
+  async function handleAddTemplate() {
+    if (!newTmplName.trim() || !newTmplDocType) {
+      toast('양식명을 입력하세요', 'error')
+      return
+    }
+    const { data, error } = await supabase.from('approval_templates').insert({
+      doc_type: newTmplDocType,
+      name: newTmplName.trim(),
+      steps: [{ role: 'leader', label: '팀장 승인', approver_ids: [] }],
+      is_active: true,
+    }).select().single()
+    if (error) { toast('생성 실패: ' + error.message, 'error'); return }
+    toast('결재선이 생성되었습니다.', 'success')
+    setShowNewTemplate(false)
+    setNewTmplName('')
+    setNewTmplDocType('general')
+    onRefresh()
+    // 생성 후 바로 편집 모드로
+    if (data) setTimeout(() => startEdit(data as ApprovalTemplate), 300)
+  }
+
+  async function handleDeleteTemplate(tmplId: string, tmplName: string) {
+    if (!confirm(`"${tmplName}" 결재선을 삭제하시겠습니까?`)) return
+    const { error } = await supabase.from('approval_templates').delete().eq('id', tmplId)
+    if (error) { toast('삭제 실패: ' + error.message, 'error'); return }
+    toast('결재선이 삭제되었습니다.', 'success')
+    onRefresh()
   }
 
   // 양식별 이모지
@@ -1547,9 +1625,54 @@ function ApprovalTemplateManager({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">양식별 결재선 템플릿을 수정할 수 있습니다.</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-gray-500">양식별 결재선 템플릿을 수정/추가할 수 있습니다.</p>
+        <Button size="sm" onClick={() => setShowNewTemplate(true)}>
+          <Plus className="h-3.5 w-3.5 mr-1" /> 새 결재선 추가
+        </Button>
       </div>
+
+      {/* 새 결재선 추가 다이얼로그 */}
+      {showNewTemplate && (
+        <Card className="border-brand-300 bg-brand-50/30">
+          <CardContent className="py-4 space-y-3">
+            <p className="text-sm font-semibold text-brand-800">새 결재선 템플릿 추가</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-600 mb-1 block">양식 종류</label>
+                <select
+                  value={newTmplDocType}
+                  onChange={(e) => setNewTmplDocType(e.target.value)}
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2"
+                >
+                  <option value="general">일반 결재</option>
+                  <option value="leave">연차/휴가</option>
+                  <option value="overtime">야간/휴일 근무</option>
+                  <option value="expense">경비 청구</option>
+                  <option value="business_trip">출장 신청</option>
+                  <option value="purchase">구매 요청</option>
+                  <option value="personnel">인사 결재</option>
+                  <option value="resign">퇴사</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600 mb-1 block">템플릿 이름</label>
+                <input
+                  type="text"
+                  value={newTmplName}
+                  onChange={(e) => setNewTmplName(e.target.value)}
+                  placeholder="예: 경비 청구 (50만원 미만)"
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowNewTemplate(false); setNewTmplName('') }}>취소</Button>
+              <Button size="sm" onClick={handleAddTemplate}>생성</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 타일링 그리드 (2열) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1575,7 +1698,10 @@ function ApprovalTemplateManager({
                         <Button size="sm" variant="outline" onClick={cancelEdit}>취소</Button>
                       </>
                     ) : (
-                      <Button size="sm" variant="outline" onClick={() => startEdit(tmpl)}>수정</Button>
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => startEdit(tmpl)}>수정</Button>
+                        <Button size="sm" variant="outline" onClick={() => handleDeleteTemplate(tmpl.id, tmpl.name)} className="text-red-500 hover:bg-red-50">삭제</Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1593,8 +1719,14 @@ function ApprovalTemplateManager({
                   <div className="space-y-1.5">
                     <p className="text-[10px] text-gray-400 mb-1">드래그로 순서 변경</p>
                     {editSteps.map((step, idx) => {
-                      const poolEmployees = getEmployeesForRole(step.role)
+                      const recommendedPool = getRecommendedEmployees(step.role)
+                      const recommendedIds = new Set(recommendedPool.map(e => e.id))
+                      const otherPool = employees.filter(e => !recommendedIds.has(e.id))
                       const selectedIds = step.approver_ids || []
+                      const searchQ = (stepSearches[idx] || '').toLowerCase()
+                      const matchSearch = (emp: Employee) => !searchQ || emp.name.toLowerCase().includes(searchQ)
+                      const filteredRec = recommendedPool.filter(matchSearch)
+                      const filteredOther = otherPool.filter(matchSearch)
                       return (
                         <div
                           key={idx}
@@ -1634,32 +1766,88 @@ function ApprovalTemplateManager({
                             />
                             <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
                           </div>
-                          {/* 직원 지정 */}
-                          <div className="ml-7">
-                            <p className="text-[10px] text-gray-500 mb-1">
-                              담당자 지정 {selectedIds.length > 0 && <span className="text-brand-600 font-semibold">({selectedIds.length}명)</span>}
-                              {selectedIds.length === 0 && <span className="text-gray-400"> — 미지정 시 역할로 자동 배정</span>}
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                              {poolEmployees.length === 0 ? (
-                                <span className="text-[10px] text-gray-400">해당 역할의 직원이 없습니다</span>
-                              ) : poolEmployees.map(emp => {
-                                const selected = selectedIds.includes(emp.id)
-                                return (
-                                  <button
-                                    key={emp.id}
-                                    onClick={() => toggleApprover(idx, emp.id)}
-                                    className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
-                                      selected
-                                        ? 'bg-brand-500 text-white'
-                                        : 'bg-white border border-gray-200 text-gray-600 hover:border-brand-300'
-                                    }`}
-                                  >
-                                    {selected && '✓ '}{emp.name}
-                                  </button>
-                                )
-                              })}
+                          {/* 직원 지정 — 검색 + 추천/전체 직원 선택 */}
+                          <div className="ml-7 space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[10px] text-gray-500">
+                                담당자 지정 {selectedIds.length > 0 && <span className="text-brand-600 font-semibold">({selectedIds.length}명)</span>}
+                                {selectedIds.length === 0 && <span className="text-gray-400"> — 미지정 시 역할로 자동 배정</span>}
+                              </p>
+                              <input
+                                type="text"
+                                placeholder="이름 검색..."
+                                value={stepSearches[idx] || ''}
+                                onChange={(e) => setStepSearches({ ...stepSearches, [idx]: e.target.value })}
+                                className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 w-24 focus:outline-none focus:border-brand-400"
+                              />
                             </div>
+
+                            {/* 선택된 직원 (최상단) */}
+                            {selectedIds.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pb-1 border-b border-gray-200">
+                                {selectedIds.map(id => {
+                                  const emp = employees.find(e => e.id === id)
+                                  if (!emp) return null
+                                  return (
+                                    <button
+                                      key={id}
+                                      onClick={() => toggleApprover(idx, id)}
+                                      className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-brand-500 text-white"
+                                    >
+                                      ✓ {emp.name} ✕
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+
+                            {/* 추천 직원 */}
+                            {filteredRec.length > 0 && (
+                              <div>
+                                <p className="text-[9px] text-brand-600 mb-0.5 font-semibold">추천 ({step.role})</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {filteredRec.map(emp => {
+                                    const selected = selectedIds.includes(emp.id)
+                                    if (selected) return null
+                                    return (
+                                      <button
+                                        key={emp.id}
+                                        onClick={() => toggleApprover(idx, emp.id)}
+                                        className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100"
+                                      >
+                                        {emp.name}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 그 외 전체 직원 (검색 시에만 펼침) */}
+                            {searchQ && filteredOther.length > 0 && (
+                              <div>
+                                <p className="text-[9px] text-gray-400 mb-0.5">그 외 직원</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {filteredOther.map(emp => {
+                                    const selected = selectedIds.includes(emp.id)
+                                    if (selected) return null
+                                    return (
+                                      <button
+                                        key={emp.id}
+                                        onClick={() => toggleApprover(idx, emp.id)}
+                                        className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-white border border-gray-200 text-gray-600 hover:border-brand-300"
+                                      >
+                                        {emp.name}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {!searchQ && filteredRec.length === 0 && (
+                              <p className="text-[10px] text-gray-400">추천 직원 없음 — 검색으로 전체 직원에서 선택</p>
+                            )}
                           </div>
                         </div>
                       )
