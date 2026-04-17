@@ -1424,7 +1424,34 @@ export default function ApprovalManagementPage() {
 
               {/* Approval line setup */}
               <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50">
-                <h4 className="text-sm font-bold text-gray-700">결재라인 설정</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-gray-700">결재라인 설정</h4>
+                  {selectedTemplate && (
+                    <span className="text-[10px] text-gray-500 bg-white px-2 py-0.5 rounded-full border border-gray-200">
+                      📋 {selectedTemplate.name}
+                    </span>
+                  )}
+                </div>
+
+                {/* 금액 조건 매칭 안내 */}
+                {hasAmount && parsedAmount != null && parsedAmount > 0 && (() => {
+                  const allCandidates = templates.filter(t => t.doc_type === newDocType && t.is_active !== false)
+                  const hasConditional = allCandidates.some(t => t.condition_field)
+                  if (!hasConditional && parsedAmount >= 500000) {
+                    return (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs">
+                        <p className="text-amber-800 font-semibold mb-1">⚠️ 금액 조건 결재선이 없습니다</p>
+                        <p className="text-amber-700">
+                          {parsedAmount.toLocaleString()}원인데 금액 조건(예: 50만원 이상)이 설정된 결재선이 없어 기본 결재선이 적용됩니다.
+                        </p>
+                        <p className="text-amber-600 mt-1">
+                          관리자는 <strong>전자결재 &gt; 결재선 관리</strong>에서 고액 결재선을 추가하세요.
+                        </p>
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
 
                 {/* Flow preview */}
                 {selectedTemplate && (
