@@ -684,9 +684,12 @@ export default function ApprovalManagementPage() {
 
     // Validate approvers for each template step
     if (selectedTemplate) {
-      for (const step of selectedTemplate.steps) {
-        if (step.role === 'ceo' && ceo) continue // auto-assigned
-        if (!newApprovers[step.role]) {
+      for (let i = 0; i < selectedTemplate.steps.length; i++) {
+        const step = selectedTemplate.steps[i]
+        const stepKey = `${step.role}__${i}`
+        const approverIds = (step as { approver_ids?: string[] }).approver_ids || []
+        const hasTemplateDefault = approverIds.length > 0 || (step.role === 'ceo' && ceo)
+        if (!newApprovers[stepKey] && !hasTemplateDefault) {
           toast(`${ROLE_LABELS[step.role] || step.label} 결재자를 선택하세요`, 'error')
           return
         }
@@ -729,10 +732,14 @@ export default function ApprovalManagementPage() {
     // Insert approval steps
     if (selectedTemplate) {
       const stepInserts = selectedTemplate.steps.map((step, idx) => {
+        const stepKey = `${step.role}__${idx}`
+        const approverIds = (step as { approver_ids?: string[] }).approver_ids || []
+        // 우선순위: 사용자 선택값 → 템플릿 지정 직원 첫 번째 → CEO auto → role 기본값
         const approverId =
-          step.role === 'ceo' && ceo
-            ? ceo.id
-            : newApprovers[step.role]
+          newApprovers[stepKey] ||
+          approverIds[0] ||
+          (step.role === 'ceo' && ceo ? ceo.id : '') ||
+          (getApproverOptions(step.role)[0]?.value || '')
         return {
           document_id: docData.id,
           step_order: idx + 1,
@@ -1484,30 +1491,46 @@ export default function ApprovalManagementPage() {
                       <p className="text-xs font-semibold text-gray-600">결재라인 (자동 설정 · 변경 불가)</p>
                       {selectedTemplate.steps.map((step, idx) => {
                         const roleLabel = ROLE_LABELS[step.role] || step.label
-                        if (step.role === 'ceo' && ceo) {
-                          return (
-                            <div key={step.role} className="flex items-center gap-2 text-sm">
-                              <span className="w-5 h-5 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
-                              <span className="text-gray-700">{ceo.name}</span>
-                              <span className="text-xs text-gray-400">(대표 · 최종결재)</span>
-                            </div>
-                          )
+                        const stepKey = `${step.role}__${idx}` // 단계 고유 key (같은 role 반복 대응)
+                        const approverIds = (step as { approver_ids?: string[] }).approver_ids || []
+
+                        // 1순위: 템플릿에 지정된 담당자 (관리자가 결재선 관리에서 설정)
+                        // 2순위: role에 맞는 역할의 첫 번째 직원
+                        let defaultApproverId = ''
+                        if (approverIds.length > 0) {
+                          defaultApproverId = approverIds[0]
+                        } else if (step.role === 'ceo' && ceo) {
+                          defaultApproverId = ceo.id
+                        } else {
+                          const options = getApproverOptions(step.role)
+                          if (options.length > 0) defaultApproverId = options[0].value
                         }
-                        const options = getApproverOptions(step.role)
-                        // 자동 배정: 첫 번째 해당 역할 직원
-                        if (!newApprovers[step.role] && options.length > 0) {
-                          setTimeout(() => setNewApprovers((prev) => ({ ...prev, [step.role]: options[0].value })), 0)
+
+                        // 자동 배정 (초기 렌더 시)
+                        if (!newApprovers[stepKey] && defaultApproverId) {
+                          setTimeout(() => setNewApprovers((prev) => ({ ...prev, [stepKey]: defaultApproverId })), 0)
                         }
-                        const selectedName = allEmployees.find((e) => e.id === newApprovers[step.role])?.name || roleLabel
+
+                        const currentId = newApprovers[stepKey] || defaultApproverId
+                        const selectedName = allEmployees.find((e) => e.id === currentId)?.name || roleLabel
+
+                        // 선택 가능한 옵션: 템플릿 지정 직원 OR 역할 풀
+                        const options = approverIds.length > 0
+                          ? approverIds.map(id => {
+                              const emp = allEmployees.find(e => e.id === id)
+                              return emp ? { value: id, label: `${emp.name} (${emp.position || emp.role || ''})` } : null
+                            }).filter(Boolean) as { value: string; label: string }[]
+                          : getApproverOptions(step.role)
+
                         return (
-                          <div key={step.role} className="flex items-center gap-2 text-sm">
+                          <div key={stepKey} className="flex items-center gap-2 text-sm">
                             <span className="w-5 h-5 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
                             <span className="text-gray-700">{selectedName}</span>
                             <span className="text-xs text-gray-400">({roleLabel})</span>
                             {options.length > 1 && (
                               <select
-                                value={newApprovers[step.role] || ''}
-                                onChange={(e) => setNewApprovers((prev) => ({ ...prev, [step.role]: e.target.value }))}
+                                value={currentId}
+                                onChange={(e) => setNewApprovers((prev) => ({ ...prev, [stepKey]: e.target.value }))}
                                 className="ml-auto text-xs border rounded px-2 py-1"
                               >
                                 {options.map((o) => (
