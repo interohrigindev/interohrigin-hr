@@ -120,6 +120,8 @@ export default function DailyReportPage() {
   const [allEmployees, setAllEmployees] = useState<{ id: string; name: string; role: string; department_id: string | null }[]>([])
   // 이 보고서가 이미 결재 전송되었는지 체크
   const [alreadySubmitted, setAlreadySubmitted] = useState(false)
+  // 일일보고 결재선 템플릿 (관리자가 결재선 관리에서 설정)
+  const [reportTemplate, setReportTemplate] = useState<{ id: string; steps: { role: string; label: string; approver_ids?: string[] }[] } | null>(null)
 
   const employeeId = profile?.id
 
@@ -129,6 +131,19 @@ export default function DailyReportPage() {
       .then(({ data }) => { if (data) setAllEmployees(data) })
   }, [])
 
+  // 일일보고 결재선 템플릿 로드
+  useEffect(() => {
+    supabase.from('approval_templates')
+      .select('id, steps')
+      .eq('doc_type', 'daily_report')
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setReportTemplate(data as typeof reportTemplate)
+      })
+  }, [])
+
   // 현재 보고서가 이미 결재 전송되었는지 체크
   useEffect(() => {
     if (!report?.id) { setAlreadySubmitted(false); return }
@@ -136,7 +151,7 @@ export default function DailyReportPage() {
       .select('id')
       .like('title', `%${selectedDate}%`)
       .eq('requester_id', profile?.id || '')
-      .eq('doc_type', 'general')
+      .in('doc_type', ['daily_report', 'general'])
       .limit(1)
       .maybeSingle()
       .then(({ data }) => setAlreadySubmitted(!!data))
@@ -643,67 +658,122 @@ ${completedText || '아직 없음'}
       {/* ── 결재 전송 다이얼로그 ── */}
       <Dialog open={approvalDialogOpen} onClose={() => setApprovalDialogOpen(false)} title="결재선 지정 및 전송" className="max-w-md">
         <div className="space-y-4">
-          <p className="text-sm text-gray-500">업무보고 ({selectedDate})를 결재 전송합니다. 결재선을 지정해주세요.</p>
+          <p className="text-sm text-gray-500">업무보고 ({selectedDate})를 결재 전송합니다.</p>
 
-          {/* 결재 흐름 미리보기 */}
-          <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-            <Badge variant="primary">나 ({profile?.name})</Badge>
-            <ArrowRight className="h-3 w-3" />
-            <Badge variant={approvalLeaderId ? 'success' : 'default'}>
-              {approvalLeaderId ? allEmployees.find(e => e.id === approvalLeaderId)?.name : '리더 선택'}
-            </Badge>
-            {approvalDirectorId && (
-              <>
+          {/* 템플릿 기반 고정 결재선 */}
+          {reportTemplate ? (
+            <div className="border border-blue-200 rounded-lg p-4 space-y-3 bg-blue-50/30">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-blue-800">🔒 고정 결재라인</h4>
+                <span className="text-[10px] text-blue-500">관리자 설정 — 변경 불가</span>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white border border-blue-200">
+                  <span className="text-[10px] font-bold text-blue-400 w-5 text-center">0</span>
+                  <span className="text-xs font-medium text-gray-700">본인 (신청)</span>
+                </div>
+                {reportTemplate.steps.map((step, idx) => {
+                  const approverId = step.approver_ids?.[0] || ''
+                  const approverName = approverId ? allEmployees.find(e => e.id === approverId)?.name : null
+                  return (
+                    <div key={idx} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
+                      <span className="text-[10px] font-bold text-blue-500 w-5 text-center">{idx + 1}</span>
+                      <span className="text-xs font-medium text-blue-800">{step.label}</span>
+                      {approverName && <span className="text-[10px] text-blue-700 ml-auto">👤 {approverName}</span>}
+                      {!approverName && <span className="text-[10px] text-amber-600 ml-auto">⚠ 담당자 미지정</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* 템플릿 없을 때만 수동 선택 */}
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                💡 결재선 관리에서 "일일 업무보고" 템플릿을 설정하면 고정 결재선이 적용됩니다.
+              </div>
+
+              {/* 결재 흐름 미리보기 */}
+              <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+                <Badge variant="primary">나 ({profile?.name})</Badge>
                 <ArrowRight className="h-3 w-3" />
-                <Badge variant="success">
-                  {allEmployees.find(e => e.id === approvalDirectorId)?.name}
+                <Badge variant={approvalLeaderId ? 'success' : 'default'}>
+                  {approvalLeaderId ? allEmployees.find(e => e.id === approvalLeaderId)?.name : '리더 선택'}
                 </Badge>
-              </>
-            )}
-          </div>
+                {approvalDirectorId && (
+                  <>
+                    <ArrowRight className="h-3 w-3" />
+                    <Badge variant="success">
+                      {allEmployees.find(e => e.id === approvalDirectorId)?.name}
+                    </Badge>
+                  </>
+                )}
+              </div>
 
-          <Select
-            label="1단계: 팀장/리더 *"
-            value={approvalLeaderId}
-            onChange={(e) => setApprovalLeaderId(e.target.value)}
-            options={[
-              { value: '', label: '선택하세요' },
-              ...allEmployees
-                .filter(e => ['leader', 'director', 'division_head', 'ceo', 'admin'].includes(e.role))
-                .map(e => ({ value: e.id, label: `${e.name} (${e.role === 'leader' ? '리더' : e.role === 'director' ? '이사' : e.role === 'ceo' ? '대표' : e.role})` })),
-            ]}
-          />
+              <Select
+                label="1단계: 팀장/리더 *"
+                value={approvalLeaderId}
+                onChange={(e) => setApprovalLeaderId(e.target.value)}
+                options={[
+                  { value: '', label: '선택하세요' },
+                  ...allEmployees
+                    .filter(e => ['leader', 'director', 'division_head', 'ceo', 'admin'].includes(e.role))
+                    .map(e => ({ value: e.id, label: `${e.name} (${e.role === 'leader' ? '리더' : e.role === 'director' ? '이사' : e.role === 'ceo' ? '대표' : e.role})` })),
+                ]}
+              />
 
-          <Select
-            label="2단계: 이사/임원 (선택)"
-            value={approvalDirectorId}
-            onChange={(e) => setApprovalDirectorId(e.target.value)}
-            options={[
-              { value: '', label: '없음 (리더 결재만)' },
-              ...allEmployees
-                .filter(e => ['director', 'division_head', 'ceo'].includes(e.role))
-                .map(e => ({ value: e.id, label: `${e.name} (${e.role === 'director' ? '이사' : e.role === 'ceo' ? '대표' : '본부장'})` })),
-            ]}
-          />
+              <Select
+                label="2단계: 이사/임원 (선택)"
+                value={approvalDirectorId}
+                onChange={(e) => setApprovalDirectorId(e.target.value)}
+                options={[
+                  { value: '', label: '없음 (리더 결재만)' },
+                  ...allEmployees
+                    .filter(e => ['director', 'division_head', 'ceo'].includes(e.role))
+                    .map(e => ({ value: e.id, label: `${e.name} (${e.role === 'director' ? '이사' : e.role === 'ceo' ? '대표' : '본부장'})` })),
+                ]}
+              />
+            </>
+          )}
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button variant="outline" onClick={() => setApprovalDialogOpen(false)}>취소</Button>
             <Button
-              disabled={!approvalLeaderId || approvalSending}
+              disabled={(reportTemplate ? false : !approvalLeaderId) || approvalSending}
               onClick={async () => {
-                if (!report?.id || !profile?.id || !approvalLeaderId) return
+                if (!report?.id || !profile?.id) return
                 setApprovalSending(true)
                 try {
-                  const steps = [
-                    { step_order: 1, approver_id: approvalLeaderId, approver_role: 'leader', action: 'pending' },
-                  ]
-                  if (approvalDirectorId) {
-                    steps.push({ step_order: 2, approver_id: approvalDirectorId, approver_role: 'executive', action: 'pending' })
+                  // 템플릿 기반 OR 수동
+                  const steps: { step_order: number; approver_id: string; approver_role: string; action: string }[] = []
+                  if (reportTemplate) {
+                    reportTemplate.steps.forEach((step, idx) => {
+                      const approverId = step.approver_ids?.[0]
+                      if (approverId) {
+                        steps.push({
+                          step_order: idx + 1,
+                          approver_id: approverId,
+                          approver_role: step.role,
+                          action: 'pending',
+                        })
+                      }
+                    })
+                    if (steps.length === 0) {
+                      toast('결재선 템플릿에 담당자가 지정되지 않았습니다. 관리자에게 문의하세요.', 'error')
+                      setApprovalSending(false)
+                      return
+                    }
+                  } else {
+                    if (!approvalLeaderId) { setApprovalSending(false); return }
+                    steps.push({ step_order: 1, approver_id: approvalLeaderId, approver_role: 'leader', action: 'pending' })
+                    if (approvalDirectorId) {
+                      steps.push({ step_order: 2, approver_id: approvalDirectorId, approver_role: 'executive', action: 'pending' })
+                    }
                   }
 
                   // 1) approval_documents 생성
                   const { data: doc, error: docErr } = await supabase.from('approval_documents').insert({
-                    doc_type: 'general',
+                    doc_type: 'daily_report',
                     title: `일일 업무보고 (${selectedDate})`,
                     content: {
                       report_id: report.id,

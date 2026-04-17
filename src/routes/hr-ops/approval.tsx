@@ -85,6 +85,7 @@ const DOC_TYPE_CONFIG: Record<string, { label: string; icon: string; hasAmount: 
   business_trip: { label: '출장 신청',           icon: '✈', hasAmount: false },
   general:       { label: '일반 결재',           icon: '📄', hasAmount: false },
   purchase:      { label: '구매 요청',           icon: '🛒', hasAmount: true },
+  daily_report:  { label: '일일 업무보고',       icon: '📝', hasAmount: false },
 }
 
 const STATUS_CONFIG: Record<string, { border: string; badge: 'warning' | 'info' | 'success' | 'danger' | 'default'; label: string }> = {
@@ -1726,7 +1727,7 @@ function ApprovalTemplateManager({
   const typeIcon: Record<string, string> = {
     leave: '🗓', overtime: '🌙', expense: '💰', business_trip: '✈',
     general: '📄', purchase: '🛒', personnel: '👤', resign: '📋',
-    expense_high: '💰',
+    expense_high: '💰', daily_report: '📝',
   }
 
   return (
@@ -1752,6 +1753,7 @@ function ApprovalTemplateManager({
                   className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2"
                 >
                   <option value="general">일반 결재</option>
+                  <option value="daily_report">📝 일일 업무보고</option>
                   <option value="leave">연차/휴가</option>
                   <option value="overtime">야간/휴일 근무</option>
                   <option value="expense">경비 청구</option>
