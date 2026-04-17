@@ -1522,11 +1522,22 @@ export default function ApprovalManagementPage() {
                             }).filter(Boolean) as { value: string; label: string }[]
                           : getApproverOptions(step.role)
 
+                        const specifiedNames = approverIds.map(id => allEmployees.find(e => e.id === id)?.name).filter(Boolean)
+
                         return (
-                          <div key={stepKey} className="flex items-center gap-2 text-sm">
-                            <span className="w-5 h-5 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
+                          <div key={stepKey} className="flex items-center gap-2 text-sm flex-wrap">
+                            <span className="w-5 h-5 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">{idx + 1}</span>
                             <span className="text-gray-700">{selectedName}</span>
                             <span className="text-xs text-gray-400">({roleLabel})</span>
+                            {specifiedNames.length > 0 ? (
+                              <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                ✓ 지정: {specifiedNames.join(', ')}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                                ⚠️ 담당자 미지정 (역할 기본값)
+                              </span>
+                            )}
                             {options.length > 1 && (
                               <select
                                 value={currentId}
