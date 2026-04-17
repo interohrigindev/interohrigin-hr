@@ -210,6 +210,7 @@ ${prevSummary}
   async function handleSaveEdit() {
     if (!editEval) return
     const { error } = await supabase.from('probation_evaluations').update({
+      evaluator_role: editEval.evaluator_role,
       scores: editScores,
       comments: editComments || null,
       praise: editPraise || null,
@@ -770,10 +771,30 @@ ${evalsSummary}
         {editEval && (
           <div className="space-y-5">
             {/* 메타 정보 */}
-            <div className="flex items-center gap-3 text-sm text-gray-600">
+            <div className="flex items-center gap-3 text-sm text-gray-600 flex-wrap">
               <Badge variant="primary">{STAGE_SHORT[editEval.stage as ProbationStage] || editEval.stage}</Badge>
-              <Badge variant="default">{EVALUATOR_LABELS[editEval.evaluator_role as ProbationEvaluatorRole] || editEval.evaluator_role}</Badge>
               <span>총점: <strong className="text-brand-600">{PROBATION_CRITERIA.reduce((sum, c) => sum + (editScores[c.key] || 0), 0)}/100</strong></span>
+            </div>
+
+            {/* 평가자 역할 수정 (잘못 체크한 경우 변경 가능) */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <label className="block text-xs font-semibold text-amber-800 mb-1.5">
+                ⚠️ 평가자 역할 (잘못 선택했다면 변경)
+              </label>
+              <select
+                value={editEval.evaluator_role || ''}
+                onChange={(e) => setEditEval({ ...editEval, evaluator_role: e.target.value as ProbationEvaluatorRole })}
+                className="w-full px-3 py-2 text-sm border border-amber-300 rounded-md bg-white focus:outline-none focus:border-amber-500"
+              >
+                {EVALUATOR_ROLES.map(role => (
+                  <option key={role} value={role}>
+                    {EVALUATOR_LABELS[role]} ({role === 'leader' ? '팀장/리더' : role === 'executive' ? '이사/임원' : '대표'})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-amber-600 mt-1">
+                예: 김형석 이사가 실수로 "리더"로 평가한 경우 "임원"으로 변경하세요.
+              </p>
             </div>
 
             {/* 점수 수정 */}
