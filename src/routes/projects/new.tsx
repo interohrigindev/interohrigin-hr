@@ -558,7 +558,7 @@ export default function NewProjectPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">담당자 *</label>
               <input
                 type="text"
-                placeholder="이름 또는 부서 검색..."
+                placeholder="이름 또는 부서/팀 검색..."
                 value={assigneeSearch}
                 onChange={(e) => setAssigneeSearch(e.target.value)}
                 className="w-full px-3 py-1.5 mb-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-brand-400"

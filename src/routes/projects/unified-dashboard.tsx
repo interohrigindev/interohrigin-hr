@@ -568,7 +568,7 @@ export default function UnifiedDashboard() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const {
-    projects, loading: boardLoading, employees: boardEmployees,
+    projects, loading: boardLoading, employees: boardEmployees, departments,
     updateProject, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates, refresh,
   } = useProjectBoard()
 
@@ -652,9 +652,11 @@ export default function UnifiedDashboard() {
 
   // Merge employees from both sources
   const allEmployees = useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>()
-    for (const e of employees) map.set(e.id, e)
-    for (const e of boardEmployees) map.set(e.id, { id: e.id, name: e.name })
+    const map = new Map<string, { id: string; name: string; department_id?: string | null }>()
+    for (const e of employees) map.set(e.id, { id: e.id, name: e.name })
+    for (const e of boardEmployees) {
+      map.set(e.id, { id: e.id, name: e.name, department_id: e.department_id })
+    }
     return [...map.values()]
   }, [employees, boardEmployees])
 
@@ -1205,33 +1207,55 @@ export default function UnifiedDashboard() {
                                   {/* Stage assignees — inline editable */}
                                   <div className="relative">
                                     {editingField?.stageId === stage.id && editingField.stageField === 'stage_assignee' ? (
-                                      <div ref={editRef} className="absolute z-30 top-0 left-0 bg-white border border-gray-200 rounded-lg shadow-xl p-2 w-48 max-h-48 overflow-y-auto">
-                                        {allEmployees.map((emp) => (
-                                          <button
-                                            key={emp.id}
-                                            onClick={async (e) => {
-                                              e.stopPropagation()
-                                              const currentIds = stage.stage_assignee_ids || []
-                                              const newIds = currentIds.includes(emp.id)
-                                                ? currentIds.filter((id) => id !== emp.id)
-                                                : [...currentIds, emp.id]
-                                              await supabase.from('pipeline_stages').update({ stage_assignee_ids: newIds }).eq('id', stage.id)
-                                              // 드롭다운 유지한 채 데이터 갱신 (복수 담당자 선택 가능)
-                                              refresh()
+                                      <div ref={editRef} className="absolute z-30 top-0 left-0 bg-white border border-gray-200 rounded-lg shadow-xl w-56 flex flex-col">
+                                        <div className="p-2 border-b border-gray-100">
+                                          <input
+                                            type="text"
+                                            placeholder="이름 또는 부서/팀 검색..."
+                                            autoFocus
+                                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-blue-400 bg-gray-50"
+                                            onChange={(e) => {
+                                              const q = e.target.value.toLowerCase()
+                                              const container = e.target.closest('.flex-col') as HTMLElement | null
+                                              container?.querySelectorAll('[data-emp-name]').forEach((el) => {
+                                                const searchText = (el as HTMLElement).dataset.empName || ''
+                                                ;(el as HTMLElement).style.display = searchText.includes(q) ? '' : 'none'
+                                              })
                                             }}
-                                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs hover:bg-gray-100 ${
-                                              (stage.stage_assignee_ids || []).includes(emp.id) ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
-                                            }`}
-                                          >
-                                            <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold shrink-0">
-                                              {emp.name[0]}
-                                            </div>
-                                            {emp.name}
-                                            {(stage.stage_assignee_ids || []).includes(emp.id) && (
-                                              <span className="ml-auto text-blue-500 text-[10px]">✓</span>
-                                            )}
-                                          </button>
-                                        ))}
+                                          />
+                                        </div>
+                                        <div className="max-h-48 overflow-y-auto p-2">
+                                          {allEmployees.map((emp) => {
+                                            const deptName = departments.find(d => d.id === emp.department_id)?.name || ''
+                                            return (
+                                              <button
+                                                key={emp.id}
+                                                data-emp-name={`${emp.name.toLowerCase()} ${deptName.toLowerCase()}`}
+                                                onClick={async (e) => {
+                                                  e.stopPropagation()
+                                                  const currentIds = stage.stage_assignee_ids || []
+                                                  const newIds = currentIds.includes(emp.id)
+                                                    ? currentIds.filter((id) => id !== emp.id)
+                                                    : [...currentIds, emp.id]
+                                                  await supabase.from('pipeline_stages').update({ stage_assignee_ids: newIds }).eq('id', stage.id)
+                                                  refresh()
+                                                }}
+                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs hover:bg-gray-100 ${
+                                                  (stage.stage_assignee_ids || []).includes(emp.id) ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                                                }`}
+                                              >
+                                                <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                                  {emp.name[0]}
+                                                </div>
+                                                <span className="flex-1 truncate">{emp.name}</span>
+                                                {deptName && <span className="text-[9px] text-gray-400">{deptName}</span>}
+                                                {(stage.stage_assignee_ids || []).includes(emp.id) && (
+                                                  <span className="ml-auto text-blue-500 text-[10px]">✓</span>
+                                                )}
+                                              </button>
+                                            )
+                                          })}
+                                        </div>
                                       </div>
                                     ) : (
                                       <div className="flex items-center gap-1 group/assignee relative">

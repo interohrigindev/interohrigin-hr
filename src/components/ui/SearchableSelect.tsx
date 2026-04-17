@@ -71,7 +71,7 @@ export function SearchableSelect({
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="이름 또는 부서 검색..."
+                placeholder="이름 또는 부서/팀 검색..."
                 className="w-full pl-8 pr-7 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:border-brand-400 bg-gray-50"
               />
               {query && (

@@ -544,7 +544,7 @@ export default function ProjectDetailPage() {
                             <div className="p-2 border-b border-gray-100">
                               <input
                                 type="text"
-                                placeholder="이름 또는 부서 검색..."
+                                placeholder="이름 또는 부서/팀 검색..."
                                 className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400 bg-gray-50"
                                 autoFocus
                                 onChange={(e) => {

@@ -318,14 +318,14 @@ export default function LeaveManagementPage() {
                   const calc = calculateAnnualLeave(emp.hire_date)
                   const hr = hrDetails.find(h => h.employee_id === emp.id)
                   if (hr) {
-                    const { error } = await supabase.from('hr_details').update({
+                    const { error } = await supabase.from('employee_hr_details').update({
                       annual_leave_total: calc.totalDays,
                       annual_leave_remaining: calc.totalDays - (hr.annual_leave_used || 0),
                       annual_leave_basis: calc.description,
                     }).eq('id', hr.id)
                     if (error) { failed++; console.error(`[${emp.name}] update 실패:`, error); continue }
                   } else {
-                    const { error } = await supabase.from('hr_details').insert({
+                    const { error } = await supabase.from('employee_hr_details').insert({
                       employee_id: emp.id,
                       annual_leave_total: calc.totalDays,
                       annual_leave_used: 0,
@@ -427,6 +427,34 @@ export default function LeaveManagementPage() {
         )}
       </div>
 
+      {/* 부서별 탭 (관리자만, overview 탭에서) */}
+      {activeTab === 'overview' && isAdmin && deptNames.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1">
+          <button
+            onClick={() => setFilterDept('')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+              !filterDept ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            전체 ({employeeLeaveData.length})
+          </button>
+          {deptNames.map((d) => {
+            const count = employeeLeaveData.filter(e => getDeptName(e.department_id) === d).length
+            return (
+              <button
+                key={d}
+                onClick={() => setFilterDept(d)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                  filterDept === d ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {d} ({count})
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* ─── 연차 현황 그리드 (타일) ─────────────────────────── */}
       {activeTab === 'overview' && (
         filteredData.length === 0 ? (
@@ -480,12 +508,12 @@ export default function LeaveManagementPage() {
                               if (val === emp.totalAnnual) return
                               const hr = hrDetails.find(h => h.employee_id === emp.id)
                               if (hr) {
-                                await supabase.from('hr_details').update({
+                                await supabase.from('employee_hr_details').update({
                                   annual_leave_total: val,
                                   annual_leave_remaining: val - (hr.annual_leave_used || 0),
                                 }).eq('id', hr.id)
                               } else {
-                                await supabase.from('hr_details').insert({
+                                await supabase.from('employee_hr_details').insert({
                                   employee_id: emp.id, annual_leave_total: val, annual_leave_used: 0, annual_leave_remaining: val,
                                 })
                               }
@@ -506,7 +534,7 @@ export default function LeaveManagementPage() {
                               if (val === emp.usedAnnual) return
                               const hr = hrDetails.find(h => h.employee_id === emp.id)
                               if (hr) {
-                                await supabase.from('hr_details').update({
+                                await supabase.from('employee_hr_details').update({
                                   annual_leave_used: val,
                                   annual_leave_remaining: (hr.annual_leave_total || 0) - val,
                                 }).eq('id', hr.id)

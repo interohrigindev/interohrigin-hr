@@ -125,6 +125,7 @@ export default function ApprovalManagementPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<TabKey>('my_requests')
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterDept, setFilterDept] = useState<string>('') // 부서별 필터
 
   // Detail
   const [selectedDoc, setSelectedDoc] = useState<ApprovalDocument | null>(null)
@@ -456,8 +457,16 @@ export default function ApprovalManagementPage() {
         getDocTypeLabel(d.doc_type).toLowerCase().includes(q),
       )
     }
+    // 부서 필터
+    if (filterDept) {
+      result = result.filter((d) => {
+        const emp = allEmployees.find((e) => e.id === d.requester_id)
+        const deptName = emp?.department_id ? (departments.find(dep => dep.id === emp.department_id)?.name || '') : '미배정'
+        return deptName === filterDept
+      })
+    }
     return result
-  }, [documents, activeTab, searchQuery, stepsMap, profile?.id])
+  }, [documents, activeTab, searchQuery, stepsMap, profile?.id, filterDept, allEmployees, departments])
 
   /* ── Approval Actions ── */
 
@@ -869,6 +878,37 @@ export default function ApprovalManagementPage() {
           />
         </div>
       </div>
+
+      {/* 부서별 탭 (결재선 관리 탭 제외) */}
+      {activeTab !== 'template_manage' && isAdmin && (() => {
+        const deptNames = Array.from(new Set(
+          allEmployees.map(e => e.department_id ? (departments.find(d => d.id === e.department_id)?.name || '') : '미배정').filter(Boolean)
+        ))
+        if (deptNames.length === 0) return null
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto pb-1">
+            <button
+              onClick={() => setFilterDept('')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                !filterDept ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              전체
+            </button>
+            {deptNames.map((d) => (
+              <button
+                key={d}
+                onClick={() => setFilterDept(d)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                  filterDept === d ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* 결재선 관리 탭 */}
       {activeTab === 'template_manage' && (
@@ -1424,8 +1464,20 @@ const ROLE_OPTIONS = [
   { value: 'finance', label: '재무회계' },
 ]
 
+// 역할 → 자동 매칭할 직원 role 값
+const ROLE_EMPLOYEE_MATCH: Record<string, string[]> = {
+  leader: ['leader'],
+  executive: ['director', 'division_head'],
+  ceo: ['ceo'],
+  hr_admin: ['admin'],
+  finance: ['admin'],
+}
+
+interface EditStep { role: string; label: string; approver_ids?: string[] }
+
 function ApprovalTemplateManager({
   templates,
+  employees,
   onRefresh,
 }: {
   templates: ApprovalTemplate[]
@@ -1434,11 +1486,11 @@ function ApprovalTemplateManager({
 }) {
   const { toast } = useToast()
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editSteps, setEditSteps] = useState<{ role: string; label: string }[]>([])
+  const [editSteps, setEditSteps] = useState<EditStep[]>([])
 
   function startEdit(tmpl: ApprovalTemplate) {
     setEditingId(tmpl.id)
-    setEditSteps([...tmpl.steps])
+    setEditSteps([...(tmpl.steps as EditStep[])])
   }
 
   function cancelEdit() {
@@ -1457,7 +1509,7 @@ function ApprovalTemplateManager({
   }
 
   function addStep() {
-    setEditSteps([...editSteps, { role: 'leader', label: '팀장' }])
+    setEditSteps([...editSteps, { role: 'leader', label: '팀장', approver_ids: [] }])
   }
 
   function removeStep(idx: number) {
@@ -1466,6 +1518,24 @@ function ApprovalTemplateManager({
 
   function updateStep(idx: number, field: 'role' | 'label', value: string) {
     setEditSteps(editSteps.map((s, i) => i === idx ? { ...s, [field]: value } : s))
+  }
+
+  function toggleApprover(idx: number, empId: string) {
+    setEditSteps(editSteps.map((s, i) => {
+      if (i !== idx) return s
+      const current = s.approver_ids || []
+      const next = current.includes(empId)
+        ? current.filter(id => id !== empId)
+        : [...current, empId]
+      return { ...s, approver_ids: next }
+    }))
+  }
+
+  // 역할에 해당하는 직원 풀 가져오기
+  function getEmployeesForRole(role: string): Employee[] {
+    const matchRoles = ROLE_EMPLOYEE_MATCH[role] || []
+    if (matchRoles.length === 0) return employees
+    return employees.filter(e => e.role && matchRoles.includes(e.role))
   }
 
   // 양식별 이모지
@@ -1522,44 +1592,78 @@ function ApprovalTemplateManager({
                 {isEditing ? (
                   <div className="space-y-1.5">
                     <p className="text-[10px] text-gray-400 mb-1">드래그로 순서 변경</p>
-                    {editSteps.map((step, idx) => (
-                      <div
-                        key={idx}
-                        draggable
-                        onDragStart={(e) => { e.dataTransfer.setData('stepIdx', String(idx)) }}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault()
-                          const fromIdx = parseInt(e.dataTransfer.getData('stepIdx'))
-                          if (fromIdx === idx) return
-                          const newSteps = [...editSteps]
-                          const [moved] = newSteps.splice(fromIdx, 1)
-                          newSteps.splice(idx, 0, moved)
-                          setEditSteps(newSteps)
-                        }}
-                        className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 cursor-move hover:bg-gray-100 border border-transparent hover:border-brand-300 transition-colors"
-                      >
-                        <span className="text-gray-300 text-xs shrink-0">⋮⋮</span>
-                        <span className="text-xs font-bold text-brand-600 w-5 text-center shrink-0">{idx + 1}</span>
-                        <select
-                          value={step.role}
-                          onChange={(e) => updateStep(idx, 'role', e.target.value)}
-                          className="text-xs border border-gray-200 rounded px-2 py-1 shrink-0 bg-white"
+                    {editSteps.map((step, idx) => {
+                      const poolEmployees = getEmployeesForRole(step.role)
+                      const selectedIds = step.approver_ids || []
+                      return (
+                        <div
+                          key={idx}
+                          draggable
+                          onDragStart={(e) => { e.dataTransfer.setData('stepIdx', String(idx)) }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            const fromIdx = parseInt(e.dataTransfer.getData('stepIdx'))
+                            if (fromIdx === idx) return
+                            const newSteps = [...editSteps]
+                            const [moved] = newSteps.splice(fromIdx, 1)
+                            newSteps.splice(idx, 0, moved)
+                            setEditSteps(newSteps)
+                          }}
+                          className="bg-gray-50 rounded-lg p-2 space-y-2 hover:bg-gray-100 border border-transparent hover:border-brand-300 transition-colors"
                         >
-                          {ROLE_OPTIONS.map(r => (
-                            <option key={r.value} value={r.value}>{r.label}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={step.label}
-                          onChange={(e) => updateStep(idx, 'label', e.target.value)}
-                          className="text-xs border border-gray-200 rounded px-2 py-1 flex-1 min-w-0"
-                          placeholder="표시 이름"
-                        />
-                        <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
-                      </div>
-                    ))}
+                          {/* 역할 + 이름 */}
+                          <div className="flex items-center gap-2 cursor-move">
+                            <span className="text-gray-300 text-xs shrink-0">⋮⋮</span>
+                            <span className="text-xs font-bold text-brand-600 w-5 text-center shrink-0">{idx + 1}</span>
+                            <select
+                              value={step.role}
+                              onChange={(e) => updateStep(idx, 'role', e.target.value)}
+                              className="text-xs border border-gray-200 rounded px-2 py-1 shrink-0 bg-white"
+                            >
+                              {ROLE_OPTIONS.map(r => (
+                                <option key={r.value} value={r.value}>{r.label}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              value={step.label}
+                              onChange={(e) => updateStep(idx, 'label', e.target.value)}
+                              className="text-xs border border-gray-200 rounded px-2 py-1 flex-1 min-w-0"
+                              placeholder="표시 이름"
+                            />
+                            <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
+                          </div>
+                          {/* 직원 지정 */}
+                          <div className="ml-7">
+                            <p className="text-[10px] text-gray-500 mb-1">
+                              담당자 지정 {selectedIds.length > 0 && <span className="text-brand-600 font-semibold">({selectedIds.length}명)</span>}
+                              {selectedIds.length === 0 && <span className="text-gray-400"> — 미지정 시 역할로 자동 배정</span>}
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              {poolEmployees.length === 0 ? (
+                                <span className="text-[10px] text-gray-400">해당 역할의 직원이 없습니다</span>
+                              ) : poolEmployees.map(emp => {
+                                const selected = selectedIds.includes(emp.id)
+                                return (
+                                  <button
+                                    key={emp.id}
+                                    onClick={() => toggleApprover(idx, emp.id)}
+                                    className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                                      selected
+                                        ? 'bg-brand-500 text-white'
+                                        : 'bg-white border border-gray-200 text-gray-600 hover:border-brand-300'
+                                    }`}
+                                  >
+                                    {selected && '✓ '}{emp.name}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                     <button
                       onClick={addStep}
                       className="w-full mt-1 py-1.5 text-xs text-brand-600 hover:bg-brand-50 border border-dashed border-brand-300 rounded-lg font-medium"
@@ -1574,13 +1678,26 @@ function ApprovalTemplateManager({
                       <span className="text-[10px] font-bold text-gray-400 w-5 text-center">0</span>
                       <span className="text-xs font-medium text-gray-600">신청자</span>
                     </div>
-                    {tmpl.steps.map((step, idx) => (
-                      <div key={idx} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-brand-50 border-l-2 border-brand-400">
-                        <span className="text-[10px] font-bold text-brand-500 w-5 text-center">{idx + 1}</span>
-                        <span className="text-xs font-medium text-brand-800">{step.label}</span>
-                        <span className="text-[10px] text-gray-400 ml-auto">{step.role}</span>
-                      </div>
-                    ))}
+                    {tmpl.steps.map((step, idx) => {
+                      const stepData = step as EditStep
+                      const approverIds = stepData.approver_ids || []
+                      const approverNames = approverIds
+                        .map(id => employees.find(e => e.id === id)?.name)
+                        .filter(Boolean)
+                        .join(', ')
+                      return (
+                        <div key={idx} className="flex items-start gap-2 px-2 py-1.5 rounded-md bg-brand-50 border-l-2 border-brand-400">
+                          <span className="text-[10px] font-bold text-brand-500 w-5 text-center mt-0.5">{idx + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-brand-800">{step.label}</p>
+                            {approverNames && (
+                              <p className="text-[10px] text-gray-600 mt-0.5 truncate">👤 {approverNames}</p>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-gray-400 shrink-0 mt-0.5">{step.role}</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </CardContent>
