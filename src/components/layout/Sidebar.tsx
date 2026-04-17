@@ -41,7 +41,7 @@ import {
   // Clock, // 근태 메뉴 숨김으로 미사용
   FileCheck,
   Award,
-  Wallet,
+  // Wallet, // 급여관리 숨김으로 미사용
   BookOpen,
   Building,
   Mic,
@@ -210,7 +210,7 @@ const navGroups: NavGroup[] = [
       { to: '/admin/approval', label: '전자 결재', icon: <FileCheck className="h-4 w-4" /> },
       { to: '/admin/certificates', label: '증명서 발급', icon: <Award className="h-4 w-4" /> },
       { to: '/admin/organization', label: '조직도', icon: <Users className="h-4 w-4" /> },
-      { to: '/admin/payroll', label: '급여 관리', icon: <Wallet className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+      // { to: '/admin/payroll', label: '급여 관리', icon: <Wallet className="h-4 w-4" />, minRole: 'director' as EmployeeRole }, // 임시 숨김
       { to: '/admin/training', label: '교육 관리', icon: <BookOpen className="h-4 w-4" /> },
     ],
   },

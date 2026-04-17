@@ -110,6 +110,7 @@ export default function LeaveManagementPage() {
   // 결재라인
   const [reqLeaderId, setReqLeaderId] = useState('')
   const [reqDirectorId, setReqDirectorId] = useState('')
+  const [leaveTemplate, setLeaveTemplate] = useState<{ steps: { role: string; label: string }[] } | null>(null)
   const [saving, setSaving] = useState(false)
 
   // 결재라인 직원 목록 (역할별 필터)
@@ -118,6 +119,12 @@ export default function LeaveManagementPage() {
   const ceo = useMemo(() => allEmployees.find((e) => e.role === 'ceo'), [allEmployees])
 
   useEffect(() => { fetchData() }, [profile?.id])
+
+  // 연차 결재선 템플릿 로드 (고정된 결재선)
+  useEffect(() => {
+    supabase.from('approval_templates').select('steps').eq('doc_type', 'leave').eq('is_active', true).maybeSingle()
+      .then(({ data }) => { if (data?.steps) setLeaveTemplate(data as { steps: { role: string; label: string }[] }) })
+  }, [])
 
   async function fetchData() {
     if (!profile?.id) return
@@ -299,30 +306,49 @@ export default function LeaveManagementPage() {
         <div className="flex gap-2 flex-wrap">
           {isAdmin && (
             <Button variant="outline" onClick={async () => {
-              // 입사일 기반 연차 자동 계산 + hr_details 일괄 업데이트
+              if (employees.length === 0) { toast('직원 데이터가 없습니다.', 'error'); return }
+              const missingHireDate = employees.filter(e => !e.hire_date)
+              toast('연차 자동 계산 중...', 'info')
+
               let updated = 0
+              let failed = 0
               for (const emp of employees) {
                 if (!emp.hire_date) continue
-                const calc = calculateAnnualLeave(emp.hire_date)
-                const hr = hrDetails.find(h => h.employee_id === emp.id)
-                if (hr) {
-                  await supabase.from('hr_details').update({
-                    annual_leave_total: calc.totalDays,
-                    annual_leave_remaining: calc.totalDays - (hr.annual_leave_used || 0),
-                    annual_leave_basis: calc.description,
-                  }).eq('id', hr.id)
-                } else {
-                  await supabase.from('hr_details').insert({
-                    employee_id: emp.id,
-                    annual_leave_total: calc.totalDays,
-                    annual_leave_used: 0,
-                    annual_leave_remaining: calc.totalDays,
-                    annual_leave_basis: calc.description,
-                  })
+                try {
+                  const calc = calculateAnnualLeave(emp.hire_date)
+                  const hr = hrDetails.find(h => h.employee_id === emp.id)
+                  if (hr) {
+                    const { error } = await supabase.from('hr_details').update({
+                      annual_leave_total: calc.totalDays,
+                      annual_leave_remaining: calc.totalDays - (hr.annual_leave_used || 0),
+                      annual_leave_basis: calc.description,
+                    }).eq('id', hr.id)
+                    if (error) { failed++; console.error(`[${emp.name}] update 실패:`, error); continue }
+                  } else {
+                    const { error } = await supabase.from('hr_details').insert({
+                      employee_id: emp.id,
+                      annual_leave_total: calc.totalDays,
+                      annual_leave_used: 0,
+                      annual_leave_remaining: calc.totalDays,
+                      annual_leave_basis: calc.description,
+                    })
+                    if (error) { failed++; console.error(`[${emp.name}] insert 실패:`, error); continue }
+                  }
+                  updated++
+                } catch (err) {
+                  failed++
+                  console.error(`[${emp.name}] 계산 실패:`, err)
                 }
-                updated++
               }
-              toast(`${updated}명의 연차가 입사일 기준으로 자동 계산되었습니다.`, 'success')
+
+              const missingMsg = missingHireDate.length > 0 ? ` (입사일 없음: ${missingHireDate.length}명)` : ''
+              if (failed > 0) {
+                toast(`완료: ${updated}명 | 실패: ${failed}명${missingMsg}`, 'error')
+              } else if (updated === 0) {
+                toast(`계산 대상 없음${missingMsg}. 직원 설정에서 입사일을 등록하세요.`, 'error')
+              } else {
+                toast(`${updated}명 연차 자동 계산 완료${missingMsg}`, 'success')
+              }
               fetchData()
             }}>
               <CalendarPlus className="h-4 w-4 mr-1" /> 연차 자동 계산
@@ -401,51 +427,104 @@ export default function LeaveManagementPage() {
         )}
       </div>
 
-      {/* ─── 연차 현황 테이블 ─────────────────────────── */}
+      {/* ─── 연차 현황 그리드 (타일) ─────────────────────────── */}
       {activeTab === 'overview' && (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50/80">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500 text-xs">이름</th>
-                    <th className="text-left py-3 px-3 font-medium text-gray-500 text-xs">부서</th>
-                    <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">총 연차</th>
-                    <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">사용</th>
-                    <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">잔여</th>
-                    <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">소진율</th>
-                    <th className="text-center py-3 px-3 font-medium text-gray-500 text-xs">상태</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredData.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-gray-400">연차 데이터가 없습니다</td></tr>
-                  ) : filteredData.map((emp) => {
-                    const isWarning = emp.remainingAnnual > 5 && emp.usageRate < 50
-                    const isUrgent = emp.remainingAnnual > 5 && emp.usageRate < 30
-                    return (
-                      <tr key={emp.id} className={`border-b border-gray-100 hover:bg-gray-50/50 ${isUrgent ? 'bg-red-50/50' : isWarning ? 'bg-amber-50/30' : ''}`}>
-                        <td className="py-2.5 px-4"><div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-700">{emp.name[0]}</div><span className="font-medium text-gray-900">{emp.name}</span></div></td>
-                        <td className="py-2.5 px-3 text-xs text-gray-600">{getDeptName(emp.department_id)}</td>
-                        <td className="py-2.5 px-3 text-center font-medium text-gray-900">{emp.totalAnnual}</td>
-                        <td className="py-2.5 px-3 text-center text-gray-600">{emp.usedAnnual}</td>
-                        <td className="py-2.5 px-3 text-center font-bold text-blue-600">{emp.remainingAnnual}</td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-1.5 justify-center">
-                            <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${emp.usageRate >= 80 ? 'bg-emerald-500' : emp.usageRate >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`} style={{ width: `${emp.usageRate}%` }} /></div>
-                            <span className="text-[10px] text-gray-500 w-8 text-right">{emp.usageRate}%</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-center">{isUrgent ? <Badge variant="danger" className="text-[10px]">촉진 필요</Badge> : isWarning ? <Badge variant="warning" className="text-[10px]">주의</Badge> : emp.usageRate >= 80 ? <Badge variant="success" className="text-[10px]">양호</Badge> : <Badge variant="default" className="text-[10px]">정상</Badge>}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+        filteredData.length === 0 ? (
+          <Card><CardContent className="py-12 text-center text-gray-400">연차 데이터가 없습니다</CardContent></Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {filteredData.map((emp) => {
+              const isWarning = emp.remainingAnnual > 5 && emp.usageRate < 50
+              const isUrgent = emp.remainingAnnual > 5 && emp.usageRate < 30
+              return (
+                <Card
+                  key={emp.id}
+                  className={`${isUrgent ? 'border-red-200 bg-red-50/30' : isWarning ? 'border-amber-200 bg-amber-50/20' : 'hover:shadow-sm'} transition-shadow`}
+                >
+                  <CardContent className="p-4">
+                    {/* 상단: 이름 + 상태 */}
+                    <div className="flex items-center justify-between mb-3 gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">{emp.name[0]}</div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 text-sm truncate">{emp.name}</p>
+                          <p className="text-[10px] text-gray-500 truncate">{getDeptName(emp.department_id)}</p>
+                        </div>
+                      </div>
+                      {isUrgent ? <Badge variant="danger" className="text-[10px] shrink-0">촉진 필요</Badge> : isWarning ? <Badge variant="warning" className="text-[10px] shrink-0">주의</Badge> : emp.usageRate >= 80 ? <Badge variant="success" className="text-[10px] shrink-0">양호</Badge> : <Badge variant="default" className="text-[10px] shrink-0">정상</Badge>}
+                    </div>
+
+                    {/* 중단: 잔여 큰 숫자 + 진행률 */}
+                    <div className="mb-3">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-blue-600">{emp.remainingAnnual}</span>
+                        <span className="text-xs text-gray-400">/ {emp.totalAnnual}일 잔여</span>
+                      </div>
+                      <div className="mt-1.5">
+                        <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${emp.usageRate >= 80 ? 'bg-emerald-500' : emp.usageRate >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`} style={{ width: `${emp.usageRate}%` }} />
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-0.5 text-right">소진율 {emp.usageRate}%</p>
+                      </div>
+                    </div>
+
+                    {/* 하단: 총연차 / 사용 수정 */}
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                      <div>
+                        <p className="text-[10px] text-gray-400 mb-0.5">총 연차</p>
+                        {isAdmin ? (
+                          <input
+                            type="number" defaultValue={emp.totalAnnual} min="0" max="25"
+                            onBlur={async (e) => {
+                              const val = parseInt(e.target.value) || 0
+                              if (val === emp.totalAnnual) return
+                              const hr = hrDetails.find(h => h.employee_id === emp.id)
+                              if (hr) {
+                                await supabase.from('hr_details').update({
+                                  annual_leave_total: val,
+                                  annual_leave_remaining: val - (hr.annual_leave_used || 0),
+                                }).eq('id', hr.id)
+                              } else {
+                                await supabase.from('hr_details').insert({
+                                  employee_id: emp.id, annual_leave_total: val, annual_leave_used: 0, annual_leave_remaining: val,
+                                })
+                              }
+                              toast(`${emp.name} 총연차 ${val}일`, 'success')
+                              fetchData()
+                            }}
+                            className="w-full px-1.5 py-0.5 text-center text-sm border border-gray-200 rounded hover:border-blue-400 focus:outline-none focus:border-blue-500"
+                          />
+                        ) : <p className="text-sm font-medium text-gray-900">{emp.totalAnnual}일</p>}
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 mb-0.5">사용</p>
+                        {isAdmin ? (
+                          <input
+                            type="number" defaultValue={emp.usedAnnual} min="0"
+                            onBlur={async (e) => {
+                              const val = parseInt(e.target.value) || 0
+                              if (val === emp.usedAnnual) return
+                              const hr = hrDetails.find(h => h.employee_id === emp.id)
+                              if (hr) {
+                                await supabase.from('hr_details').update({
+                                  annual_leave_used: val,
+                                  annual_leave_remaining: (hr.annual_leave_total || 0) - val,
+                                }).eq('id', hr.id)
+                                toast(`${emp.name} 사용 ${val}일`, 'success')
+                                fetchData()
+                              }
+                            }}
+                            className="w-full px-1.5 py-0.5 text-center text-sm border border-gray-200 rounded hover:border-blue-400 focus:outline-none focus:border-blue-500"
+                          />
+                        ) : <p className="text-sm font-medium text-gray-600">{emp.usedAnnual}일</p>}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )
       )}
 
       {/* ─── 신청/결재 관리 ───────────────────────────── */}
@@ -550,30 +629,47 @@ export default function LeaveManagementPage() {
           <Input label="일수" type="number" value={String(reqDays)} onChange={(e) => setReqDays(Number(e.target.value))} min="0.5" step="0.5" />
           <Input label="사유 (선택)" value={reqReason} onChange={(e) => setReqReason(e.target.value)} placeholder="사유를 입력하세요" />
 
-          {/* 결재라인 설정 */}
-          <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50">
-            <h4 className="text-sm font-bold text-gray-700">결재라인 설정</h4>
-            <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
-              <span className="px-2 py-1 bg-white rounded-full border border-gray-200 font-medium text-gray-700">본인</span>
-              <ChevronRight className="h-3 w-3 text-gray-300" />
-              <span className="px-2 py-1 bg-blue-50 rounded-full border border-blue-200 font-medium text-blue-700">리더</span>
-              <ChevronRight className="h-3 w-3 text-gray-300" />
-              <span className="px-2 py-1 bg-violet-50 rounded-full border border-violet-200 font-medium text-violet-700">이사 (선택)</span>
-              <ChevronRight className="h-3 w-3 text-gray-300" />
-              <span className="px-2 py-1 bg-amber-50 rounded-full border border-amber-200 font-medium text-amber-700">대표</span>
+          {/* 결재라인 — 관리자가 지정한 고정 템플릿 */}
+          <div className="border border-blue-200 rounded-lg p-4 space-y-3 bg-blue-50/30">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-blue-800">🔒 고정 결재라인</h4>
+              <span className="text-[10px] text-blue-500">관리자 설정 — 변경 불가</span>
             </div>
 
-            <Select label="결재 리더 *" value={reqLeaderId} onChange={(e) => setReqLeaderId(e.target.value)}
-              options={[{ value: '', label: '리더를 선택하세요' }, ...leaders.map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role})` }))]} />
-
-            <Select label="결재 이사 (선택)" value={reqDirectorId} onChange={(e) => setReqDirectorId(e.target.value)}
-              options={[{ value: '', label: '이사 없이 대표에게 바로' }, ...directors.map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role})` }))]} />
-
-            {ceo && (
-              <div className="text-xs text-gray-500">
-                최종 결재: <span className="font-medium text-gray-700">{ceo.name}</span> (대표)
+            {/* 템플릿 기반 고정 결재선 표시 */}
+            {leaveTemplate ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white border border-blue-200">
+                  <span className="text-[10px] font-bold text-blue-400 w-5 text-center">0</span>
+                  <span className="text-xs font-medium text-gray-700">본인 (신청)</span>
+                </div>
+                {leaveTemplate.steps.map((step, idx) => (
+                  <div key={idx} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
+                    <span className="text-[10px] font-bold text-blue-500 w-5 text-center">{idx + 1}</span>
+                    <span className="text-xs font-medium text-blue-800">{step.label}</span>
+                    <span className="text-[10px] text-blue-400 ml-auto">{step.role}</span>
+                  </div>
+                ))}
               </div>
+            ) : (
+              <p className="text-xs text-gray-500">연차 결재선 템플릿이 설정되지 않았습니다. 관리자에게 문의하세요.</p>
             )}
+
+            {/* 각 단계별 담당자 자동 선택 — 직원 선택 UI는 유지 */}
+            <div className="pt-2 border-t border-blue-200 space-y-2">
+              <p className="text-[11px] text-blue-700 font-medium">👤 각 단계별 담당자 지정</p>
+              <Select label="1단계 담당 (리더) *" value={reqLeaderId} onChange={(e) => setReqLeaderId(e.target.value)}
+                options={[{ value: '', label: '리더를 선택하세요' }, ...leaders.map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role})` }))]} />
+              {(leaveTemplate?.steps.length ?? 0) > 1 && (
+                <Select label="2단계 담당 (이사/임원)" value={reqDirectorId} onChange={(e) => setReqDirectorId(e.target.value)}
+                  options={[{ value: '', label: '없음' }, ...directors.map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role})` }))]} />
+              )}
+              {ceo && (
+                <div className="text-xs text-gray-500">
+                  최종 결재: <span className="font-medium text-gray-700">{ceo.name}</span> (대표)
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-2">

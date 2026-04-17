@@ -82,28 +82,56 @@ export default function CertificatesPage() {
   }, [profile?.id])
 
   async function loadSealImage() {
-    const { data } = await supabase.from('company_settings').select('value').eq('key', 'seal_image_url').maybeSingle()
-    if (data?.value) setSealImageUrl(data.value)
+    // 1순위: company_settings DB
+    try {
+      const { data, error } = await supabase.from('company_settings').select('value').eq('key', 'seal_image_url').maybeSingle()
+      if (!error && data?.value) { setSealImageUrl(data.value); return }
+    } catch { /* 테이블 없으면 localStorage 폴백 */ }
+    // 2순위: localStorage
+    const cached = localStorage.getItem('company_seal_url')
+    if (cached) setSealImageUrl(cached)
   }
 
   async function handleSealUpload(file: File) {
     setSealUploading(true)
-    const path = `company/seal_${Date.now()}.${file.name.split('.').pop()}`
-    const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
-    if (uploadErr) { toast('인감 업로드 실패: ' + uploadErr.message, 'error'); setSealUploading(false); return }
+    const ext = file.name.split('.').pop() || 'png'
+    const path = `company/seal_${Date.now()}.${ext}`
+
+    // 1) Storage 업로드
+    const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, cacheControl: '0' })
+    if (uploadErr) {
+      toast('인감 업로드 실패: ' + uploadErr.message, 'error')
+      setSealUploading(false)
+      return
+    }
 
     const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
 
-    // company_settings에 저장 (upsert)
-    const { data: existing } = await supabase.from('company_settings').select('id').eq('key', 'seal_image_url').maybeSingle()
-    if (existing) {
-      await supabase.from('company_settings').update({ value: publicUrl }).eq('id', existing.id)
-    } else {
-      await supabase.from('company_settings').insert({ key: 'seal_image_url', value: publicUrl })
-    }
+    // 2) DB 저장 시도 (실패해도 localStorage에는 저장)
+    let dbOk = false
+    try {
+      const { data: existing, error: selErr } = await supabase.from('company_settings').select('id').eq('key', 'seal_image_url').maybeSingle()
+      if (!selErr) {
+        if (existing) {
+          const { error: upErr } = await supabase.from('company_settings').update({ value: publicUrl }).eq('id', existing.id)
+          if (!upErr) dbOk = true
+        } else {
+          const { error: insErr } = await supabase.from('company_settings').insert({ key: 'seal_image_url', value: publicUrl })
+          if (!insErr) dbOk = true
+        }
+      }
+    } catch { /* 테이블 없을 수 있음 */ }
+
+    // 3) localStorage 백업 (DB 실패 시에도 PDF에 적용되도록)
+    localStorage.setItem('company_seal_url', publicUrl)
     setSealImageUrl(publicUrl)
     setSealUploading(false)
-    toast('인감 이미지가 등록되었습니다.', 'success')
+
+    if (dbOk) {
+      toast('인감 이미지가 등록되었습니다.', 'success')
+    } else {
+      toast('인감 업로드 완료 (브라우저 로컬 저장) — DB 테이블 생성 필요', 'info')
+    }
   }
 
   async function fetchData() {
@@ -263,16 +291,17 @@ export default function CertificatesPage() {
     pdf.text('대표이사', centerX, y, { align: 'center' })
 
     // 인감 이미지 적용 (스캔본 등록 시) 또는 플레이스홀더
-    if (sealImageUrl) {
+    const sealUrl = sealImageUrl || localStorage.getItem('company_seal_url')
+    if (sealUrl) {
       try {
-        const sealRes = await fetch(sealImageUrl)
+        const sealRes = await fetch(sealUrl)
         const sealBlob = await sealRes.blob()
         const sealBase64 = await new Promise<string>((resolve) => {
           const reader = new FileReader()
           reader.onloadend = () => resolve(reader.result as string)
           reader.readAsDataURL(sealBlob)
         })
-        const ext = sealImageUrl.split('.').pop()?.toLowerCase()
+        const ext = sealUrl.split('.').pop()?.toLowerCase()
         const imgFormat = ext === 'png' ? 'PNG' : 'JPEG'
         pdf.addImage(sealBase64, imgFormat, centerX + 18, y - 16, 24, 24)
       } catch {

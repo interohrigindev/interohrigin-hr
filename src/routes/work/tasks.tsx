@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Select } from '@/components/ui/Select'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
@@ -372,10 +373,10 @@ export default function TaskManage() {
             onChange={(e) => setForm((p) => ({ ...p, project_id: e.target.value }))}
             options={[{ value: '', label: '선택 안 함' }, ...projects.map((pr) => ({ value: pr.id, label: pr.name }))]}
           />
-          <Select
+          <SearchableSelect
             label="담당자"
             value={form.assignee_id}
-            onChange={(e) => setForm((p) => ({ ...p, assignee_id: e.target.value }))}
+            onChange={(v) => setForm((p) => ({ ...p, assignee_id: v }))}
             options={[{ value: '', label: '선택 안 함' }, ...employees.map((em) => ({ value: em.id, label: em.name }))]}
           />
           <div className="grid grid-cols-2 gap-4">

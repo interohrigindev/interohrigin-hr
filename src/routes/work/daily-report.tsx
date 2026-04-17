@@ -118,6 +118,8 @@ export default function DailyReportPage() {
   const [approvalDirectorId, setApprovalDirectorId] = useState('')
   const [approvalSending, setApprovalSending] = useState(false)
   const [allEmployees, setAllEmployees] = useState<{ id: string; name: string; role: string; department_id: string | null }[]>([])
+  // 이 보고서가 이미 결재 전송되었는지 체크
+  const [alreadySubmitted, setAlreadySubmitted] = useState(false)
 
   const employeeId = profile?.id
 
@@ -126,6 +128,19 @@ export default function DailyReportPage() {
     supabase.from('employees').select('id, name, role, department_id').eq('is_active', true).order('name')
       .then(({ data }) => { if (data) setAllEmployees(data) })
   }, [])
+
+  // 현재 보고서가 이미 결재 전송되었는지 체크
+  useEffect(() => {
+    if (!report?.id) { setAlreadySubmitted(false); return }
+    supabase.from('approval_documents')
+      .select('id')
+      .like('title', `%${selectedDate}%`)
+      .eq('requester_id', profile?.id || '')
+      .eq('doc_type', 'general')
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setAlreadySubmitted(!!data))
+  }, [report?.id, selectedDate, profile?.id])
 
   const fetchData = useCallback(async () => {
     if (!employeeId) return
@@ -475,9 +490,15 @@ ${completedText || '아직 없음'}
             저장
           </Button>
           {report?.id && (
-            <Button variant="outline" onClick={() => setApprovalDialogOpen(true)}>
-              <Send className="h-4 w-4" /> 결재 전송
-            </Button>
+            alreadySubmitted ? (
+              <Badge variant="success" className="px-3 py-2">
+                <Send className="h-3.5 w-3.5 mr-1" /> 결재 전송됨
+              </Badge>
+            ) : (
+              <Button variant="outline" onClick={() => setApprovalDialogOpen(true)}>
+                <Send className="h-4 w-4" /> 결재 전송
+              </Button>
+            )
           )}
         </div>
       </div>
@@ -707,7 +728,8 @@ ${completedText || '아직 없음'}
                   )
                   if (stepErr) throw stepErr
 
-                  toast('결재가 전송되었습니다.', 'success')
+                  toast('결재가 전송되었습니다. 결재선은 변경할 수 없습니다.', 'success')
+                  setAlreadySubmitted(true)
                   setApprovalDialogOpen(false)
                 } catch (err: unknown) {
                   toast('결재 전송 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')

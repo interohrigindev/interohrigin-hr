@@ -876,7 +876,7 @@ export default function ApprovalManagementPage() {
       )}
 
       {/* Document List */}
-      {activeTab !== 'template_manage' && <div className="space-y-2">
+      {activeTab !== 'template_manage' && <div>
         {filteredDocuments.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center text-gray-400 text-sm">
@@ -884,60 +884,64 @@ export default function ApprovalManagementPage() {
             </CardContent>
           </Card>
         ) : (
-          filteredDocuments.map((doc) => {
-            const cfg = STATUS_CONFIG[doc.status] || STATUS_CONFIG.submitted
-            const steps = stepsMap[doc.id] || []
-            const currentStepData = steps.find((s) => s.step_order === doc.current_step)
-            const isMyTurn =
-              currentStepData?.approver_id === profile?.id &&
-              currentStepData?.action === 'pending' &&
-              (doc.status === 'submitted' || doc.status === 'in_review')
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredDocuments.map((doc) => {
+              const cfg = STATUS_CONFIG[doc.status] || STATUS_CONFIG.submitted
+              const steps = stepsMap[doc.id] || []
+              const currentStepData = steps.find((s) => s.step_order === doc.current_step)
+              const isMyTurn =
+                currentStepData?.approver_id === profile?.id &&
+                currentStepData?.action === 'pending' &&
+                (doc.status === 'submitted' || doc.status === 'in_review')
 
-            return (
-              <Card
-                key={doc.id}
-                className={`border-l-4 ${cfg.border} cursor-pointer hover:shadow-md transition-shadow ${
-                  isMyTurn ? 'ring-2 ring-blue-200 bg-blue-50/20' : ''
-                }`}
-                onClick={() => setSelectedDoc(doc)}
-              >
-                <CardContent className="py-3 px-4">
-                  <div className="flex items-center justify-between gap-4 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm">{getDocTypeIcon(doc.doc_type)}</span>
-                        <span className="font-semibold text-gray-900 truncate">{doc.title}</span>
-                        <Badge variant={cfg.badge} className="text-[10px] shrink-0">{cfg.label}</Badge>
-                        {isMyTurn && (
-                          <Badge variant="info" className="text-[10px] shrink-0 animate-pulse">내 차례</Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        {doc.doc_number && (
-                          <span className="font-mono text-[10px] text-gray-400">{doc.doc_number}</span>
-                        )}
-                        <span className="flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          {getEmpName(doc.requester_id)}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <FileCheck className="h-3 w-3" />
-                          {getDocTypeLabel(doc.doc_type)}
-                        </span>
-                        {doc.amount != null && (
-                          <span className="font-medium text-gray-700">{fmtAmount(doc.amount)}</span>
-                        )}
-                        <span>{fmtDate(doc.created_at)}</span>
+              return (
+                <Card
+                  key={doc.id}
+                  className={`border-l-4 ${cfg.border} cursor-pointer hover:shadow-md transition-shadow ${
+                    isMyTurn ? 'ring-2 ring-blue-200 bg-blue-50/20' : ''
+                  }`}
+                  onClick={() => setSelectedDoc(doc)}
+                >
+                  <CardContent className="py-3 px-4 flex flex-col h-full">
+                    {/* 상단: 아이콘 + 제목 + 상태 */}
+                    <div className="flex items-start gap-2 mb-2">
+                      <span className="text-lg shrink-0">{getDocTypeIcon(doc.doc_type)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm line-clamp-2 leading-snug">{doc.title}</p>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <Badge variant={cfg.badge} className="text-[10px]">{cfg.label}</Badge>
+                          {isMyTurn && <Badge variant="info" className="text-[10px] animate-pulse">내 차례</Badge>}
+                        </div>
                       </div>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
-                  </div>
-                  {/* Step pills */}
-                  {renderStepPills(doc.id, doc)}
-                </CardContent>
-              </Card>
-            )
-          })
+
+                    {/* 중간: 메타 정보 (세로) */}
+                    <div className="space-y-1 text-xs text-gray-500 mb-2 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <User className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{getEmpName(doc.requester_id)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <FileCheck className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{getDocTypeLabel(doc.doc_type)}</span>
+                      </div>
+                      {doc.amount != null && (
+                        <div className="flex items-center gap-1.5 text-gray-700 font-medium">
+                          💰 {fmtAmount(doc.amount)}
+                        </div>
+                      )}
+                      <div className="text-[10px] text-gray-400">{fmtDate(doc.created_at)}</div>
+                    </div>
+
+                    {/* 하단: Step pills */}
+                    <div className="pt-2 border-t border-gray-100">
+                      {renderStepPills(doc.id, doc)}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
         )}
       </div>}
 
@@ -1477,79 +1481,113 @@ function ApprovalTemplateManager({
         <p className="text-sm text-gray-500">양식별 결재선 템플릿을 수정할 수 있습니다.</p>
       </div>
 
-      {templates.map((tmpl) => {
-        const isEditing = editingId === tmpl.id
+      {/* 타일링 그리드 (2열) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {templates.map((tmpl) => {
+          const isEditing = editingId === tmpl.id
 
-        return (
-          <Card key={tmpl.id} className={isEditing ? 'ring-2 ring-brand-400' : ''}>
-            <CardContent className="py-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{typeIcon[tmpl.doc_type] || '📋'}</span>
-                  <h3 className="font-semibold text-gray-900 text-sm">{tmpl.name}</h3>
-                  <Badge variant={tmpl.is_active ? 'success' : 'default'}>
-                    {tmpl.is_active ? '활성' : '비활성'}
-                  </Badge>
-                  {tmpl.condition_field && (
+          return (
+            <Card key={tmpl.id} className={isEditing ? 'ring-2 ring-brand-400' : ''}>
+              <CardContent className="py-4">
+                {/* 헤더 */}
+                <div className="flex items-start justify-between mb-3 gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <span className="text-xl">{typeIcon[tmpl.doc_type] || '📋'}</span>
+                    <h3 className="font-semibold text-gray-900 text-sm truncate">{tmpl.name}</h3>
+                    <Badge variant={tmpl.is_active ? 'success' : 'default'} className="text-[10px]">
+                      {tmpl.is_active ? '활성' : '비활성'}
+                    </Badge>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    {isEditing ? (
+                      <>
+                        <Button size="sm" onClick={() => saveEdit(tmpl.id)}>저장</Button>
+                        <Button size="sm" variant="outline" onClick={cancelEdit}>취소</Button>
+                      </>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => startEdit(tmpl)}>수정</Button>
+                    )}
+                  </div>
+                </div>
+
+                {tmpl.condition_field && (
+                  <div className="mb-2">
                     <Badge variant="info" className="text-[10px]">
                       조건: {tmpl.condition_field} {tmpl.condition_operator} {tmpl.condition_value}
                     </Badge>
-                  )}
-                </div>
-                <div className="flex gap-1">
-                  {isEditing ? (
-                    <>
-                      <Button size="sm" onClick={() => saveEdit(tmpl.id)}>저장</Button>
-                      <Button size="sm" variant="outline" onClick={cancelEdit}>취소</Button>
-                    </>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => startEdit(tmpl)}>수정</Button>
-                  )}
-                </div>
-              </div>
+                  </div>
+                )}
 
-              {/* 결재 흐름 */}
-              {isEditing ? (
-                <div className="space-y-2">
-                  {editSteps.map((step, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
-                      <span className="text-xs text-gray-400 w-6 text-center">{idx + 1}</span>
-                      <select
-                        value={step.role}
-                        onChange={(e) => updateStep(idx, 'role', e.target.value)}
-                        className="text-xs border border-gray-200 rounded px-2 py-1"
+                {/* 편집 모드: 세로 리스트 + 드래그 */}
+                {isEditing ? (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-gray-400 mb-1">드래그로 순서 변경</p>
+                    {editSteps.map((step, idx) => (
+                      <div
+                        key={idx}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData('stepIdx', String(idx)) }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const fromIdx = parseInt(e.dataTransfer.getData('stepIdx'))
+                          if (fromIdx === idx) return
+                          const newSteps = [...editSteps]
+                          const [moved] = newSteps.splice(fromIdx, 1)
+                          newSteps.splice(idx, 0, moved)
+                          setEditSteps(newSteps)
+                        }}
+                        className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 cursor-move hover:bg-gray-100 border border-transparent hover:border-brand-300 transition-colors"
                       >
-                        {ROLE_OPTIONS.map(r => (
-                          <option key={r.value} value={r.value}>{r.label}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="text"
-                        value={step.label}
-                        onChange={(e) => updateStep(idx, 'label', e.target.value)}
-                        className="text-xs border border-gray-200 rounded px-2 py-1 flex-1"
-                        placeholder="표시 이름"
-                      />
-                      <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                        <span className="text-gray-300 text-xs shrink-0">⋮⋮</span>
+                        <span className="text-xs font-bold text-brand-600 w-5 text-center shrink-0">{idx + 1}</span>
+                        <select
+                          value={step.role}
+                          onChange={(e) => updateStep(idx, 'role', e.target.value)}
+                          className="text-xs border border-gray-200 rounded px-2 py-1 shrink-0 bg-white"
+                        >
+                          {ROLE_OPTIONS.map(r => (
+                            <option key={r.value} value={r.value}>{r.label}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={step.label}
+                          onChange={(e) => updateStep(idx, 'label', e.target.value)}
+                          className="text-xs border border-gray-200 rounded px-2 py-1 flex-1 min-w-0"
+                          placeholder="표시 이름"
+                        />
+                        <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={addStep}
+                      className="w-full mt-1 py-1.5 text-xs text-brand-600 hover:bg-brand-50 border border-dashed border-brand-300 rounded-lg font-medium"
+                    >
+                      + 단계 추가
+                    </button>
+                  </div>
+                ) : (
+                  /* 보기 모드: 세로 흐름 (가로 밀림 방지) */
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-gray-50">
+                      <span className="text-[10px] font-bold text-gray-400 w-5 text-center">0</span>
+                      <span className="text-xs font-medium text-gray-600">신청자</span>
                     </div>
-                  ))}
-                  <button onClick={addStep} className="text-xs text-brand-600 hover:text-brand-700 font-medium">+ 단계 추가</button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs text-gray-500">신청자</span>
-                  {tmpl.steps.map((step, idx) => (
-                    <span key={idx} className="flex items-center gap-1.5">
-                      <span className="text-gray-300">→</span>
-                      <Badge variant="default" className="text-[11px]">{step.label}</Badge>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )
-      })}
+                    {tmpl.steps.map((step, idx) => (
+                      <div key={idx} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-brand-50 border-l-2 border-brand-400">
+                        <span className="text-[10px] font-bold text-brand-500 w-5 text-center">{idx + 1}</span>
+                        <span className="text-xs font-medium text-brand-800">{step.label}</span>
+                        <span className="text-[10px] text-gray-400 ml-auto">{step.role}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
 
       {templates.length === 0 && (
         <Card>

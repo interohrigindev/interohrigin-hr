@@ -37,6 +37,7 @@ export default function NewProjectPage() {
   const [projectName, setProjectName] = useState('')
   const [launchDate, setLaunchDate] = useState('')
   const [assigneeIds, setAssigneeIds] = useState<string[]>([])
+  const [assigneeSearch, setAssigneeSearch] = useState('')
   const [sharedDepts, setSharedDepts] = useState<string[]>([])
   const [managerId, setManagerId] = useState('')
   const [leaderId, setLeaderId] = useState('')
@@ -552,33 +553,49 @@ export default function NewProjectPage() {
               />
             </div>
 
-            {/* 담당자 — 부서별 그룹 */}
+            {/* 담당자 — 부서별 그룹 + 검색 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">담당자 *</label>
+              <input
+                type="text"
+                placeholder="이름 또는 부서 검색..."
+                value={assigneeSearch}
+                onChange={(e) => setAssigneeSearch(e.target.value)}
+                className="w-full px-3 py-1.5 mb-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:border-brand-400"
+              />
               <div className="max-h-52 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-2">
-                {Object.entries(employeesByDept).map(([deptName, emps]) => (
-                  <div key={deptName}>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 bg-gray-50 rounded">
-                      {deptName} ({emps.length})
-                    </p>
-                    <div className="space-y-0.5 mt-1">
-                      {emps.map((emp) => (
-                        <label key={emp.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={assigneeIds.includes(emp.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) setAssigneeIds((prev) => [...prev, emp.id])
-                              else setAssigneeIds((prev) => prev.filter((id) => id !== emp.id))
-                            }}
-                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                          />
-                          <span className="text-sm text-gray-700">{emp.name}</span>
-                        </label>
-                      ))}
+                {Object.entries(employeesByDept)
+                  .map(([deptName, emps]) => {
+                    const q = assigneeSearch.toLowerCase()
+                    const filteredEmps = q
+                      ? emps.filter(e => e.name.toLowerCase().includes(q) || deptName.toLowerCase().includes(q))
+                      : emps
+                    return { deptName, emps: filteredEmps }
+                  })
+                  .filter(g => g.emps.length > 0)
+                  .map(({ deptName, emps }) => (
+                    <div key={deptName}>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 py-1 bg-gray-50 rounded">
+                        {deptName} ({emps.length})
+                      </p>
+                      <div className="space-y-0.5 mt-1">
+                        {emps.map((emp) => (
+                          <label key={emp.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={assigneeIds.includes(emp.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) setAssigneeIds((prev) => [...prev, emp.id])
+                                else setAssigneeIds((prev) => prev.filter((id) => id !== emp.id))
+                              }}
+                              className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                            />
+                            <span className="text-sm text-gray-700">{emp.name}</span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
               {assigneeIds.length > 0 && (
                 <p className="text-xs text-gray-500 mt-1">{assigneeIds.length}명 선택</p>
