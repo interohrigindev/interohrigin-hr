@@ -162,9 +162,22 @@ export function useProjectBoard(statusFilter?: string) {
     return { error: null, id: project.id }
   }
 
-  // ─── 부서별 템플릿 필터 ──────────────────────────────────
+  // ─── 부서별 템플릿 필터 (중복 제거: 같은 이름은 최신 1개만) ─────
   function getTemplatesForDepartment(department: string): ProjectTemplate[] {
-    return templates.filter((t) => t.department === department)
+    const filtered = templates.filter((t) => t.department === department)
+    const seen = new Map<string, ProjectTemplate>()
+    for (const t of filtered) {
+      const existing = seen.get(t.name)
+      // 더 최근 updated_at을 유지
+      if (!existing) {
+        seen.set(t.name, t)
+      } else {
+        const existingTime = new Date(existing.created_at || 0).getTime()
+        const currentTime = new Date(t.created_at || 0).getTime()
+        if (currentTime > existingTime) seen.set(t.name, t)
+      }
+    }
+    return Array.from(seen.values())
   }
 
   // ─── 커스텀 템플릿 저장 ──────────────────────────────────
