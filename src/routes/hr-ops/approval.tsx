@@ -1651,23 +1651,30 @@ function ApprovalTemplateManager({
   const [showNewTemplate, setShowNewTemplate] = useState(false)
   const [newTmplDocType, setNewTmplDocType] = useState('general')
   const [newTmplName, setNewTmplName] = useState('')
+  const [newTmplCondOp, setNewTmplCondOp] = useState('')
+  const [newTmplCondVal, setNewTmplCondVal] = useState('')
 
   async function handleAddTemplate() {
     if (!newTmplName.trim() || !newTmplDocType) {
       toast('양식명을 입력하세요', 'error')
       return
     }
+    const hasCondition = (newTmplDocType === 'expense' || newTmplDocType === 'purchase') && newTmplCondOp && newTmplCondVal
     const { data, error } = await supabase.from('approval_templates').insert({
       doc_type: newTmplDocType,
       name: newTmplName.trim(),
       steps: [{ role: 'leader', label: '팀장 승인', approver_ids: [] }],
       is_active: true,
+      condition_field: hasCondition ? 'amount' : null,
+      condition_operator: hasCondition ? newTmplCondOp : null,
+      condition_value: hasCondition ? newTmplCondVal : null,
     }).select().single()
     if (error) { toast('생성 실패: ' + error.message, 'error'); return }
     toast('결재선이 생성되었습니다.', 'success')
     setShowNewTemplate(false)
     setNewTmplName('')
     setNewTmplDocType('general')
+    setNewTmplCondOp(''); setNewTmplCondVal('')
     onRefresh()
     // 생성 후 바로 편집 모드로
     if (data) setTimeout(() => startEdit(data as ApprovalTemplate), 300)
@@ -1731,8 +1738,45 @@ function ApprovalTemplateManager({
                 />
               </div>
             </div>
+
+            {/* 금액 조건 (경비/구매) */}
+            {(newTmplDocType === 'expense' || newTmplDocType === 'purchase') && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <label className="text-xs font-semibold text-amber-800 mb-1.5 block">💰 금액 조건 (선택)</label>
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="text-gray-600">금액</span>
+                  <select
+                    value={newTmplCondOp}
+                    onChange={(e) => setNewTmplCondOp(e.target.value)}
+                    className="text-xs border border-gray-300 rounded px-2 py-1"
+                  >
+                    <option value="">조건 없음</option>
+                    <option value=">=">이상 (≥)</option>
+                    <option value=">">초과 (&gt;)</option>
+                    <option value="<">미만 (&lt;)</option>
+                    <option value="<=">이하 (≤)</option>
+                  </select>
+                  {newTmplCondOp && (
+                    <>
+                      <input
+                        type="number"
+                        value={newTmplCondVal}
+                        onChange={(e) => setNewTmplCondVal(e.target.value)}
+                        placeholder="500000"
+                        className="text-xs border border-gray-300 rounded px-2 py-1 w-28"
+                      />
+                      <span className="text-gray-600">원</span>
+                    </>
+                  )}
+                </div>
+                <p className="text-[10px] text-amber-600 mt-1">
+                  예: "금액 ≥ 500000" = 50만원 이상 신청 시 이 결재선 자동 적용
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => { setShowNewTemplate(false); setNewTmplName('') }}>취소</Button>
+              <Button variant="outline" size="sm" onClick={() => { setShowNewTemplate(false); setNewTmplName(''); setNewTmplCondOp(''); setNewTmplCondVal('') }}>취소</Button>
               <Button size="sm" onClick={handleAddTemplate}>생성</Button>
             </div>
           </CardContent>
@@ -1771,13 +1815,19 @@ function ApprovalTemplateManager({
                   </div>
                 </div>
 
-                {tmpl.condition_field && (
+                {tmpl.condition_field ? (
                   <div className="mb-2">
                     <Badge variant="info" className="text-[10px]">
-                      조건: {tmpl.condition_field} {tmpl.condition_operator} {tmpl.condition_value}
+                      조건: {tmpl.condition_field} {tmpl.condition_operator} {Number(tmpl.condition_value).toLocaleString()}원
                     </Badge>
                   </div>
-                )}
+                ) : (tmpl.doc_type === 'expense' || tmpl.doc_type === 'purchase') && templates.filter(t => t.doc_type === tmpl.doc_type).length > 1 && !isEditing ? (
+                  <div className="mb-2">
+                    <Badge variant="warning" className="text-[10px]">
+                      ⚠️ 금액 조건 미설정 — 수정 버튼에서 설정하세요
+                    </Badge>
+                  </div>
+                ) : null}
 
                 {/* 편집 모드: 세로 리스트 + 드래그 */}
                 {isEditing ? (
