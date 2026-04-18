@@ -1123,8 +1123,12 @@ export default function ApprovalManagementPage() {
 
               {/* Content */}
               {doc.content && Object.keys(doc.content).length > 0 && (() => {
-                // 일일 업무보고는 전용 UI로 렌더링
-                if (doc.doc_type === 'daily_report') {
+                // 일일 업무보고는 전용 UI로 렌더링 (doc_type 또는 content 구조로 감지)
+                const c = doc.content as Record<string, unknown>
+                const isDailyReport = doc.doc_type === 'daily_report'
+                  || (c && ('report_id' in c || 'report_date' in c)
+                      && (Array.isArray(c.completed) || Array.isArray(c.in_progress) || Array.isArray(c.planned)))
+                if (isDailyReport) {
                   const content = doc.content as {
                     report_date?: string
                     completed?: { title: string }[]
@@ -1202,12 +1206,21 @@ export default function ApprovalManagementPage() {
                 return (
                   <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
                     <p className="text-xs font-medium text-gray-500 mb-2">신청 내용</p>
-                    {Object.entries(doc.content).map(([key, value]) => (
-                      <div key={key} className="flex text-sm">
-                        <span className="text-gray-500 w-28 shrink-0">{key}</span>
-                        <span className="text-gray-900">{String(value)}</span>
-                      </div>
-                    ))}
+                    {Object.entries(doc.content).map(([key, value]) => {
+                      const display = Array.isArray(value)
+                        ? value.map((v) => typeof v === 'object' && v !== null
+                            ? ((v as { title?: string; name?: string }).title || (v as { title?: string; name?: string }).name || JSON.stringify(v))
+                            : String(v)).join(', ')
+                        : typeof value === 'object' && value !== null
+                          ? JSON.stringify(value)
+                          : String(value)
+                      return (
+                        <div key={key} className="flex text-sm">
+                          <span className="text-gray-500 w-28 shrink-0">{key}</span>
+                          <span className="text-gray-900 flex-1 break-all">{display}</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 )
               })()}

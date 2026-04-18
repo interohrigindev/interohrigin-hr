@@ -131,6 +131,39 @@ export default function ProbationResults() {
   const [editStrengths, setEditStrengths] = useState('')
   const [editAiAssessment, setEditAiAssessment] = useState('')
   const [editGeneratingAI, setEditGeneratingAI] = useState(false)
+  const [polishingField, setPolishingField] = useState<string | null>(null)
+
+  async function polishText(field: 'comments' | 'praise' | 'improvement' | 'leader_summary' | 'exec_one_liner' | 'strengths') {
+    const current = field === 'comments' ? editComments
+      : field === 'praise' ? editPraise
+      : field === 'improvement' ? editImprovement
+      : field === 'leader_summary' ? editLeaderSummary
+      : field === 'exec_one_liner' ? editExecOneLiner
+      : editStrengths
+    if (!current.trim()) { toast('먼저 내용을 입력해주세요.', 'error'); return }
+    setPolishingField(field)
+    try {
+      const config = await getAIConfigForFeature('probation_eval')
+      if (!config) { toast('AI 설정이 필요합니다.', 'error'); setPolishingField(null); return }
+      const FIELD_LABEL: Record<string, string> = {
+        comments: '총평', praise: '칭찬할 점', improvement: '보완할 점',
+        leader_summary: '리더 총평', exec_one_liner: '임원 한줄 코멘트', strengths: '강점',
+      }
+      const prompt = `다음은 수습직원 평가의 "${FIELD_LABEL[field]}" 항목 초안입니다. 의미는 유지하면서 가독성 좋게 자연스러운 한국어 문장으로 다듬어 주세요. 새로운 내용을 만들어내지 말고, 주어진 내용만 매끄럽게 정리해주세요. 마크다운 없이 일반 텍스트로, 원문과 비슷한 분량(1~3문장)으로 작성해주세요.\n\n[초안]\n${current}`
+      const result = await generateAIContent(config, prompt)
+      const polished = result.content.trim()
+      if (field === 'comments') setEditComments(polished)
+      else if (field === 'praise') setEditPraise(polished)
+      else if (field === 'improvement') setEditImprovement(polished)
+      else if (field === 'leader_summary') setEditLeaderSummary(polished)
+      else if (field === 'exec_one_liner') setEditExecOneLiner(polished)
+      else setEditStrengths(polished)
+      toast('AI가 문장을 다듬었습니다.', 'success')
+    } catch (err: unknown) {
+      toast('다듬기 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
+    }
+    setPolishingField(null)
+  }
 
   function openEditDialog(ev: EvalWithEmployee) {
     setEditEval(ev)
@@ -854,25 +887,55 @@ ${evalsSummary}
             />
 
             {/* 코멘트 수정 */}
-            <Textarea
-              label="총평"
-              value={editComments}
-              onChange={(e) => setEditComments(e.target.value)}
-              rows={3}
-            />
+            <div className="relative">
+              <Textarea
+                label="총평"
+                value={editComments}
+                onChange={(e) => setEditComments(e.target.value)}
+                rows={3}
+              />
+              <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('comments')} disabled={polishingField === 'comments'}>
+                {polishingField === 'comments' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />AI 다듬기</>}
+              </Button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <Textarea label="칭찬할 점" value={editPraise} onChange={(e) => setEditPraise(e.target.value)} rows={2} />
-              <Textarea label="보완할 점" value={editImprovement} onChange={(e) => setEditImprovement(e.target.value)} rows={2} />
+              <div className="relative">
+                <Textarea label="칭찬할 점" value={editPraise} onChange={(e) => setEditPraise(e.target.value)} rows={2} />
+                <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('praise')} disabled={polishingField === 'praise'}>
+                  {polishingField === 'praise' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
+                </Button>
+              </div>
+              <div className="relative">
+                <Textarea label="보완할 점" value={editImprovement} onChange={(e) => setEditImprovement(e.target.value)} rows={2} />
+                <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('improvement')} disabled={polishingField === 'improvement'}>
+                  {polishingField === 'improvement' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
+                </Button>
+              </div>
             </div>
 
             {/* 역할별 추가 필드 */}
             {editEval.evaluator_role === 'leader' && (
-              <Textarea label="리더 총평" value={editLeaderSummary} onChange={(e) => setEditLeaderSummary(e.target.value)} rows={2} />
+              <div className="relative">
+                <Textarea label="리더 총평" value={editLeaderSummary} onChange={(e) => setEditLeaderSummary(e.target.value)} rows={2} />
+                <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('leader_summary')} disabled={polishingField === 'leader_summary'}>
+                  {polishingField === 'leader_summary' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
+                </Button>
+              </div>
             )}
             {(editEval.evaluator_role === 'executive' || editEval.evaluator_role === 'ceo') && (
               <>
-                <Textarea label="한줄 코멘트" value={editExecOneLiner} onChange={(e) => setEditExecOneLiner(e.target.value)} rows={2} />
-                <Textarea label="강점" value={editStrengths} onChange={(e) => setEditStrengths(e.target.value)} rows={2} />
+                <div className="relative">
+                  <Textarea label="한줄 코멘트" value={editExecOneLiner} onChange={(e) => setEditExecOneLiner(e.target.value)} rows={2} />
+                  <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('exec_one_liner')} disabled={polishingField === 'exec_one_liner'}>
+                    {polishingField === 'exec_one_liner' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
+                  </Button>
+                </div>
+                <div className="relative">
+                  <Textarea label="강점" value={editStrengths} onChange={(e) => setEditStrengths(e.target.value)} rows={2} />
+                  <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('strengths')} disabled={polishingField === 'strengths'}>
+                    {polishingField === 'strengths' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
+                  </Button>
+                </div>
               </>
             )}
 

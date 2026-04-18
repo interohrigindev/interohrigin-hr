@@ -116,6 +116,7 @@ export default function DailyReportPage() {
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
   const [approvalLeaderId, setApprovalLeaderId] = useState('')
   const [approvalDirectorId, setApprovalDirectorId] = useState('')
+  const [approvalExtraSteps, setApprovalExtraSteps] = useState<string[]>([])
   const [approvalSending, setApprovalSending] = useState(false)
   const [allEmployees, setAllEmployees] = useState<{ id: string; name: string; role: string; department_id: string | null }[]>([])
   // 이 보고서가 이미 결재 전송되었는지 체크
@@ -711,14 +712,26 @@ ${completedText || '아직 없음'}
               </div>
 
               <Select
-                label="1단계: 팀장/리더 *"
+                label="1단계: 팀장/리더 또는 담당 부서원 *"
                 value={approvalLeaderId}
                 onChange={(e) => setApprovalLeaderId(e.target.value)}
                 options={[
                   { value: '', label: '선택하세요' },
                   ...allEmployees
-                    .filter(e => ['leader', 'director', 'division_head', 'ceo', 'admin'].includes(e.role))
-                    .map(e => ({ value: e.id, label: `${e.name} (${e.role === 'leader' ? '리더' : e.role === 'director' ? '이사' : e.role === 'ceo' ? '대표' : e.role})` })),
+                    .filter(e => e.id !== profile?.id && (
+                      ['leader', 'director', 'division_head', 'ceo', 'admin'].includes(e.role) ||
+                      (!!profile?.department_id && e.department_id === profile.department_id)
+                    ))
+                    .map(e => {
+                      const roleLabel = e.role === 'leader' ? '리더'
+                        : e.role === 'director' ? '이사'
+                        : e.role === 'division_head' ? '본부장'
+                        : e.role === 'ceo' ? '대표'
+                        : e.role === 'admin' ? '관리자'
+                        : '부서원'
+                      const sameDept = profile?.department_id && e.department_id === profile.department_id
+                      return { value: e.id, label: `${e.name} (${roleLabel}${sameDept ? ' · 같은 부서' : ''})` }
+                    }),
                 ]}
               />
 
@@ -733,6 +746,44 @@ ${completedText || '아직 없음'}
                     .map(e => ({ value: e.id, label: `${e.name} (${e.role === 'director' ? '이사' : e.role === 'ceo' ? '대표' : '본부장'})` })),
                 ]}
               />
+
+              {/* 추가 결재자 (동적) */}
+              {approvalExtraSteps.map((id, idx) => (
+                <div key={idx} className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Select
+                      label={`${idx + 3}단계: 추가 결재자`}
+                      value={id}
+                      onChange={(e) => {
+                        const next = [...approvalExtraSteps]
+                        next[idx] = e.target.value
+                        setApprovalExtraSteps(next)
+                      }}
+                      options={[
+                        { value: '', label: '선택하세요' },
+                        ...allEmployees
+                          .filter(e => e.id !== profile?.id)
+                          .map(e => ({ value: e.id, label: `${e.name} (${e.role})` })),
+                      ]}
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setApprovalExtraSteps(approvalExtraSteps.filter((_, i) => i !== idx))}
+                  >
+                    삭제
+                  </Button>
+                </div>
+              ))}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setApprovalExtraSteps([...approvalExtraSteps, ''])}
+              >
+                + 결재 라인 추가
+              </Button>
             </>
           )}
 
@@ -769,6 +820,9 @@ ${completedText || '아직 없음'}
                     if (approvalDirectorId) {
                       steps.push({ step_order: 2, approver_id: approvalDirectorId, approver_role: 'executive', action: 'pending' })
                     }
+                    approvalExtraSteps.filter(id => id).forEach((id) => {
+                      steps.push({ step_order: steps.length + 1, approver_id: id, approver_role: 'reviewer', action: 'pending' })
+                    })
                   }
 
                   // 1) approval_documents 생성
@@ -873,7 +927,12 @@ function ReportComments({ reportId }: { reportId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">상위자 코멘트</CardTitle>
+        <CardTitle className="text-base flex items-center gap-2">
+          상위자 코멘트
+          <span className="text-[10px] font-normal text-gray-500">
+            {canComment ? '(리더·임원·대표 전용 · 아래 입력창에 작성)' : '(리더/임원이 작성한 피드백을 확인할 수 있습니다)'}
+          </span>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {/* 기존 코멘트 목록 */}
