@@ -37,6 +37,7 @@ const ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: 'division_head', label: '본부장' },
   { value: 'ceo', label: '대표이사' },
   { value: 'admin', label: '관리자' },
+  { value: 'hr_admin', label: '인사담당' },
 ]
 
 const EMPLOYMENT_TYPE_OPTIONS = [

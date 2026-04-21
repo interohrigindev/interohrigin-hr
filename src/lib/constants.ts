@@ -4,6 +4,7 @@ import type { EmployeeRole, EvaluationType } from '@/types/database'
 export const ROLE_HIERARCHY: Record<EmployeeRole, number> = {
   employee: 1,
   leader: 2,
+  hr_admin: 2,
   director: 3,
   division_head: 3,
   ceo: 4,
@@ -18,6 +19,7 @@ export const ROLE_LABELS: Record<EmployeeRole, string> = {
   division_head: '본부장',
   ceo: '대표이사',
   admin: '관리자',
+  hr_admin: '인사담당',
 }
 
 // ─── 평가 상태 순서 ────────────────────────────────────────────

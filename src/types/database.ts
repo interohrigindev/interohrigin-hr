@@ -6,6 +6,7 @@ export type EmployeeRole =
   | 'division_head'
   | 'ceo'
   | 'admin'
+  | 'hr_admin'
 
 export type EmploymentType = 'full_time' | 'contract' | 'intern' | 'part_time' | 'probation'
 
