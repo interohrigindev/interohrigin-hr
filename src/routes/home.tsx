@@ -22,8 +22,10 @@ import {
   UserPlus,
   FolderKanban,
   Clock,
+  ShoppingBag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { openIoMall } from '@/lib/iomall'
 
 interface BlockItem {
   title: string
@@ -32,6 +34,7 @@ interface BlockItem {
   color: string
   bg: string
   path: string
+  onClick?: () => void  // path 대신 custom action (SSO 등)
 }
 
 const ADMIN_BLOCKS: BlockItem[] = [
@@ -83,6 +86,15 @@ const ADMIN_BLOCKS: BlockItem[] = [
     bg: 'bg-gray-50 hover:bg-gray-100 border-gray-200',
     path: '/settings/general',
   },
+  {
+    title: 'IO Mall',
+    description: '복지 포인트 몰 (별도 탭에서 열림)',
+    icon: ShoppingBag,
+    color: 'text-gold-600',
+    bg: 'bg-amber-50 hover:bg-amber-100 border-amber-200',
+    path: 'iomall',
+    onClick: () => openIoMall('/'),
+  },
 ]
 
 const QUICK_LINKS: { label: string; icon: React.ElementType; path: string }[] = [
@@ -131,7 +143,7 @@ export default function Home() {
         {ADMIN_BLOCKS.map((block) => (
           <button
             key={block.path}
-            onClick={() => navigate(block.path)}
+            onClick={() => block.onClick ? block.onClick() : navigate(block.path)}
             className={`flex items-start gap-4 rounded-2xl border p-5 text-left transition-all ${block.bg}`}
           >
             <div className={`rounded-xl p-3 bg-white shadow-sm ${block.color}`}>
@@ -218,6 +230,15 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
       bg: 'bg-gray-50 hover:bg-gray-100 border-gray-200',
       path: '/my-profile',
     },
+    {
+      title: 'IO Mall',
+      description: '복지 포인트로 쇼핑하기 (별도 탭에서 열림)',
+      icon: ShoppingBag,
+      color: 'text-amber-600',
+      bg: 'bg-amber-50 hover:bg-amber-100 border-amber-200',
+      path: 'iomall',
+      onClick: () => openIoMall('/'),
+    },
   ]
 
   return (
@@ -239,7 +260,7 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
         {blocks.map((block) => (
           <button
             key={block.path}
-            onClick={() => navigate(block.path)}
+            onClick={() => block.onClick ? block.onClick() : navigate(block.path)}
             className={`flex items-start gap-4 rounded-2xl border p-5 text-left transition-all ${block.bg}`}
           >
             <div className={`rounded-xl p-3 bg-white shadow-sm ${block.color}`}>
