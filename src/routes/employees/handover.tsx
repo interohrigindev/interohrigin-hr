@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { UserX, FileText, Package, Link2, CheckCircle, Clock, Plus, X, Pencil, Search, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { UserX, FileText, Package, Link2, CheckCircle, Clock, Plus, X, Pencil, Search, Sparkles, ChevronDown, ChevronUp, HardDrive, AlertCircle } from 'lucide-react'
 import { generateHandoverDraft } from '@/lib/handover-generator'
+import { scanEmployeeDrive } from '@/lib/drive-scanner'
+import type { DriveFile } from '@/lib/drive-scanner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -77,6 +79,13 @@ export default function HandoverPage() {
   const [generatingDraft, setGeneratingDraft] = useState(false)
   const [contentExpanded, setContentExpanded] = useState(false)
   const [searchQ, setSearchQ] = useState('')
+  // Drive 스캔
+  const [scanning, setScanning] = useState(false)
+  const [driveFiles, setDriveFiles] = useState<DriveFile[]>([])
+  const [selectedDriveIds, setSelectedDriveIds] = useState<Set<string>>(new Set())
+  const [showDriveDialog, setShowDriveDialog] = useState(false)
+  const [driveError, setDriveError] = useState('')
+  const [importingDrive, setImportingDrive] = useState(false)
 
   // asset edit state
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null)
@@ -212,6 +221,45 @@ export default function HandoverPage() {
     toast('AI 초안이 생성되었습니다.', 'success')
     setContentExpanded(true)
     fetchAll()
+  }
+
+  async function handleDriveScan() {
+    if (!selectedEmp) { toast('직원을 선택하세요.', 'error'); return }
+    setScanning(true)
+    setDriveError('')
+    const result = await scanEmployeeDrive(selectedEmp.email || '', selectedEmp.name)
+    setScanning(false)
+    if (result.error) {
+      setDriveError(result.error)
+      setDriveFiles([])
+    } else {
+      setDriveFiles(result.files)
+      setDriveError('')
+    }
+    setSelectedDriveIds(new Set())
+    setShowDriveDialog(true)
+  }
+
+  async function handleImportDriveFiles() {
+    if (!selectedEmpId || selectedDriveIds.size === 0) return
+    setImportingDrive(true)
+    const toImport = driveFiles.filter((f) => selectedDriveIds.has(f.id))
+    const payload = toImport.map((f) => ({
+      employee_id: selectedEmpId,
+      asset_type: f.assetType,
+      name: f.name,
+      location: null,
+      url: f.webViewLink || null,
+      note: `Google Drive · ${f.mimeLabel} · 최종수정: ${new Date(f.modifiedTime).toLocaleDateString('ko-KR')}`,
+      return_status: 'n_a' as const,
+    }))
+    const { error } = await supabase.from('handover_assets').insert(payload)
+    setImportingDrive(false)
+    if (error) { toast('가져오기 실패: ' + error.message, 'error'); return }
+    toast(`${payload.length}건을 자산 목록에 추가했습니다.`, 'success')
+    setShowDriveDialog(false)
+    const { data } = await supabase.from('handover_assets').select('*').eq('employee_id', selectedEmpId).order('created_at', { ascending: true })
+    setAssets((data || []) as HandoverAsset[])
   }
 
   async function handleChangeStatus(newStatus: HandoverStatus) {
@@ -537,14 +585,20 @@ export default function HandoverPage() {
                 <CardTitle className="text-base flex items-center gap-2">
                   <Package className="h-4 w-4 text-brand-600" /> 자산/문서/계정 체크리스트
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-gray-500">
                     <strong className="text-emerald-600">{returned}</strong> 반납 / <strong className="text-amber-600">{pending}</strong> 대기 / 총 {assets.length}건
                   </span>
                   {isAdmin && (
-                    <Button size="sm" onClick={openNewAsset}>
-                      <Plus className="h-3 w-3 mr-1" /> 자산 추가
-                    </Button>
+                    <>
+                      <Button size="sm" variant="outline" onClick={handleDriveScan} disabled={!selectedEmpId || scanning}>
+                        <HardDrive className="h-3 w-3 mr-1" />
+                        {scanning ? 'Drive 스캔 중...' : 'Drive 스캔'}
+                      </Button>
+                      <Button size="sm" onClick={openNewAsset}>
+                        <Plus className="h-3 w-3 mr-1" /> 자산 추가
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -607,6 +661,102 @@ export default function HandoverPage() {
           </Card>
         </>
       )}
+
+      {/* Google Drive 스캔 결과 다이얼로그 */}
+      <Dialog
+        open={showDriveDialog}
+        onClose={() => setShowDriveDialog(false)}
+        title="Google Drive 스캔 결과"
+        className="max-w-2xl"
+      >
+        <div className="space-y-3">
+          {/* 안내 배너 */}
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>관리자 계정이 접근 가능한 파일만 표시됩니다. 선택 후 "자산으로 추가"를 누르면 인수인계 자산 목록에 등록됩니다.</span>
+          </div>
+
+          {driveError && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold mb-0.5">스캔 오류</p>
+                <p>{driveError}</p>
+                <p className="mt-1 text-red-500">Cloudflare 환경변수(GMAIL_REFRESH_TOKEN)와 drive.readonly 스코프를 확인하세요.</p>
+              </div>
+            </div>
+          )}
+
+          {!driveError && driveFiles.length === 0 && (
+            <div className="py-8 text-center text-sm text-gray-400">
+              <HardDrive className="h-10 w-10 mx-auto mb-2 text-gray-300" />
+              검색된 파일이 없습니다. 직원 이메일이 정확한지 확인하거나 수동으로 자산을 등록하세요.
+            </div>
+          )}
+
+          {driveFiles.length > 0 && (
+            <>
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>총 {driveFiles.length}개 파일 발견</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setSelectedDriveIds(new Set(driveFiles.map(f => f.id)))} className="text-brand-600 hover:underline">전체 선택</button>
+                  <span>·</span>
+                  <button onClick={() => setSelectedDriveIds(new Set())} className="text-gray-500 hover:underline">전체 해제</button>
+                </div>
+              </div>
+              <div className="max-h-[360px] overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                {driveFiles.map((f) => {
+                  const checked = selectedDriveIds.has(f.id)
+                  const icon = f.mimeType.includes('spreadsheet') ? '📊'
+                    : f.mimeType.includes('presentation') ? '📑'
+                    : f.mimeType.includes('document') ? '📄'
+                    : f.mimeType.includes('pdf') ? '📋'
+                    : f.mimeType.startsWith('video') ? '🎬'
+                    : '📁'
+                  return (
+                    <label key={f.id} className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors ${checked ? 'bg-brand-50' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = new Set(selectedDriveIds)
+                          if (e.target.checked) next.add(f.id); else next.delete(f.id)
+                          setSelectedDriveIds(next)
+                        }}
+                        className="rounded border-gray-300 text-brand-600"
+                      />
+                      <span className="text-lg shrink-0">{icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{f.name}</p>
+                        <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
+                          <span className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px]">{f.mimeLabel}</span>
+                          <span>수정: {new Date(f.modifiedTime).toLocaleDateString('ko-KR')}</span>
+                          {f.ownerEmail && <span>{f.ownerEmail}</span>}
+                        </div>
+                      </div>
+                      {f.webViewLink && (
+                        <a href={f.webViewLink} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-brand-500 hover:text-brand-700 shrink-0" title="Drive에서 열기">
+                          <Link2 className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </label>
+                  )
+                })}
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-between items-center pt-3 border-t">
+            <span className="text-xs text-gray-500">{selectedDriveIds.size}개 선택됨</span>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowDriveDialog(false)}>닫기</Button>
+              <Button onClick={handleImportDriveFiles} disabled={selectedDriveIds.size === 0 || importingDrive}>
+                {importingDrive ? '추가 중...' : `자산으로 추가 (${selectedDriveIds.size}건)`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Dialog>
 
       {/* 자산 추가/편집 다이얼로그 */}
       <Dialog

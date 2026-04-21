@@ -128,12 +128,13 @@ export default function FloatingAIAgent() {
       })
   }, [location.pathname, profile?.id])
 
-  if (isPublicPage || !profile) return null
-
-  const activeConvs = conversations.filter((c) => !c.is_archived)
-  const bookmarkedConvs = activeConvs.filter((c) => c.is_bookmarked)
-  const recentConvs = activeConvs.filter((c) => !c.is_bookmarked)
+  // ※ useMemo는 반드시 early return 전에 선언 (Hooks 규칙)
+  const activeConvs = useMemo(() => conversations.filter((c) => !c.is_archived), [conversations])
+  const bookmarkedConvs = useMemo(() => activeConvs.filter((c) => c.is_bookmarked), [activeConvs])
+  const recentConvs = useMemo(() => activeConvs.filter((c) => !c.is_bookmarked), [activeConvs])
   const groups = useMemo(() => groupMsgs(messages.filter(m => m.role !== 'system')), [messages])
+
+  if (isPublicPage || !profile) return null
 
   async function handleSend() {
     if (!input.trim() || sending) return
