@@ -878,9 +878,6 @@ export default function ApprovalManagementPage() {
           <Button variant="outline" onClick={() => setShowDelegationDialog(true)}>
             결재 위임
           </Button>
-          <Button onClick={() => setShowNewDialog(true)}>
-            <Plus className="h-4 w-4 mr-1" /> 새 결재 신청
-          </Button>
         </div>
       </div>
 
@@ -915,12 +912,57 @@ export default function ApprovalManagementPage() {
         </Card>
       </div>
 
+      {/* ── 새 결재 신청 런처 (네이버웍스 스타일 타일 그리드) ── */}
+      {activeTab !== 'template_manage' && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+            <p className="text-sm font-bold text-gray-700">새 결재 신청</p>
+          </div>
+          <div className="p-4 space-y-4">
+            {DOC_TYPE_CATEGORIES.map((cat) => {
+              const items = Object.entries(DOC_TYPE_CONFIG).filter(([, cfg]) => cfg.category === cat)
+              if (items.length === 0) return null
+              return (
+                <div key={cat}>
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                    <span className="w-0.5 h-3 bg-brand-400 rounded-full inline-block" />
+                    {cat}
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                    {items.map(([key, cfg]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          setNewDocType(key)
+                          setNewApprovers({})
+                          const tpl = templates.find((t) => t.doc_type === key)
+                          if (tpl && ceo) {
+                            const ceoStep = tpl.steps.find((s) => s.role === 'ceo')
+                            if (ceoStep) setNewApprovers((prev) => ({ ...prev, ceo: ceo.id }))
+                          }
+                          setShowNewDialog(true)
+                        }}
+                        className="group flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border border-gray-200 bg-gray-50/50 hover:border-brand-400 hover:bg-brand-50 hover:shadow-sm transition-all text-center"
+                      >
+                        <span className="text-2xl transition-transform group-hover:scale-110 leading-none">{cfg.icon}</span>
+                        <p className="text-[11px] font-medium text-gray-600 group-hover:text-brand-700 leading-tight break-keep">{cfg.label}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Tabs + Search */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex bg-gray-100 rounded-lg p-0.5">
           {([
-            { key: 'my_requests' as TabKey, label: '내 신청', count: stats.myRequests },
-            { key: 'pending_approval' as TabKey, label: '결재 대기', count: stats.pendingApproval },
+            { key: 'my_requests' as TabKey, label: '내 결재함', count: stats.myRequests },
+            { key: 'pending_approval' as TabKey, label: '받은 결재함', count: stats.pendingApproval },
             ...(isAdmin ? [
               { key: 'all' as TabKey, label: '전체', count: documents.length },
               { key: 'template_manage' as TabKey, label: '결재선 관리', count: 0 },
@@ -1909,38 +1951,52 @@ function ApprovalTemplateManager({
     categoryCounts[cat] = (categoryCounts[cat] || 0) + 1
   })
 
+  const categoryList = ['전체', ...DOC_TYPE_CATEGORIES.filter(c => categoriesInUse.includes(c) || c === '근태')]
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-gray-500">양식별 결재선 템플릿을 수정/추가할 수 있습니다.</p>
-        <Button size="sm" onClick={() => setShowNewTemplate(true)}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> 새 결재선 추가
-        </Button>
+    <div className="flex gap-0 min-h-[500px] bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* 좌측: 카테고리 사이드바 */}
+      <div className="w-36 shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col">
+        <div className="px-3 py-3 border-b border-gray-200">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">카테고리</p>
+        </div>
+        <nav className="flex-1 py-1.5 space-y-0.5">
+          {categoryList.map((cat) => {
+            const count = categoryCounts[cat] ?? 0
+            const isActive = categoryFilter === cat
+            return (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={`w-full text-left px-3 py-2 text-sm rounded-none flex items-center justify-between transition-colors ${
+                  isActive
+                    ? 'bg-brand-50 text-brand-700 font-semibold border-r-2 border-brand-500'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                }`}
+              >
+                <span>{cat}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-brand-100 text-brand-700' : 'bg-gray-200 text-gray-500'}`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </nav>
       </div>
 
-      {/* C8-2: 카테고리 탭 */}
-      <div className="flex items-center gap-1.5 flex-wrap border-b border-gray-200">
-        {['전체', ...DOC_TYPE_CATEGORIES.filter(c => categoriesInUse.includes(c) || c === '근태')].map((cat) => {
-          const count = categoryCounts[cat] ?? 0
-          const isActive = categoryFilter === cat
-          return (
-            <button
-              key={cat}
-              onClick={() => setCategoryFilter(cat)}
-              className={`px-3 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
-                isActive
-                  ? 'text-brand-700 border-brand-500'
-                  : 'text-gray-500 border-transparent hover:text-gray-700'
-              }`}
-            >
-              {cat}
-              <span className={`text-[10px] px-1.5 rounded-full ${isActive ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'}`}>
-                {count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      {/* 우측: 서식 목록 */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50">
+          <p className="text-sm text-gray-600 font-medium">
+            {categoryFilter === '전체' ? '전체 결재선' : `${categoryFilter} 결재선`}
+            <span className="ml-1.5 text-[11px] text-gray-400 font-normal">({filteredTemplates.length}건)</span>
+          </p>
+          <Button size="sm" onClick={() => setShowNewTemplate(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> 새 결재선 추가
+          </Button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
       {/* 새 결재선 추가 다이얼로그 */}
       {showNewTemplate && (
@@ -2333,13 +2389,15 @@ function ApprovalTemplateManager({
         })}
       </div>
 
-      {templates.length === 0 && (
-        <Card>
-          <CardContent className="py-8 text-center text-gray-400 text-sm">
-            등록된 결재선 템플릿이 없습니다
-          </CardContent>
-        </Card>
-      )}
+          {templates.length === 0 && (
+            <Card>
+              <CardContent className="py-8 text-center text-gray-400 text-sm">
+                등록된 결재선 템플릿이 없습니다
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
