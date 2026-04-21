@@ -41,3 +41,25 @@
 | `functions/api/google-calendar.ts` | Calendar 이벤트 관리 |
 | `functions/api/drive-recordings.ts` | Drive 녹화 파일 조회 |
 | `functions/api/gmail-auth.ts` | OAuth 토큰 발급 플로우 |
+
+## 예정 확장 메모 (2026.04.21)
+
+### 퇴직자 인수인계 Drive 스캔
+- 목적: 퇴사자 이메일/폴더 기준으로 Drive 파일 메타데이터를 수집해 `handover_assets` 초안 생성
+- 예정 파일: `src/lib/drive-scanner.ts`
+- 기본 수집 항목:
+  - 파일명
+  - URL
+  - 수정일
+  - 상위 폴더 또는 경로 추론값
+
+### 스코프 확장 검토
+- 우선 후보: `drive.metadata.readonly`
+- 필요 시 대체: `drive.readonly`
+- 원칙:
+  - 가능하면 메타데이터만 읽는 최소 권한 우선
+  - 스코프 변경 후 관리자 재인증 1회 필요
+
+### 운영 규칙
+- 스캔 결과는 자동 확정하지 않고 관리자 검수 후 저장
+- 챗봇 응답에는 Drive 파일 URL을 직접 인용 가능

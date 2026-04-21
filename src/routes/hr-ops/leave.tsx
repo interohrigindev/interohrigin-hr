@@ -114,10 +114,8 @@ export default function LeaveManagementPage() {
   const [reqEndDate, setReqEndDate] = useState('')
   const [reqDays, setReqDays] = useState(1)
   const [reqReason, setReqReason] = useState('')
-  // 결재라인
-  const [reqLeaderId, setReqLeaderId] = useState('')
-  const [reqDirectorId, setReqDirectorId] = useState('')
-  const [leaveTemplate, setLeaveTemplate] = useState<{ steps: { role: string; label: string }[] } | null>(null)
+  // 결재라인 (D1-4: 자동 지정 — 수동 선택 제거)
+  const [, setLeaveTemplate] = useState<{ steps: { role: string; label: string }[] } | null>(null)
   const [saving, setSaving] = useState(false)
   const [sendingPromotionId, setSendingPromotionId] = useState<string | null>(null)
 
@@ -125,6 +123,36 @@ export default function LeaveManagementPage() {
   const leaders = useMemo(() => allEmployees.filter((e) => e.role && LEADER_ROLES.includes(e.role) && e.id !== profile?.id), [allEmployees, profile?.id])
   const directors = useMemo(() => allEmployees.filter((e) => e.role && DIRECTOR_ROLES.includes(e.role) && e.id !== profile?.id), [allEmployees, profile?.id])
   const ceo = useMemo(() => allEmployees.find((e) => e.role === 'ceo'), [allEmployees])
+  // D1-4: 인사담당 (민지님 등)
+  const hrAdmin = useMemo(() => allEmployees.find((e) => e.role === 'hr_admin'), [allEmployees])
+
+  // D1-4: 신청자 부서의 리더 자동 탐색 (없으면 같은 본부 리더, 그것도 없으면 첫 번째 리더)
+  const autoLeader = useMemo(() => {
+    if (!profile?.id) return null
+    const self = allEmployees.find((e) => e.id === profile.id)
+    if (!self?.department_id) return leaders[0] || null
+    // 1. 같은 부서 리더
+    const sameDept = allEmployees.find((e) => e.role === 'leader' && e.department_id === self.department_id && e.id !== profile.id)
+    if (sameDept) return sameDept
+    // 2. 부모 부서(본부) 리더
+    const selfDept = departments.find((d) => d.id === self.department_id)
+    if (selfDept?.parent_id) {
+      const parentDeptLeader = allEmployees.find((e) => e.role === 'leader' && e.department_id === selfDept.parent_id)
+      if (parentDeptLeader) return parentDeptLeader
+    }
+    return leaders[0] || null
+  }, [allEmployees, profile?.id, departments, leaders])
+
+  // D1-4: 신청자 본부의 임원(director/division_head) 자동 탐색
+  const autoDirector = useMemo(() => {
+    if (!profile?.id) return null
+    const self = allEmployees.find((e) => e.id === profile.id)
+    if (!self?.department_id) return directors[0] || null
+    const selfDept = departments.find((d) => d.id === self.department_id)
+    const divisionId = selfDept?.parent_id || self.department_id
+    const divHead = allEmployees.find((e) => (e.role === 'director' || e.role === 'division_head') && e.department_id === divisionId)
+    return divHead || directors[0] || null
+  }, [allEmployees, profile?.id, departments, directors])
 
   useEffect(() => { fetchData() }, [profile?.id])
 
@@ -215,37 +243,42 @@ export default function LeaveManagementPage() {
   const pendingRequests = leaveRequests.filter((r) => r.approval_status === 'pending' || r.approval_status === 'in_review').length
   const deptNames = useMemo(() => [...new Set(employees.map((e) => getDeptName(e.department_id)).filter((n) => n !== '-'))], [employees, departments])
 
-  // ─── 연차 신청 (결재라인 포함) ─────────────────────
+  // ─── 연차 신청 (D1-4: 자동 결재라인 리더 → 인사담당 → 임원 → 대표) ─────────────────────
   async function handleSubmitRequest() {
     if (!profile?.id || !reqStartDate || !reqEndDate) { toast('필수 항목을 입력하세요', 'error'); return }
-    if (!reqLeaderId) { toast('결재 리더를 선택하세요', 'error'); return }
+    if (!autoLeader) { toast('결재할 리더가 지정되지 않았습니다. 관리자에게 문의하세요.', 'error'); return }
     setSaving(true)
 
-    // 결재라인 구성: 리더 → 이사(선택) → 대표
+    // 결재라인 구성: 리더 → 인사담당 → 임원 → 대표 (모두 자동 배정)
     const approvalLine: ApprovalStep[] = []
     let step = 0
 
     approvalLine.push({
       step: step++, role_label: '리더',
-      approver_id: reqLeaderId,
-      approver_name: getEmpName(reqLeaderId),
+      approver_id: autoLeader.id, approver_name: autoLeader.name,
       status: 'pending', acted_at: null,
     })
 
-    if (reqDirectorId) {
+    if (hrAdmin && hrAdmin.id !== autoLeader.id) {
       approvalLine.push({
-        step: step++, role_label: '이사',
-        approver_id: reqDirectorId,
-        approver_name: getEmpName(reqDirectorId),
+        step: step++, role_label: '인사담당',
+        approver_id: hrAdmin.id, approver_name: hrAdmin.name,
         status: 'pending', acted_at: null,
       })
     }
 
-    if (ceo) {
+    if (autoDirector && autoDirector.id !== autoLeader.id && autoDirector.id !== hrAdmin?.id) {
+      approvalLine.push({
+        step: step++, role_label: '임원',
+        approver_id: autoDirector.id, approver_name: autoDirector.name,
+        status: 'pending', acted_at: null,
+      })
+    }
+
+    if (ceo && ceo.id !== profile.id) {
       approvalLine.push({
         step: step++, role_label: '대표',
-        approver_id: ceo.id,
-        approver_name: ceo.name,
+        approver_id: ceo.id, approver_name: ceo.name,
         status: 'pending', acted_at: null,
       })
     }
@@ -265,7 +298,7 @@ export default function LeaveManagementPage() {
     if (error) { toast('신청 실패: ' + error.message, 'error'); return }
     toast('연차 신청이 완료되었습니다. 결재를 기다려주세요.', 'success')
     setShowRequestDialog(false)
-    setReqLeaveType('annual'); setReqStartDate(''); setReqEndDate(''); setReqDays(1); setReqReason(''); setReqLeaderId(''); setReqDirectorId('')
+    setReqLeaveType('annual'); setReqStartDate(''); setReqEndDate(''); setReqDays(1); setReqReason('')
     fetchData()
   }
 
@@ -780,47 +813,49 @@ export default function LeaveManagementPage() {
           <Input label="일수" type="number" value={String(reqDays)} onChange={(e) => setReqDays(Number(e.target.value))} min="0.5" step="0.5" />
           <Input label="사유 (선택)" value={reqReason} onChange={(e) => setReqReason(e.target.value)} placeholder="사유를 입력하세요" />
 
-          {/* 결재라인 — 관리자가 지정한 고정 템플릿 */}
-          <div className="border border-blue-200 rounded-lg p-4 space-y-3 bg-blue-50/30">
+          {/* 결재라인 — 자동 결정 (리더 → 인사담당 → 임원 → 대표) */}
+          <div className="border border-blue-200 rounded-lg p-4 space-y-2 bg-blue-50/30">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-blue-800">🔒 고정 결재라인</h4>
-              <span className="text-[10px] text-blue-500">관리자 설정 — 변경 불가</span>
+              <h4 className="text-sm font-bold text-blue-800">🔒 결재라인 (자동 지정)</h4>
+              <span className="text-[10px] text-blue-500">변경 불가</span>
             </div>
-
-            {/* 템플릿 기반 고정 결재선 표시 */}
-            {leaveTemplate ? (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white border border-blue-200">
-                  <span className="text-[10px] font-bold text-blue-400 w-5 text-center">0</span>
-                  <span className="text-xs font-medium text-gray-700">본인 (신청)</span>
-                </div>
-                {leaveTemplate.steps.map((step, idx) => (
-                  <div key={idx} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
-                    <span className="text-[10px] font-bold text-blue-500 w-5 text-center">{idx + 1}</span>
-                    <span className="text-xs font-medium text-blue-800">{step.label}</span>
-                    <span className="text-[10px] text-blue-400 ml-auto">{step.role}</span>
-                  </div>
-                ))}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white border border-blue-200">
+                <span className="text-[10px] font-bold text-blue-400 w-5 text-center">0</span>
+                <span className="text-xs font-medium text-gray-700">본인 (신청)</span>
               </div>
-            ) : (
-              <p className="text-xs text-gray-500">연차 결재선 템플릿이 설정되지 않았습니다. 관리자에게 문의하세요.</p>
-            )}
-
-            {/* 각 단계별 담당자 자동 선택 — 직원 선택 UI는 유지 */}
-            <div className="pt-2 border-t border-blue-200 space-y-2">
-              <p className="text-[11px] text-blue-700 font-medium">👤 각 단계별 담당자 지정</p>
-              <Select label="1단계 담당 (리더) *" value={reqLeaderId} onChange={(e) => setReqLeaderId(e.target.value)}
-                options={[{ value: '', label: '리더를 선택하세요' }, ...leaders.map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role})` }))]} />
-              {(leaveTemplate?.steps.length ?? 0) > 1 && (
-                <Select label="2단계 담당 (이사/임원)" value={reqDirectorId} onChange={(e) => setReqDirectorId(e.target.value)}
-                  options={[{ value: '', label: '없음' }, ...directors.map((e) => ({ value: e.id, label: `${e.name} (${e.position || e.role})` }))]} />
+              {autoLeader && (
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
+                  <span className="text-[10px] font-bold text-blue-500 w-5 text-center">1</span>
+                  <span className="text-xs font-medium text-blue-800">{autoLeader.name}</span>
+                  <span className="text-[10px] text-blue-400 ml-auto">리더</span>
+                </div>
+              )}
+              {hrAdmin && hrAdmin.id !== autoLeader?.id && (
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
+                  <span className="text-[10px] font-bold text-blue-500 w-5 text-center">2</span>
+                  <span className="text-xs font-medium text-blue-800">{hrAdmin.name}</span>
+                  <span className="text-[10px] text-blue-400 ml-auto">인사담당</span>
+                </div>
+              )}
+              {autoDirector && autoDirector.id !== autoLeader?.id && autoDirector.id !== hrAdmin?.id && (
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
+                  <span className="text-[10px] font-bold text-blue-500 w-5 text-center">3</span>
+                  <span className="text-xs font-medium text-blue-800">{autoDirector.name}</span>
+                  <span className="text-[10px] text-blue-400 ml-auto">임원</span>
+                </div>
               )}
               {ceo && (
-                <div className="text-xs text-gray-500">
-                  최종 결재: <span className="font-medium text-gray-700">{ceo.name}</span> (대표)
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
+                  <span className="text-[10px] font-bold text-blue-500 w-5 text-center">4</span>
+                  <span className="text-xs font-medium text-blue-800">{ceo.name}</span>
+                  <span className="text-[10px] text-blue-400 ml-auto">대표</span>
                 </div>
               )}
             </div>
+            {!autoLeader && (
+              <p className="text-[11px] text-red-600 font-medium mt-2">⚠️ 결재할 리더가 지정되지 않았습니다. 관리자가 부서별 리더를 설정해야 합니다.</p>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -841,7 +876,7 @@ const KOREAN_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 
 function LeaveCalendar({
   year, month, onChangeMonth,
-  leaveRequests, employees, departments, filterDept, profileId, isAdmin,
+  leaveRequests, employees, departments, filterDept, profileId: _profileId, isAdmin: _isAdmin,
 }: {
   year: number
   month: number
@@ -860,9 +895,14 @@ function LeaveCalendar({
   const daysInMonth = lastDay.getDate()
   const startWeekday = firstDay.getDay() // 0=일
 
-  // 부서 필터 (부서 선택 시 하위 팀 포함)
-  const allowedEmpIds = useMemo(() => {
-    if (!filterDept) return null // null = 전체
+  // D1-8: 본부(division) 체크박스 다중 필터 — 기본은 전체 선택
+  const divisions = departments.filter((d) => !d.parent_id)
+  const [selectedDivisionIds, setSelectedDivisionIds] = useState<Set<string>>(new Set())
+  const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set())
+
+  // 외부에서 넘어온 filterDept (Overview 탭의 기존 필터와 호환)
+  const externalDeptFilter = useMemo(() => {
+    if (!filterDept) return null
     const selected = departments.find(d => d.name === filterDept)
     if (!selected) return new Set<string>()
     const teamIds = departments.filter(d => d.parent_id === selected.id).map(d => d.id)
@@ -870,7 +910,49 @@ function LeaveCalendar({
     return new Set<string>(employees.filter(e => e.department_id && allowIds.has(e.department_id)).map(e => e.id))
   }, [filterDept, departments, employees])
 
+  // 캘린더 내부 체크박스 필터 기반 allowed set
+  const internalAllowedEmpIds = useMemo(() => {
+    // 아무것도 선택 안 되어 있으면 전체
+    if (selectedDivisionIds.size === 0 && selectedTeamIds.size === 0) return null
+    const allowIds = new Set<string>()
+    // 본부 선택 → 해당 본부 전체 (하위 팀 포함)
+    for (const divId of selectedDivisionIds) {
+      allowIds.add(divId)
+      departments.filter(d => d.parent_id === divId).forEach((t) => allowIds.add(t.id))
+    }
+    // 팀 개별 선택
+    for (const teamId of selectedTeamIds) allowIds.add(teamId)
+    return new Set<string>(employees.filter(e => e.department_id && allowIds.has(e.department_id)).map(e => e.id))
+  }, [selectedDivisionIds, selectedTeamIds, departments, employees])
+
+  // 최종 필터: 내부 체크박스 > 외부 filterDept > 전체
+  const allowedEmpIds = internalAllowedEmpIds ?? externalDeptFilter
+
+  function toggleDivision(id: string) {
+    setSelectedDivisionIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleTeam(id: string) {
+    setSelectedTeamIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function clearFilters() {
+    setSelectedDivisionIds(new Set())
+    setSelectedTeamIds(new Set())
+  }
+
   // 날짜별 휴가 매핑 (승인된 것만, pending은 희미하게)
+  // D1-8: 전 직원에게 공유 — isAdmin 제한 제거
   const leavesByDate = useMemo(() => {
     const map = new Map<string, Array<{ emp: Employee; req: LeaveRequest }>>()
     const empMap = new Map(employees.map(e => [e.id, e]))
@@ -886,7 +968,6 @@ function LeaveCalendar({
 
       const emp = empMap.get(req.employee_id)
       if (!emp) continue
-      if (!isAdmin && req.employee_id !== profileId) continue
       if (allowedEmpIds && !allowedEmpIds.has(req.employee_id)) continue
 
       // 해당 월과 겹치는 날짜만 iterate
@@ -904,7 +985,7 @@ function LeaveCalendar({
       }
     }
     return map
-  }, [leaveRequests, employees, allowedEmpIds, isAdmin, profileId, firstDay, lastDay])
+  }, [leaveRequests, employees, allowedEmpIds, firstDay, lastDay])
 
   // 캘린더 그리드: 앞 공백 + 실제 날짜
   const cells: Array<{ day: number | null; dateKey: string | null }> = []
@@ -981,6 +1062,62 @@ function LeaveCalendar({
           </div>
         </CardContent>
       </Card>
+
+      {/* D1-8: 본부/팀 체크박스 필터 */}
+      {divisions.length > 0 && (
+        <Card>
+          <CardContent className="py-2.5">
+            <div className="flex items-start gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 shrink-0 pt-1">
+                <span className="text-xs font-bold text-gray-600">부서 필터</span>
+                {(selectedDivisionIds.size > 0 || selectedTeamIds.size > 0) && (
+                  <button onClick={clearFilters} className="text-[10px] text-gray-400 hover:text-gray-600 underline">전체</button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                {divisions.map((div) => {
+                  const isDivSelected = selectedDivisionIds.has(div.id)
+                  const teams = departments.filter(d => d.parent_id === div.id)
+                  return (
+                    <div key={div.id} className="flex items-center gap-1 flex-wrap">
+                      <button
+                        onClick={() => toggleDivision(div.id)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
+                          isDivSelected ? 'bg-brand-500 text-white border-brand-500' : 'bg-white text-gray-600 border-gray-300 hover:border-brand-300'
+                        }`}
+                      >
+                        {isDivSelected ? '✓ ' : ''}{div.name}
+                      </button>
+                      {isDivSelected && teams.length > 0 && (
+                        <>
+                          <span className="text-gray-300 text-[10px]">›</span>
+                          {teams.map((team) => {
+                            const isTeamSelected = selectedTeamIds.has(team.id)
+                            return (
+                              <button
+                                key={team.id}
+                                onClick={() => toggleTeam(team.id)}
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
+                                  isTeamSelected ? 'bg-brand-100 text-brand-700 border-brand-300' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-brand-200'
+                                }`}
+                              >
+                                {isTeamSelected ? '✓ ' : ''}{team.name}
+                              </button>
+                            )
+                          })}
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            {(selectedDivisionIds.size === 0 && selectedTeamIds.size === 0) && (
+              <p className="text-[10px] text-gray-400 mt-1.5">전체 직원 연차가 표시됩니다. 본부를 선택하면 그 본부 소속만 보여집니다.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 캘린더 그리드 */}
       <Card>

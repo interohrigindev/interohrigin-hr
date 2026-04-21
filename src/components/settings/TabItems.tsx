@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { EvaluationCategory, EvaluationItem, JobType, EvaluationItemJobType } from '@/types/database'
-import { EVALUATION_TYPE_LABELS, EVALUATION_TYPE_COLORS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -340,13 +339,6 @@ export default function TabItems() {
                           <p className="text-xs text-gray-500 mt-0.5 truncate">{item.description}</p>
                         )}
                       </div>
-
-                      {/* 평가 유형 */}
-                      {item.evaluation_type && (
-                        <span className={cn('inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium', EVALUATION_TYPE_COLORS[item.evaluation_type])}>
-                          {EVALUATION_TYPE_LABELS[item.evaluation_type]}
-                        </span>
-                      )}
 
                       {/* 최대 점수 */}
                       <Badge variant="default">최대 {item.max_score}점</Badge>

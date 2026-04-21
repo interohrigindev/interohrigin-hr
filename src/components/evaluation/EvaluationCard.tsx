@@ -1,8 +1,7 @@
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Textarea } from '@/components/ui/Textarea'
-import { SCORE_LABELS, EVALUATION_TYPE_LABELS, EVALUATION_TYPE_COLORS } from '@/lib/constants'
-import type { EvaluationType } from '@/types/database'
+import { SCORE_LABELS } from '@/lib/constants'
 import type { EvalPhase } from '@/hooks/useSelfEvaluation'
 import { CheckCircle } from 'lucide-react'
 
@@ -18,7 +17,6 @@ interface EvaluationCardProps {
   name: string
   description: string | null
   maxScore: number
-  evaluationType?: EvaluationType
   data: EvaluationCardData
   onChange: (data: EvaluationCardData) => void
   readOnly?: boolean
@@ -30,7 +28,6 @@ export function EvaluationCard({
   name,
   description,
   maxScore,
-  evaluationType,
   data,
   onChange,
   readOnly,
@@ -77,11 +74,6 @@ export function EvaluationCard({
             {index}. {name}
           </span>
           <Badge variant="primary">{maxScore}점 만점</Badge>
-          {evaluationType && (
-            <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', EVALUATION_TYPE_COLORS[evaluationType])}>
-              {EVALUATION_TYPE_LABELS[evaluationType]}
-            </span>
-          )}
           {isComplete && <CheckCircle className="h-4 w-4 text-emerald-500" />}
         </div>
       </div>

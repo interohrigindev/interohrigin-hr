@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Textarea } from '@/components/ui/Textarea'
 import { Dialog } from '@/components/ui/Dialog'
-import { ROLE_LABELS, SCORE_LABELS, EVALUATION_STATUS_LABELS, EVALUATION_TYPE_LABELS, EVALUATION_TYPE_COLORS } from '@/lib/constants'
+import { ROLE_LABELS, SCORE_LABELS, EVALUATION_STATUS_LABELS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react'
 
@@ -188,11 +188,6 @@ export default function EvaluateDetail() {
                   >
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-800">{item.name}</span>
-                      {item.evaluation_type && (
-                        <span className={cn('inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium', EVALUATION_TYPE_COLORS[item.evaluation_type])}>
-                          {EVALUATION_TYPE_LABELS[item.evaluation_type]}
-                        </span>
-                      )}
                       {se?.score != null && (
                         <Badge variant="primary">{se.score}점</Badge>
                       )}
@@ -273,11 +268,6 @@ export default function EvaluateDetail() {
                       <div>
                         <p className="text-sm font-medium text-gray-900">
                           {item.name}
-                          {item.evaluation_type && (
-                            <span className={cn('ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium align-middle', EVALUATION_TYPE_COLORS[item.evaluation_type])}>
-                              {EVALUATION_TYPE_LABELS[item.evaluation_type]}
-                            </span>
-                          )}
                           <span className="ml-1 text-xs text-gray-400">({item.max_score}점 만점)</span>
                         </p>
                         {item.description && (

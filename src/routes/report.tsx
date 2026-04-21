@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { GradeBadge } from '@/components/evaluation/GradeBadge'
-import { ROLE_LABELS, EVALUATION_TYPE_LABELS, EVALUATION_TYPE_COLORS } from '@/lib/constants'
+import { ROLE_LABELS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { ArrowLeft, Printer, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Award, AlertTriangle, Bot, RefreshCw, Sparkles, FileDown, Lock } from 'lucide-react'
 import { generatePdfReport, type PdfReportInput } from '@/lib/pdf-report'
@@ -299,7 +299,6 @@ export default function Report() {
           <thead>
             <tr className="border-b border-gray-100 text-left">
               <th className="sticky left-0 bg-white px-4 py-3 font-medium text-gray-500">항목</th>
-              <th className="px-3 py-3 font-medium text-gray-500 text-center whitespace-nowrap">구분</th>
               {evalCols.map((col) => (
                 <th key={col.key} className="px-3 py-3 font-medium text-gray-500 text-center whitespace-nowrap">
                   {col.label}
@@ -322,13 +321,6 @@ export default function Report() {
                 <tr key={item.id} className="hover:bg-gray-50/50">
                   <td className="sticky left-0 bg-white px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                     {item.name}
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    {item.evaluation_type && (
-                      <span className={cn('inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium', EVALUATION_TYPE_COLORS[item.evaluation_type])}>
-                        {EVALUATION_TYPE_LABELS[item.evaluation_type]}
-                      </span>
-                    )}
                   </td>
                   {scores.map((s, idx) => (
                     <td key={idx} className={cn('px-3 py-3 text-center tabular-nums', scoreCellClass(s))}>

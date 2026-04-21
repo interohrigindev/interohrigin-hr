@@ -13,6 +13,8 @@
 | [AI.md](AI.md) | AI 분석/STT 관련 작업 시 | Gemini API, Whisper, AI 설정 |
 | [GOOGLE.md](GOOGLE.md) | 이메일/캘린더/Meet 작업 시 | Workspace, OAuth, Gmail/Calendar/Meet/Drive |
 | [ROADMAP.md](ROADMAP.md) | 우선순위 확인/계획 수립 시 | 개발 상태, 우선순위, 프롬프트 맵 |
+| [PLAN_HR_EVALUATION_HANDOVER.md](PLAN_HR_EVALUATION_HANDOVER.md) | 수습평가/인수인계/운영 피드백 기능 설계 시 | 평가 보강 + 인수인계 자동화 + 운영 피드백 개발 계획 |
+| [PROMPTS_HR_EVALUATION_HANDOVER.md](PROMPTS_HR_EVALUATION_HANDOVER.md) | 단계별 구현 프롬프트가 필요할 때 | 평가/인수인계/운영 피드백 작업용 실행 프롬프트 모음 |
 
 ## Reference (히스토리/과거 자료)
 
@@ -20,3 +22,4 @@
 |------|------|
 | [ref/](ref/) | 미팅 기록, 과거 개발 계획, 작업 로그 |
 | [채용관리_프로세스_가이드.md](채용관리_프로세스_가이드.md) | 채용 13단계 프로세스 가이드 |
+| [ref/차대표님_확인요청_정리_20260421.md](ref/차대표님_확인요청_정리_20260421.md) | 운영 피드백 원문 정리, 이미지 기준 요약 |

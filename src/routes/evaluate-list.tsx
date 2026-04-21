@@ -16,12 +16,19 @@ import type { EmployeeRole } from '@/types/database'
 import { ClipboardList } from 'lucide-react'
 
 // 역할별 평가 가능한 최소 target status
+// admin / hr_admin 은 감독 역할로 self_done 부터 전체 조회 가능
 const ROLE_REQUIRED_STATUS: Record<string, string> = {
   leader: 'self_done',
   director: 'leader_done',
   division_head: 'leader_done',
   ceo: 'director_done',
+  admin: 'self_done',
+  hr_admin: 'self_done',
 }
+
+// director / division_head 는 본인 본부(division) 산하 직원만 평가
+// leader 는 본인 팀/부서 + 하위 부서 트리까지 포함
+// admin / hr_admin / ceo 는 전체 스코프
 
 const STATUS_ORDER = [
   'pending', 'self_done', 'leader_done',
@@ -35,18 +42,43 @@ export default function EvaluateList() {
   const navigate = useNavigate()
 
   const [deptMap, setDeptMap] = useState<Record<string, string>>({})
+  const [deptParentMap, setDeptParentMap] = useState<Record<string, string | null>>({})
   const [deptLoading, setDeptLoading] = useState(true)
 
   useEffect(() => {
     async function fetchDepts() {
-      const { data } = await supabase.from('departments').select('id, name')
-      const map: Record<string, string> = {}
-      data?.forEach((d) => { map[d.id] = d.name })
-      setDeptMap(map)
+      const { data } = await supabase.from('departments').select('id, name, parent_id')
+      const nameMap: Record<string, string> = {}
+      const parentMap: Record<string, string | null> = {}
+      data?.forEach((d) => {
+        nameMap[d.id] = d.name
+        parentMap[d.id] = (d as { parent_id?: string | null }).parent_id ?? null
+      })
+      setDeptMap(nameMap)
+      setDeptParentMap(parentMap)
       setDeptLoading(false)
     }
     fetchDepts()
   }, [])
+
+  // 내 부서 및 하위 부서 ID 집합 (leader/director/division_head 스코프)
+  function collectSubtreeIds(rootId: string | null | undefined): Set<string> {
+    const result = new Set<string>()
+    if (!rootId) return result
+    result.add(rootId)
+    // 단순 BFS
+    const queue = [rootId]
+    while (queue.length > 0) {
+      const parent = queue.shift()!
+      for (const [childId, pId] of Object.entries(deptParentMap)) {
+        if (pId === parent && !result.has(childId)) {
+          result.add(childId)
+          queue.push(childId)
+        }
+      }
+    }
+    return result
+  }
 
   if (periodLoading || targetsLoading || deptLoading) return <PageSpinner />
 
@@ -98,14 +130,26 @@ export default function EvaluateList() {
     }
   }
 
+  // 내 관할 부서 트리 (leader/director/division_head 용)
+  const mySubtree = (myRole === 'leader' || myRole === 'director' || myRole === 'division_head')
+    ? collectSubtreeIds(profile?.department_id)
+    : null
+
   const filteredTargets = targets.filter((t) => {
     if (!myRole || !requiredStatus) return false
-    if (myRole === 'leader' && t.employee.department_id !== profile?.department_id) return false
+
+    // leader / director / division_head — 본인 부서 및 하위 부서 트리만 노출
+    if (mySubtree && mySubtree.size > 0) {
+      const empDeptId = t.employee.department_id
+      if (!empDeptId || !mySubtree.has(empDeptId)) return false
+    }
+
     // CEO: 부서단위 필터
     if (myRole === 'ceo') {
       const dId = t.employee.department_id ?? '__none__'
       if (!ceoReadyDepts.has(dId)) return false
     }
+
     const targetIdx = STATUS_ORDER.indexOf(t.status)
     const requiredIdx = STATUS_ORDER.indexOf(requiredStatus)
     return targetIdx >= requiredIdx

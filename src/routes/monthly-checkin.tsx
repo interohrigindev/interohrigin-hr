@@ -401,14 +401,14 @@ export default function MonthlyCheckinPage() {
     setFeedbackText('')
   }
 
-  // 직원 → 리더 → 임원 → 대표 순서 엄격 적용
+  // 미팅노트: 리더·임원·대표 모두 독립적으로 코멘트 작성 가능 (순서 강제 제거)
+  // 단, 직원이 '제출'하지 않은(draft) 항목은 피드백 불가
   function canGiveFeedback(checkin: MonthlyCheckin): boolean {
     if (checkin.is_locked) return false
+    if (checkin.status === 'draft') return false
     const userRole = profile?.role
-    if (userRole === 'ceo' && checkin.status === 'exec_reviewed') return true
-    if ((userRole === 'director' || userRole === 'division_head') && checkin.status === 'leader_reviewed') return true
-    if (userRole === 'leader' && checkin.status === 'submitted') return true
-    return false
+    if (!userRole) return false
+    return ['leader', 'director', 'division_head', 'ceo', 'admin'].includes(userRole)
   }
 
   if (anyLoading) return <PageSpinner />

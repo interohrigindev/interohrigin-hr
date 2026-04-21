@@ -42,6 +42,8 @@ src/
 | /admin/employees/notes | 특이사항 관리 |
 | /admin/ojt | OJT 관리 |
 | /admin/probation | 수습 평가 |
+| /admin/employees/handover | 퇴직자 인수인계 관리 (예정) |
+| /admin/employees/handover/:id/chat | 인수인계 챗봇 (예정) |
 | /admin/leave | 연차 관리 |
 | /admin/attendance | 근태 관리 |
 | /admin/approval | 전자 결재 |
@@ -60,6 +62,7 @@ src/
 | /my/certificates | 증명서 발급 |
 | /my/training | 교육 현황 |
 | /my/profile | 내 정보 수정 |
+| /my/handover | 내 인수인계 문서 (예정) |
 
 ### 공통
 | 경로 | 페이지 |
@@ -72,6 +75,35 @@ src/
 | /meeting-notes | 회의록 |
 | /messenger | 사내 메신저 |
 | /settings/* | 설정 (일반, 평가, 비용관리) |
+
+## 예정 추가 메모 (2026.04.21)
+
+- `src/routes/ojt/probation-results.tsx`
+  - 수습평가 카드 정보 보강
+  - PDF 저장
+  - AI 코멘트 확장
+  - AI 종합 분석
+- `src/routes/monthly-checkin/*`
+  - 상단 이슈/칭찬/제안/기타 탭 정리
+  - 직원 계정 월간 점검 흐름 보완
+- `src/routes/evaluation/*`
+  - 동료평가 10항목 × 10점 구조 보강
+- `src/routes/employees/handover.tsx`
+  - 인수인계 메인 화면
+  - 자산/계약서/문서 위치 인벤토리
+- `src/routes/employees/handover-chat.tsx`
+  - 후임자용 질문/답변 UI
+- `src/routes/ojt/*`
+  - OJT 일정 보완
+  - AI 퀴즈 생성 오류 수정
+- `src/routes/work/*`
+  - 프로젝트 대시보드 개인화
+  - 일일보고 진행 작업 자동 연동
+- `src/routes/leave/*`
+  - 직원별 연차 캘린더/월간 뷰
+- `src/routes/approval/*`
+  - 전자결재 런처형 진입
+  - 품의서 작성 화면 확장
 
 ### 외부 (로그인 불필요)
 | 경로 | 페이지 |

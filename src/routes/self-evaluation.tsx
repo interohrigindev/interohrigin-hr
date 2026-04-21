@@ -217,7 +217,6 @@ export default function SelfEvaluation() {
                   name={item.name}
                   description={item.description}
                   maxScore={item.max_score}
-                  evaluationType={item.evaluation_type}
                   data={formData[item.id] ?? { personal_goal: '', achievement_method: '', self_comment: '', score: null }}
                   onChange={() => {}}
                   readOnly
@@ -331,7 +330,6 @@ export default function SelfEvaluation() {
                   name={item.name}
                   description={item.description}
                   maxScore={item.max_score}
-                  evaluationType={item.evaluation_type}
                   data={formData[item.id] ?? { personal_goal: '', achievement_method: '', self_comment: '', score: null }}
                   onChange={(data) => updateItem(item.id, data)}
                   phase={currentPhase}

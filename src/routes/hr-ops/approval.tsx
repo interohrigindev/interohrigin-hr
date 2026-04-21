@@ -72,6 +72,9 @@ interface ApprovalTemplate {
   condition_operator: string | null
   condition_value: string | null
   is_active: boolean
+  // D1-6: 본부/팀 단위 결재라인 분기
+  department_id?: string | null
+  team_id?: string | null
 }
 
 /* ────── Constants ────── */
@@ -238,8 +241,28 @@ export default function ApprovalManagementPage() {
 
   // Get the matching template for a doc_type + amount condition
   // 복수 조건 분기 시 가장 "구체적인(specific)" 조건을 우선 (C8 잔여 리스크 2 해소)
+  // D1-6: 신청자의 team_id/department_id 우선 매칭 추가
   const getTemplateForDocType = (docType: string, amount?: number | null) => {
-    const candidates = templates.filter((t) => t.doc_type === docType && t.is_active !== false)
+    const me = allEmployees.find((e) => e.id === profile?.id)
+    const myDeptId = me?.department_id || null
+    const myDept = departments.find((d) => d.id === myDeptId)
+    const myDivisionId = myDept?.parent_id || myDeptId  // 본부(parent) 또는 본인 dept
+
+    let candidates = templates.filter((t) => t.doc_type === docType && t.is_active !== false)
+
+    // D1-6: 1순위 — team_id = 신청자 부서(팀) 매칭
+    const teamMatch = candidates.filter((t) => t.team_id && t.team_id === myDeptId)
+    if (teamMatch.length > 0) candidates = teamMatch
+    else {
+      // 2순위 — department_id = 신청자 본부 매칭
+      const deptMatch = candidates.filter((t) => t.department_id && t.department_id === myDivisionId && !t.team_id)
+      if (deptMatch.length > 0) candidates = deptMatch
+      else {
+        // 3순위 — department_id / team_id 둘 다 NULL (전체 fallback)
+        const fallback = candidates.filter((t) => !t.team_id && !t.department_id)
+        if (fallback.length > 0) candidates = fallback
+      }
+    }
 
     const conditional = candidates.filter(t => t.condition_field && t.condition_operator && t.condition_value)
     if (amount != null && conditional.length > 0) {
@@ -1059,7 +1082,7 @@ export default function ApprovalManagementPage() {
 
       {/* 결재선 관리 탭 */}
       {activeTab === 'template_manage' && (
-        <ApprovalTemplateManager templates={templates} employees={allEmployees} onRefresh={fetchData} />
+        <ApprovalTemplateManager templates={templates} employees={allEmployees} departments={departments} onRefresh={fetchData} />
       )}
 
       {/* Document List */}
@@ -1525,14 +1548,14 @@ export default function ApprovalManagementPage() {
                 placeholder="결재 제목을 입력하세요"
               />
 
-              {/* Amount field for expense/purchase types */}
+              {/* Amount field for expense/purchase types — D1-5: 필수 해제 */}
               {hasAmount && (
                 <Input
-                  label="금액 (원) *"
+                  label="금액 (원)"
                   type="number"
                   value={newAmount}
                   onChange={(e) => setNewAmount(e.target.value)}
-                  placeholder="금액을 입력하세요"
+                  placeholder="금액을 입력하세요 (선택)"
                 />
               )}
 
@@ -1787,6 +1810,7 @@ export default function ApprovalManagementPage() {
 
 const ROLE_OPTIONS = [
   { value: 'leader', label: '팀장/리더' },
+  { value: 'division', label: '본부' },
   { value: 'executive', label: '이사/임원' },
   { value: 'ceo', label: '대표' },
   { value: 'hr_admin', label: '인사/경영지원' },
@@ -1796,10 +1820,21 @@ const ROLE_OPTIONS = [
 // 역할 → 자동 매칭할 직원 role 값 (참고용. 실제 UI는 모든 직원에서 선택)
 const ROLE_EMPLOYEE_MATCH: Record<string, string[]> = {
   leader: ['leader'],
+  division: ['division_head', 'director'],
   executive: ['director', 'division_head'],
   ceo: ['ceo'],
-  hr_admin: ['admin'],
+  hr_admin: ['hr_admin', 'admin'],
   finance: ['admin'],
+}
+
+// D1-6: 1단계 역할 선택 시 2단계 자동 권장 체인
+const ROLE_NEXT_CHAIN: Record<string, string[]> = {
+  leader:    ['executive', 'ceo'],
+  division:  ['executive', 'ceo'],
+  executive: ['ceo'],
+  hr_admin:  ['executive', 'ceo'],
+  finance:   ['executive', 'ceo'],
+  ceo:       [],
 }
 
 type ActionType = 'approve' | 'consult' | 'reference'
@@ -1814,10 +1849,12 @@ const ACTION_TYPE_OPTIONS: { value: ActionType; label: string; desc: string; col
 function ApprovalTemplateManager({
   templates,
   employees,
+  departments,
   onRefresh,
 }: {
   templates: ApprovalTemplate[]
   employees: Employee[]
+  departments: Department[]
   onRefresh: () => void
 }) {
   const { toast } = useToast()
@@ -1827,6 +1864,14 @@ function ApprovalTemplateManager({
   const [editCondField, setEditCondField] = useState<string | null>(null)
   const [editCondOp, setEditCondOp] = useState<string | null>(null)
   const [editCondVal, setEditCondVal] = useState<string | null>(null)
+  // D1-6: 적용 범위 (본부/팀) 편집
+  const [editDeptId, setEditDeptId] = useState<string | null>(null)
+  const [editTeamId, setEditTeamId] = useState<string | null>(null)
+
+  // 본부(=parent_id 없는 부서) / 팀(=parent_id 있는 부서) 분리
+  const divisions = departments.filter((d) => !(d as { parent_id?: string | null }).parent_id)
+  const teamsForDivision = (divId: string | null) =>
+    divId ? departments.filter((d) => (d as { parent_id?: string | null }).parent_id === divId) : []
 
   function startEdit(tmpl: ApprovalTemplate) {
     setEditingId(tmpl.id)
@@ -1834,12 +1879,15 @@ function ApprovalTemplateManager({
     setEditCondField(tmpl.condition_field)
     setEditCondOp(tmpl.condition_operator)
     setEditCondVal(tmpl.condition_value)
+    setEditDeptId(tmpl.department_id ?? null)
+    setEditTeamId(tmpl.team_id ?? null)
   }
 
   function cancelEdit() {
     setEditingId(null)
     setEditSteps([])
     setEditCondField(null); setEditCondOp(null); setEditCondVal(null)
+    setEditDeptId(null); setEditTeamId(null)
   }
 
   async function saveEdit(tmplId: string) {
@@ -1848,6 +1896,8 @@ function ApprovalTemplateManager({
       condition_field: editCondField || null,
       condition_operator: editCondOp || null,
       condition_value: editCondVal || null,
+      department_id: editDeptId || null,
+      team_id: editTeamId || null,
     }).eq('id', tmplId)
     if (error) { toast('저장 실패: ' + error.message, 'error'); return }
     toast('결재선이 수정되었습니다.', 'success')
@@ -1864,7 +1914,31 @@ function ApprovalTemplateManager({
   }
 
   function updateStep(idx: number, field: 'role' | 'label', value: string) {
-    setEditSteps(editSteps.map((s, i) => i === idx ? { ...s, [field]: value } : s))
+    const nextSteps = editSteps.map((s, i) => {
+      if (i !== idx) return s
+      // role 변경 시 label 도 자동으로 해당 role 기본 라벨로 갱신
+      if (field === 'role') {
+        const roleOpt = ROLE_OPTIONS.find((r) => r.value === value)
+        return { ...s, role: value, label: roleOpt?.label || value, approver_ids: [] }
+      }
+      return { ...s, [field]: value }
+    })
+
+    // D1-6: 1단계 역할 선택 시, 후속 단계가 비어 있으면 자동으로 권장 체인 추가
+    if (field === 'role' && idx === 0 && nextSteps.length === 1) {
+      const chain = ROLE_NEXT_CHAIN[value] || []
+      for (const nextRole of chain) {
+        const opt = ROLE_OPTIONS.find((r) => r.value === nextRole)
+        nextSteps.push({
+          role: nextRole,
+          label: opt?.label || nextRole,
+          approver_ids: [],
+          action_type: 'approve',
+        })
+      }
+    }
+
+    setEditSteps(nextSteps)
   }
 
   function toggleApprover(idx: number, empId: string) {
@@ -2101,6 +2175,11 @@ function ApprovalTemplateManager({
                     <Badge variant={tmpl.is_active ? 'success' : 'default'} className="text-[10px]">
                       {tmpl.is_active ? '활성' : '비활성'}
                     </Badge>
+                    {(tmpl.department_id || tmpl.team_id) && (
+                      <Badge variant="info" className="text-[10px]">
+                        🏢 {tmpl.team_id ? (departments.find((d) => d.id === tmpl.team_id)?.name || '팀') : (departments.find((d) => d.id === tmpl.department_id)?.name || '본부')}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex gap-1 shrink-0">
                     {isEditing ? (
@@ -2135,6 +2214,53 @@ function ApprovalTemplateManager({
                 {/* 편집 모드: 세로 리스트 + 드래그 */}
                 {isEditing ? (
                   <div className="space-y-1.5">
+                    {/* D1-6: 🏢 적용 범위 (본부/팀) — 전체/본부/팀 단위로 결재라인 분기 */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-200 rounded-lg p-3 mb-3">
+                      <p className="text-sm font-bold text-indigo-900 mb-2 flex items-center gap-1.5">
+                        🏢 적용 범위
+                        {(editDeptId || editTeamId) && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">✓ 부서별</span>
+                        )}
+                      </p>
+                      <div className="space-y-1.5 bg-white rounded-md p-2 border border-indigo-200">
+                        <div className="flex items-center gap-2 text-sm flex-wrap">
+                          <span className="text-gray-700 font-medium w-14 shrink-0">본부</span>
+                          <select
+                            value={editDeptId || ''}
+                            onChange={(e) => {
+                              const v = e.target.value || null
+                              setEditDeptId(v)
+                              setEditTeamId(null) // 본부 변경 시 팀 초기화
+                            }}
+                            className="text-sm border-2 border-indigo-300 rounded px-2 py-1 bg-white text-indigo-800 flex-1"
+                          >
+                            <option value="">전체 (기본 — fallback)</option>
+                            {divisions.map((d) => (
+                              <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {editDeptId && teamsForDivision(editDeptId).length > 0 && (
+                          <div className="flex items-center gap-2 text-sm flex-wrap">
+                            <span className="text-gray-700 font-medium w-14 shrink-0">팀</span>
+                            <select
+                              value={editTeamId || ''}
+                              onChange={(e) => setEditTeamId(e.target.value || null)}
+                              className="text-sm border-2 border-indigo-300 rounded px-2 py-1 bg-white text-indigo-800 flex-1"
+                            >
+                              <option value="">본부 전체</option>
+                              {teamsForDivision(editDeptId).map((t) => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-indigo-700 mt-1.5">
+                        팀 지정 시 해당 팀 소속 직원만 이 결재선 자동 적용 · 본부만 지정 시 본부 전체 · 전체면 모든 직원 기본값
+                      </p>
+                    </div>
+
                     {/* 💰 금액 조건 — 경비/구매 양식에서 필수 */}
                     {(tmpl.doc_type === 'expense' || tmpl.doc_type === 'purchase') && (
                       <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-lg p-3 mb-3 shadow-sm">
