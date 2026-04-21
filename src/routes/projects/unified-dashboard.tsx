@@ -869,9 +869,10 @@ export default function UnifiedDashboard() {
           <Button
             size="lg"
             onClick={() => navigate('/admin/projects/new')}
-            className="shadow-md hover:shadow-lg transition-shadow font-semibold"
+            className="shadow-md hover:shadow-lg transition-shadow font-semibold whitespace-nowrap shrink-0"
           >
-            <Plus className="h-5 w-5" /> 새 프로젝트
+            <Plus className="h-5 w-5 mr-1" />
+            <span className="whitespace-nowrap">새 프로젝트</span>
           </Button>
         </div>
       </div>

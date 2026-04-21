@@ -260,10 +260,11 @@ priority는 urgent, high, normal, low 중 하나입니다.
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-gray-900">프로젝트 관리</h1>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" /> 새 프로젝트
+        <Button onClick={openCreate} className="whitespace-nowrap shrink-0">
+          <Plus className="h-4 w-4 mr-1" />
+          <span className="whitespace-nowrap">새 프로젝트</span>
         </Button>
       </div>
 

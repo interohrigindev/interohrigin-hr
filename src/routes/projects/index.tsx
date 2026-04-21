@@ -707,8 +707,9 @@ export default function ProjectBoardPage() {
           <h1 className="text-2xl font-bold text-gray-900">프로젝트 보드</h1>
           <p className="text-sm text-gray-500 mt-0.5">모든 프로젝트의 현황을 한눈에 관리합니다</p>
         </div>
-        <Button className="shrink-0" onClick={() => navigate('/admin/projects/new')}>
-          <Plus className="h-4 w-4 mr-1" /> 새 프로젝트
+        <Button className="shrink-0 whitespace-nowrap" onClick={() => navigate('/admin/projects/new')}>
+          <Plus className="h-4 w-4 mr-1" />
+          <span className="whitespace-nowrap">새 프로젝트</span>
         </Button>
       </div>
 

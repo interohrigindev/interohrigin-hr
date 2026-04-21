@@ -12,6 +12,8 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { useUrgentTasks } from '@/hooks/useUrgentTasks'
+import { useNavigate } from 'react-router-dom'
 
 interface ReportData {
   totalEmployees: number
@@ -53,11 +55,20 @@ function formatAnalysisSection(md: string, sectionTitle: string): string {
 export default function CEOReport() {
   const { hasRole } = useAuth()
   const { toast } = useToast()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReportData | null>(null)
   const [signals, setSignals] = useState<any[]>([])
   const [aiAnalysis, setAiAnalysis] = useState('')
   const [aiAnalyzing, setAiAnalyzing] = useState(false)
+  // D3-1: 긴급 업무 통합
+  const { tasks: urgentTasks } = useUrgentTasks()
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const criticalTasks = urgentTasks.filter((t) =>
+    (t.priority === 1 || t.priority === 2) &&
+    t.status !== 'completed' &&
+    t.deadline && t.deadline <= todayStr
+  ).slice(0, 8)
 
   // CEO 또는 admin만 접근
   const canAccess = hasRole('ceo') || hasRole('admin')
@@ -428,6 +439,45 @@ export default function CEOReport() {
               <span className="text-sm font-bold text-brand-700">AI 핵심 요약</span>
             </div>
             <div className="text-sm text-gray-800 leading-relaxed" dangerouslySetInnerHTML={{ __html: formatAnalysisSection(aiAnalysis, '핵심 요약') }} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* D3-1: 오늘의 주요 긴급 업무 (우선순위 ≤ 2, 마감 당일·초과, 미완료) */}
+      {criticalTasks.length > 0 && (
+        <Card className="border-red-300 bg-gradient-to-r from-red-50 to-orange-50">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-red-700">
+                <AlertCircle className="h-5 w-5" /> 오늘의 주요 긴급 업무
+                <Badge variant="danger" className="ml-1">{criticalTasks.length}건</Badge>
+              </span>
+              <Button size="sm" variant="outline" onClick={() => navigate('/admin/urgent')} className="text-xs">
+                전체 보기 <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="py-2">
+            <div className="space-y-1.5">
+              {criticalTasks.map((t) => {
+                const overdue = t.deadline && t.deadline < todayStr
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => navigate('/admin/urgent')}
+                    className="flex items-center gap-2 px-3 py-2 bg-white rounded-md border border-red-100 hover:border-red-300 hover:shadow-sm cursor-pointer transition-all"
+                  >
+                    <Badge variant={t.priority === 1 ? 'danger' : 'warning'} className="text-[10px] shrink-0">
+                      P{t.priority}
+                    </Badge>
+                    <span className="text-sm font-medium text-gray-800 flex-1 truncate">{t.title}</span>
+                    <span className={`text-[11px] shrink-0 ${overdue ? 'text-red-600 font-bold' : 'text-amber-600'}`}>
+                      {overdue ? `⚠ ${t.deadline} 초과` : `📅 오늘 마감`}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           </CardContent>
         </Card>
       )}

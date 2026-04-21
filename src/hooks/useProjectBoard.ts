@@ -65,10 +65,12 @@ export function useProjectBoard(statusFilter?: string) {
       executive_name: p.executive_id ? empMap.get(p.executive_id) : undefined,
     }))
 
-    // ─── 본인 관련 프로젝트 필터링 (관리자 제외) ───
+    // ─── D2-5: 본인 관련 프로젝트만 표시 (CEO/admin 만 전체 조회) ───
+    // 임원(director/division_head)도 담당자/참여자일 때만 노출
+    // shared_departments 기반 '부서 공유'는 더 이상 자동 노출 근거가 아님
     const myId = profile?.id
     const myRole = profile?.role
-    const privileged = myRole && ['director', 'division_head', 'ceo', 'admin'].includes(myRole)
+    const privileged = myRole && ['ceo', 'admin'].includes(myRole)
     const filtered = (myId && !privileged)
       ? enriched.filter((p) =>
           p.assignee_ids?.includes(myId) ||

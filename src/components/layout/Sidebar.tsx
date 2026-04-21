@@ -18,7 +18,6 @@ import {
   AlertCircle,
   LogOut,
   GraduationCap,
-  UserCheck,
   ClipboardCheck,
   ChevronDown,
   ChevronRight,
@@ -32,8 +31,7 @@ import {
   RefreshCw,
   FileBarChart,
   ShieldCheck,
-  AlertTriangle,
-  Zap,
+  // AlertTriangle, Zap, // D3-1: 긴급업무 그룹 CEO 리포트 통합으로 미사용
   LayoutGrid,
   Columns3,
   Plus,
@@ -44,7 +42,7 @@ import {
   // Wallet, // 급여관리 숨김으로 미사용
   BookOpen,
   Building,
-  Mic,
+  // Mic, // D2-1: 회의록 메뉴 숨김으로 미사용
   DollarSign,
   Package,
 } from 'lucide-react'
@@ -80,33 +78,21 @@ interface NavGroup {
   items: NavItem[]
 }
 
-// 기존 평가 시스템 메뉴 (그룹 없는 개별 항목)
+// D2-1: 재편된 상위 메뉴 (그룹 없는 개별 항목)
+// 자기평가/내 평가 결과 → 인사평가 그룹 하위로 통합
+// 일일 보고서 / 전자결재 → 최상위로 승격
+// 멘토링/회의록 → 숨김 (OJT 내부·게시판으로 대체)
 const standaloneItems: NavItem[] = [
   {
-    to: '/self-evaluation',
-    label: '자기평가',
-    icon: <PenSquare className="h-5 w-5" />,
-    hideForRoles: ['director', 'division_head', 'ceo', 'admin'],
+    to: '/work/daily-report',
+    label: '일일 보고서',
+    icon: <CalendarDays className="h-5 w-5" />,
   },
   {
-    to: '/evaluate',
-    label: '평가하기',
-    icon: <ClipboardList className="h-5 w-5" />,
-    minRole: 'leader',
-    hideForRoles: ['admin'],
+    to: '/admin/approval',
+    label: '전자 결재',
+    icon: <FileCheck className="h-5 w-5" />,
   },
-  {
-    to: 'REPORT_SELF',
-    label: '내 결과',
-    icon: <FileText className="h-5 w-5" />,
-    hideForRoles: ['director', 'division_head', 'ceo', 'admin'],
-  },
-  // IO AI — 임시 숨김
-  // {
-  //   to: '/io-ai',
-  //   label: 'IO AI',
-  //   icon: <Sparkles className="h-5 w-5" />,
-  // },
   {
     to: '/ceo-report',
     label: 'CEO 리포트',
@@ -125,40 +111,25 @@ const standaloneItems: NavItem[] = [
     icon: <FileText className="h-5 w-5" />,
   },
   {
-    to: '/meeting-notes',
-    label: '회의록',
-    icon: <Mic className="h-5 w-5" />,
-  },
-  {
-    to: '/my-evaluations',
-    label: '내 평가 결과',
-    icon: <ClipboardCheck className="h-5 w-5" />,
-  },
-  {
-    to: '/my/mentorship',
-    label: '나의 멘토링',
-    icon: <UserCheck className="h-5 w-5" />,
-  },
-  {
     to: '/my/handover',
     label: '나의 인수인계',
     icon: <Package className="h-5 w-5" />,
   },
-  // { to: '/calendar', label: '캘린더', icon: <CalendarDays className="h-5 w-5" /> }, // 일시 숨김
 ]
 
 // 그룹 메뉴
 const navGroups: NavGroup[] = [
-  {
-    id: 'urgent',
-    label: '긴급 업무',
-    icon: <AlertTriangle className="h-5 w-5 text-red-500" />,
-    items: [
-      { to: '/admin/urgent', label: 'CEO 긴급 대시보드', icon: <Zap className="h-4 w-4" />, end: true },
-      { to: '/admin/urgent/simple-eval', label: '간편 인사평가', icon: <ClipboardCheck className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
-      { to: '/admin/urgent/penalties', label: '감점 현황', icon: <AlertTriangle className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
-    ],
-  },
+  // D3-1: 긴급 업무 그룹은 CEO 리포트에 통합 → Sidebar 에서 숨김 (라우트는 유지)
+  // {
+  //   id: 'urgent',
+  //   label: '긴급 업무',
+  //   icon: <AlertTriangle className="h-5 w-5 text-red-500" />,
+  //   items: [
+  //     { to: '/admin/urgent', label: 'CEO 긴급 대시보드', icon: <Zap className="h-4 w-4" />, end: true },
+  //     { to: '/admin/urgent/simple-eval', label: '간편 인사평가', icon: <ClipboardCheck className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+  //     { to: '/admin/urgent/penalties', label: '감점 현황', icon: <AlertTriangle className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+  //   ],
+  // },
   {
     id: 'recruitment',
     label: '채용관리',
@@ -193,7 +164,7 @@ const navGroups: NavGroup[] = [
     minRole: 'director',
     items: [
       { to: '/admin/ojt', label: 'OJT 프로그램', icon: <GraduationCap className="h-4 w-4" />, end: true },
-      { to: '/admin/ojt/mentor', label: '멘토-멘티', icon: <UserCheck className="h-4 w-4" /> },
+      // D2-1: 멘토-멘티는 OJT 프로그램 내부에서 관리 → 독립 메뉴 숨김
       { to: '/admin/probation', label: '수습 평가', icon: <ClipboardCheck className="h-4 w-4" /> },
       { to: '/admin/probation-results', label: '평가 결과', icon: <FileBarChart className="h-4 w-4" /> },
     ],
@@ -207,8 +178,7 @@ const navGroups: NavGroup[] = [
       { to: '/admin/projects/board', label: '프로젝트 보드', icon: <Columns3 className="h-4 w-4" /> },
       { to: '/admin/projects/new', label: '새 프로젝트', icon: <Plus className="h-4 w-4" /> },
       { to: '/admin/work/tasks', label: '작업 관리', icon: <ClipboardCheck className="h-4 w-4" /> },
-      { to: '/work/daily-report', label: '일일 보고서', icon: <CalendarDays className="h-4 w-4" /> },
-      // { to: '/work/chat', label: 'AI 챗봇', icon: <Bot className="h-4 w-4" /> }, // 하단 AI 플로팅과 기능 중복으로 비활성화
+      // D2-1: 일일 보고서는 상위 standalone 으로 이동
       { to: '/admin/projects/settings', label: '권한 설정', icon: <Settings className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
     ],
   },
@@ -219,7 +189,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/admin/leave', label: '연차 관리', icon: <CalendarPlus className="h-4 w-4" />, end: true },
       // { to: '/admin/attendance', label: '근태 관리', icon: <Clock className="h-4 w-4" /> }, // Sprint 0: 이번 배포 제외
-      { to: '/admin/approval', label: '전자 결재', icon: <FileCheck className="h-4 w-4" /> },
+      // D2-1: 전자결재는 상위 standalone 으로 승격
       { to: '/admin/certificates', label: '증명서 발급', icon: <Award className="h-4 w-4" /> },
       { to: '/admin/organization', label: '조직도', icon: <Users className="h-4 w-4" /> },
       // { to: '/admin/payroll', label: '급여 관리', icon: <Wallet className="h-4 w-4" />, minRole: 'director' as EmployeeRole }, // 임시 숨김
@@ -231,6 +201,10 @@ const navGroups: NavGroup[] = [
     label: '인사평가',
     icon: <LineChart className="h-5 w-5" />,
     items: [
+      // D2-1: 정규직 평가 통합 컨테이너 (자기평가 → 평가하기 → 내 결과 모두 포함)
+      { to: '/self-evaluation', label: '자기평가', icon: <PenSquare className="h-4 w-4" />, hideForRoles: ['director', 'division_head', 'ceo', 'admin'] as EmployeeRole[] },
+      { to: '/evaluate', label: '평가하기', icon: <ClipboardList className="h-4 w-4" />, minRole: 'leader' as EmployeeRole, hideForRoles: ['admin'] as EmployeeRole[] },
+      { to: '/my-evaluations', label: '내 평가 결과', icon: <ClipboardCheck className="h-4 w-4" /> },
       { to: '/monthly-checkin', label: '월간 업무 점검', icon: <CalendarCheck className="h-4 w-4" /> },
       { to: '/peer-review', label: '동료 평가', icon: <UsersRound className="h-4 w-4" /> },
       { to: '/eval-dashboard', label: '평가 대시보드', icon: <BarChart3 className="h-4 w-4" />, minRole: 'director' as EmployeeRole },

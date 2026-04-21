@@ -28,6 +28,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         className={cn(
           'inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors',
+          'whitespace-nowrap', // D2-7: 버튼 내 한글 라벨 줄바꿈 방지 (예: "+ 새 프로젝트")
           'focus:outline-none focus:ring-2 focus:ring-offset-2',
           'disabled:opacity-50 disabled:cursor-not-allowed',
           variants[variant],
