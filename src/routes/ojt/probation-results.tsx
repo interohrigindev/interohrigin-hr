@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Sparkles, Loader2, TrendingUp, AlertTriangle, CheckCircle, XCircle, Users, ChevronDown, ChevronUp, Pencil } from 'lucide-react'
+import { Sparkles, Loader2, TrendingUp, AlertTriangle, CheckCircle, XCircle, Users, ChevronDown, ChevronUp, Pencil, FileDown } from 'lucide-react'
+import { generateProbationPdf } from '@/lib/pdf-probation'
+import { loadSealDataURL } from '@/lib/seal-stamp'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -104,7 +106,7 @@ export default function ProbationResults() {
 
   const [evaluations, setEvaluations] = useState<EvalWithEmployee[]>([])
   const [employees, setEmployees] = useState<EmployeeBasic[]>([])
-  const [, setDepartments] = useState<{ id: string; name: string }[]>([])
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
 
   // Trend dialog
@@ -133,7 +135,123 @@ export default function ProbationResults() {
   const [editGeneratingAI, setEditGeneratingAI] = useState(false)
   const [polishingField, setPolishingField] = useState<string | null>(null)
 
-  async function polishText(field: 'comments' | 'praise' | 'improvement' | 'leader_summary' | 'exec_one_liner' | 'strengths') {
+  // A4: 직원별 AI 종합 분석 상태
+  interface OverallAnalysis {
+    strengths: string[]
+    weaknesses: string[]
+    advice: string[]
+    actionPlan: string
+  }
+  const [overallAnalysis, setOverallAnalysis] = useState<Record<string, OverallAnalysis>>({})
+  const [analyzingEmp, setAnalyzingEmp] = useState<string | null>(null)
+
+  // 견고한 JSON 추출: 코드펜스 제거 + 중괄호 구간만 절단
+  function extractJson(raw: string): string {
+    let t = raw.trim()
+    // 코드펜스 제거
+    t = t.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+    // 첫 '{' ~ 마지막 '}' 구간
+    const start = t.indexOf('{')
+    const end = t.lastIndexOf('}')
+    if (start >= 0 && end > start) return t.slice(start, end + 1)
+    return t
+  }
+
+  // 스키마 강제: 타입 안전 변환
+  function coerceAnalysis(obj: unknown): OverallAnalysis {
+    const r = (obj ?? {}) as Record<string, unknown>
+    const toArr = (v: unknown): string[] => Array.isArray(v)
+      ? v.map((x) => typeof x === 'string' ? x : String(x)).filter(Boolean)
+      : typeof v === 'string' && v.trim() ? [v.trim()] : []
+    return {
+      strengths: toArr(r.strengths),
+      weaknesses: toArr(r.weaknesses),
+      advice: toArr(r.advice),
+      actionPlan: typeof r.actionPlan === 'string' ? r.actionPlan : '',
+    }
+  }
+
+  async function runOverallAnalysis(empId: string, empName: string, evals: EvalWithEmployee[]) {
+    setAnalyzingEmp(empId)
+    try {
+      const config = await getAIConfigForFeature('probation_eval')
+      if (!config) { toast('AI 설정이 필요합니다.', 'error'); setAnalyzingEmp(null); return }
+
+      const EVAL_ROLE_LABEL: Record<string, string> = { leader: '리더', executive: '임원', ceo: '대표' }
+      const summary = evals.map((e) => {
+        const s = e.scores as Record<string, number>
+        const total = PROBATION_CRITERIA.reduce((acc, c) => acc + (s[c.key] || 0), 0)
+        const scoreLines = PROBATION_CRITERIA.map((c) => `  - ${c.label}: ${s[c.key] || 0}/20`).join('\n')
+        return [
+          `[${STAGE_SHORT[e.stage as ProbationStage] || e.stage} · ${EVAL_ROLE_LABEL[e.evaluator_role || ''] || e.evaluator_role}]`,
+          `총점: ${total}/100`,
+          scoreLines,
+          e.praise ? `칭찬: ${e.praise}` : '',
+          e.improvement ? `보완: ${e.improvement}` : '',
+          e.comments ? `총평: ${e.comments}` : '',
+          e.leader_summary ? `리더 총평: ${e.leader_summary}` : '',
+          e.exec_one_liner ? `임원 한줄: ${e.exec_one_liner}` : '',
+          e.strengths ? `강점: ${e.strengths}` : '',
+        ].filter(Boolean).join('\n')
+      }).join('\n\n')
+
+      const buildPrompt = (retry: boolean) => `당신은 수습직원 성장을 지원하는 인사 코치입니다. ${empName} 직원의 여러 회차·여러 평가자 코멘트를 종합해 주세요.
+
+[평가 기록]
+${summary}
+
+${retry ? '⚠️ 직전 출력이 JSON 형식이 아니었습니다. 이번엔 반드시 아래 스키마를 엄격히 지켜 JSON만 출력하세요.\n\n' : ''}아래 JSON 스키마로 "정확히" 답해주세요. 다른 텍스트·설명·마크다운 코드펜스 없이 순수 JSON 오브젝트 하나만 출력:
+{
+  "strengths": ["문자열 3~5개, 구체적으로"],
+  "weaknesses": ["문자열 2~4개, 건설적 표현"],
+  "advice": ["문자열 3~5개, 실행 가능한 조언"],
+  "actionPlan": "2~4문장. 향후 4주 내 집중할 실행 계획. 제안/권장 어조 유지."
+}
+
+원칙:
+- 비난이 아닌 성장 지원 관점
+- 복수 평가자의 공통 시각 우선, 상충하는 경우 신중히 병기
+- 구체적 행동 제안 포함`
+
+      // 1차 시도
+      let parsed: OverallAnalysis | null = null
+      let lastErr: unknown = null
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await generateAIContent(config, buildPrompt(attempt > 0))
+          const jsonText = extractJson(result.content)
+          const obj = JSON.parse(jsonText)
+          const candidate = coerceAnalysis(obj)
+          // 최소 유효성: 3개 배열 중 하나라도 비어있지 않아야 성공 간주
+          const valid = candidate.strengths.length > 0
+            || candidate.weaknesses.length > 0
+            || candidate.advice.length > 0
+            || candidate.actionPlan.length > 0
+          if (!valid) throw new Error('빈 분석 결과')
+          parsed = candidate
+          break
+        } catch (e) {
+          lastErr = e
+          // 첫 시도 실패 시 한번 더 재시도
+        }
+      }
+
+      if (!parsed) {
+        throw lastErr instanceof Error ? lastErr : new Error('형식 오류')
+      }
+
+      setOverallAnalysis((prev) => ({ ...prev, [empId]: parsed! }))
+      toast('종합 분석이 완료되었습니다.', 'success')
+    } catch (err: unknown) {
+      toast('종합 분석 실패: ' + (err instanceof Error ? err.message : '형식 오류') + ' · 다시 시도해보세요', 'error')
+    }
+    setAnalyzingEmp(null)
+  }
+
+  type PolishField = 'comments' | 'praise' | 'improvement' | 'leader_summary' | 'exec_one_liner' | 'strengths'
+  type PolishMode = 'polish' | 'expand'
+
+  async function polishText(field: PolishField, mode: PolishMode = 'polish') {
     const current = field === 'comments' ? editComments
       : field === 'praise' ? editPraise
       : field === 'improvement' ? editImprovement
@@ -141,26 +259,29 @@ export default function ProbationResults() {
       : field === 'exec_one_liner' ? editExecOneLiner
       : editStrengths
     if (!current.trim()) { toast('먼저 내용을 입력해주세요.', 'error'); return }
-    setPolishingField(field)
+    const slot = `${field}:${mode}`
+    setPolishingField(slot)
     try {
       const config = await getAIConfigForFeature('probation_eval')
       if (!config) { toast('AI 설정이 필요합니다.', 'error'); setPolishingField(null); return }
-      const FIELD_LABEL: Record<string, string> = {
+      const FIELD_LABEL: Record<PolishField, string> = {
         comments: '총평', praise: '칭찬할 점', improvement: '보완할 점',
         leader_summary: '리더 총평', exec_one_liner: '임원 한줄 코멘트', strengths: '강점',
       }
-      const prompt = `다음은 수습직원 평가의 "${FIELD_LABEL[field]}" 항목 초안입니다. 의미는 유지하면서 가독성 좋게 자연스러운 한국어 문장으로 다듬어 주세요. 새로운 내용을 만들어내지 말고, 주어진 내용만 매끄럽게 정리해주세요. 마크다운 없이 일반 텍스트로, 원문과 비슷한 분량(1~3문장)으로 작성해주세요.\n\n[초안]\n${current}`
+      const polishPrompt = `다음은 수습직원 평가의 "${FIELD_LABEL[field]}" 항목 초안입니다. 의미는 유지하면서 가독성 좋게 자연스러운 한국어 문장으로 다듬어 주세요. 새로운 내용을 만들어내지 말고, 주어진 내용만 매끄럽게 정리해주세요. 마크다운 없이 일반 텍스트로, 원문과 비슷한 분량(1~3문장)으로 작성해주세요.\n\n[초안]\n${current}`
+      const expandPrompt = `당신은 직원 성장을 돕는 인사 코치입니다. 다음은 수습직원 평가의 "${FIELD_LABEL[field]}" 항목에 평가자가 짧게 적은 메모입니다.\n\n초안의 핵심 메시지를 보존하면서, 건설적 피드백이 되도록 3~5문장으로 확장해 주세요.\n\n[필수 규칙]\n- "결정" 대신 "제안/권장" 표현 사용\n- 비난형 표현 금지, 성장 지원 관점 유지\n- 해당 직원이 실제 실천할 수 있는 구체적 행동 제안 1~2가지 포함\n- 가능하면 예시나 이유를 곁들여 설명\n- 마크다운 없이 자연스러운 일반 텍스트 문단으로 작성\n\n[초안]\n${current}`
+      const prompt = mode === 'expand' ? expandPrompt : polishPrompt
       const result = await generateAIContent(config, prompt)
-      const polished = result.content.trim()
-      if (field === 'comments') setEditComments(polished)
-      else if (field === 'praise') setEditPraise(polished)
-      else if (field === 'improvement') setEditImprovement(polished)
-      else if (field === 'leader_summary') setEditLeaderSummary(polished)
-      else if (field === 'exec_one_liner') setEditExecOneLiner(polished)
-      else setEditStrengths(polished)
-      toast('AI가 문장을 다듬었습니다.', 'success')
+      const output = result.content.trim()
+      if (field === 'comments') setEditComments(output)
+      else if (field === 'praise') setEditPraise(output)
+      else if (field === 'improvement') setEditImprovement(output)
+      else if (field === 'leader_summary') setEditLeaderSummary(output)
+      else if (field === 'exec_one_liner') setEditExecOneLiner(output)
+      else setEditStrengths(output)
+      toast(mode === 'expand' ? 'AI가 코멘트를 확장했습니다.' : 'AI가 문장을 다듬었습니다.', 'success')
     } catch (err: unknown) {
-      toast('다듬기 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
+      toast('AI 처리 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
     }
     setPolishingField(null)
   }
@@ -238,6 +359,34 @@ ${prevSummary}
       toast('AI 평가 생성 실패: ' + message, 'error')
     }
     setEditGeneratingAI(false)
+  }
+
+  async function handlePdfExport(ev: EvalWithEmployee) {
+    const emp = employees.find((e) => e.id === ev.employee_id)
+    if (!emp) { toast('직원 정보를 찾을 수 없습니다.', 'error'); return }
+    const deptName = departments.find((d) => d.id === emp.department_id)?.name || null
+    const evaluatorName = employees.find((e) => e.id === ev.evaluator_id)?.name || null
+    const probEnd = emp.hire_date
+      ? new Date(new Date(emp.hire_date).getTime() + 90 * 24 * 60 * 60 * 1000).toISOString()
+      : null
+    try {
+      const sealDataUrl = await loadSealDataURL()
+      await generateProbationPdf({
+        evaluation: ev,
+        employee: {
+          name: emp.name,
+          department_name: deptName,
+          position: emp.position,
+          hire_date: emp.hire_date,
+        },
+        evaluator_name: evaluatorName,
+        probation_end_date: probEnd,
+        sealDataUrl,
+      })
+      toast('PDF가 저장되었습니다.', 'success')
+    } catch (err: unknown) {
+      toast('PDF 생성 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
+    }
   }
 
   async function handleSaveEdit() {
@@ -424,6 +573,15 @@ ${evalsSummary}
             const stageGrouped = getEvalsGroupedByStage(evals)
             const isExpanded = expandedEmployees.has(empId)
             const allVisible = evals.every(ev => (ev as any).is_visible_to_employee)
+            const empInfo = employees.find((e) => e.id === empId)
+            const fmtKorDate = (d: string) => {
+              const dt = new Date(d)
+              return `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`
+            }
+            const hireStr = empInfo?.hire_date ? fmtKorDate(empInfo.hire_date) : null
+            const endStr = empInfo?.hire_date
+              ? fmtKorDate(new Date(new Date(empInfo.hire_date).getTime() + 90 * 24 * 60 * 60 * 1000).toISOString())
+              : null
 
             return (
               <Card key={empId}>
@@ -431,6 +589,11 @@ ${evalsSummary}
                   <div className="flex items-start justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3 flex-wrap min-w-0">
                       <CardTitle className="text-lg">{name}</CardTitle>
+                      {hireStr && endStr && (
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          입사일: {hireStr} · 수습종료: {endStr}
+                        </span>
+                      )}
                       {latestRec && (
                         <Badge variant={RECOMMENDATION_VARIANTS[latestRec]}>
                           {RECOMMENDATION_LABELS[latestRec]}
@@ -489,6 +652,62 @@ ${evalsSummary}
                         </div>
                       )
                     })}
+                  </div>
+
+                  {/* A4: AI 종합 분석 섹션 */}
+                  <div className="border border-brand-200 rounded-lg overflow-hidden">
+                    <div className="flex items-center justify-between bg-brand-50 px-4 py-2.5">
+                      <p className="text-sm font-semibold text-brand-800 flex items-center gap-1.5">
+                        <Sparkles className="h-4 w-4" /> AI 종합 분석 (강점·약점·조언)
+                      </p>
+                      <Button
+                        size="sm" variant="outline"
+                        onClick={() => runOverallAnalysis(empId, name, evals)}
+                        disabled={analyzingEmp === empId || evals.length < 1}
+                      >
+                        {analyzingEmp === empId
+                          ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 분석 중...</>
+                          : <><Sparkles className="h-3 w-3 mr-1" /> {overallAnalysis[empId] ? '다시 분석' : '분석 실행'}</>}
+                      </Button>
+                    </div>
+                    {overallAnalysis[empId] ? (
+                      <div className="p-4 bg-white space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                            <p className="text-xs font-semibold text-emerald-800 mb-1.5">✓ 강점</p>
+                            <ul className="space-y-1 text-sm text-gray-700">
+                              {overallAnalysis[empId].strengths.map((s, i) => (
+                                <li key={i} className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">•</span><span>{s}</span></li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            <p className="text-xs font-semibold text-amber-800 mb-1.5">△ 보완 영역</p>
+                            <ul className="space-y-1 text-sm text-gray-700">
+                              {overallAnalysis[empId].weaknesses.map((s, i) => (
+                                <li key={i} className="flex items-start gap-1.5"><span className="text-amber-500 mt-0.5">•</span><span>{s}</span></li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <p className="text-xs font-semibold text-blue-800 mb-1.5">💡 실행 가능한 조언</p>
+                          <ul className="space-y-1 text-sm text-gray-700">
+                            {overallAnalysis[empId].advice.map((s, i) => (
+                              <li key={i} className="flex items-start gap-1.5"><span className="text-blue-500 mt-0.5">→</span><span>{s}</span></li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="bg-gradient-to-br from-brand-50 to-purple-50 border border-brand-200 rounded-lg p-3">
+                          <p className="text-xs font-semibold text-brand-800 mb-1.5">📋 4주 실행 계획 (권장)</p>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{overallAnalysis[empId].actionPlan}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-white text-center text-xs text-gray-400">
+                        여러 회차·평가자의 코멘트를 종합해 AI가 강점/약점/조언/실행계획을 정리합니다.
+                      </div>
+                    )}
                   </div>
 
                   {/* Visual progress chart - avg score per round */}
@@ -570,15 +789,20 @@ ${evalsSummary}
                                       </span>
                                     )}
                                   </div>
-                                  {/* 수정 버튼: 본인 평가이거나 수습 평가자 역할(리더/이사/임원/대표/관리자) */}
-                                  {(
-                                    ev.evaluator_id === profile?.id ||
-                                    ['admin', 'ceo', 'division_head', 'director', 'leader'].includes(profile?.role || '')
-                                  ) && (
-                                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => openEditDialog(ev)}>
-                                      <Pencil className="h-3 w-3 mr-1" /> 수정
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <Button size="sm" variant="outline" onClick={() => handlePdfExport(ev)}>
+                                      <FileDown className="h-3 w-3 mr-1" /> PDF
                                     </Button>
-                                  )}
+                                    {/* 수정 버튼: 본인 평가이거나 수습 평가자 역할(리더/이사/임원/대표/관리자) */}
+                                    {(
+                                      ev.evaluator_id === profile?.id ||
+                                      ['admin', 'ceo', 'division_head', 'director', 'leader'].includes(profile?.role || '')
+                                    ) && (
+                                      <Button size="sm" variant="outline" onClick={() => openEditDialog(ev)}>
+                                        <Pencil className="h-3 w-3 mr-1" /> 수정
+                                      </Button>
+                                    )}
+                                  </div>
                                 </div>
                                 {/* 5 criteria scores */}
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-3">
@@ -807,6 +1031,18 @@ ${evalsSummary}
             <div className="flex items-center gap-3 text-sm text-gray-600 flex-wrap">
               <Badge variant="primary">{STAGE_SHORT[editEval.stage as ProbationStage] || editEval.stage}</Badge>
               <span>총점: <strong className="text-brand-600">{PROBATION_CRITERIA.reduce((sum, c) => sum + (editScores[c.key] || 0), 0)}/100</strong></span>
+              {(() => {
+                const empInfo = employees.find((e) => e.id === editEval.employee_id)
+                if (!empInfo?.hire_date) return null
+                const fmt = (d: Date) => `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
+                const hire = new Date(empInfo.hire_date)
+                const end = new Date(hire.getTime() + 90 * 24 * 60 * 60 * 1000)
+                return (
+                  <span className="text-xs text-gray-500">
+                    입사일: {fmt(hire)} · 수습종료: {fmt(end)}
+                  </span>
+                )
+              })()}
             </div>
 
             {/* 평가자 역할 수정 (잘못 체크한 경우 변경 가능) */}
@@ -888,28 +1124,17 @@ ${evalsSummary}
 
             {/* 코멘트 수정 */}
             <div className="relative">
-              <Textarea
-                label="총평"
-                value={editComments}
-                onChange={(e) => setEditComments(e.target.value)}
-                rows={3}
-              />
-              <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('comments')} disabled={polishingField === 'comments'}>
-                {polishingField === 'comments' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />AI 다듬기</>}
-              </Button>
+              <Textarea label="총평" value={editComments} onChange={(e) => setEditComments(e.target.value)} rows={3} />
+              <AiAssistButtons field="comments" busy={polishingField} onRun={polishText} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="relative">
                 <Textarea label="칭찬할 점" value={editPraise} onChange={(e) => setEditPraise(e.target.value)} rows={2} />
-                <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('praise')} disabled={polishingField === 'praise'}>
-                  {polishingField === 'praise' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
-                </Button>
+                <AiAssistButtons field="praise" busy={polishingField} onRun={polishText} />
               </div>
               <div className="relative">
                 <Textarea label="보완할 점" value={editImprovement} onChange={(e) => setEditImprovement(e.target.value)} rows={2} />
-                <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('improvement')} disabled={polishingField === 'improvement'}>
-                  {polishingField === 'improvement' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
-                </Button>
+                <AiAssistButtons field="improvement" busy={polishingField} onRun={polishText} />
               </div>
             </div>
 
@@ -917,24 +1142,18 @@ ${evalsSummary}
             {editEval.evaluator_role === 'leader' && (
               <div className="relative">
                 <Textarea label="리더 총평" value={editLeaderSummary} onChange={(e) => setEditLeaderSummary(e.target.value)} rows={2} />
-                <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('leader_summary')} disabled={polishingField === 'leader_summary'}>
-                  {polishingField === 'leader_summary' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
-                </Button>
+                <AiAssistButtons field="leader_summary" busy={polishingField} onRun={polishText} />
               </div>
             )}
             {(editEval.evaluator_role === 'executive' || editEval.evaluator_role === 'ceo') && (
               <>
                 <div className="relative">
                   <Textarea label="한줄 코멘트" value={editExecOneLiner} onChange={(e) => setEditExecOneLiner(e.target.value)} rows={2} />
-                  <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('exec_one_liner')} disabled={polishingField === 'exec_one_liner'}>
-                    {polishingField === 'exec_one_liner' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
-                  </Button>
+                  <AiAssistButtons field="exec_one_liner" busy={polishingField} onRun={polishText} />
                 </div>
                 <div className="relative">
                   <Textarea label="강점" value={editStrengths} onChange={(e) => setEditStrengths(e.target.value)} rows={2} />
-                  <Button type="button" variant="outline" size="sm" className="absolute top-0 right-0 h-6 px-2 text-[11px]" onClick={() => polishText('strengths')} disabled={polishingField === 'strengths'}>
-                    {polishingField === 'strengths' ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
-                  </Button>
+                  <AiAssistButtons field="strengths" busy={polishingField} onRun={polishText} />
                 </div>
               </>
             )}
@@ -958,7 +1177,10 @@ ${evalsSummary}
               )}
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t">
+            <div className="flex justify-end gap-3 pt-4 border-t flex-wrap">
+              <Button variant="outline" onClick={() => editEval && handlePdfExport(editEval)} className="mr-auto">
+                <FileDown className="h-4 w-4 mr-1" /> PDF 저장
+              </Button>
               <Button variant="outline" onClick={() => setEditDialogOpen(false)}>취소</Button>
               <Button onClick={handleSaveEdit}>
                 <Pencil className="h-4 w-4 mr-1" /> 수정 저장
@@ -967,6 +1189,44 @@ ${evalsSummary}
           </div>
         )}
       </Dialog>
+    </div>
+  )
+}
+
+// ─── AI 보조 버튼 (다듬기 + 확장하기) ─────────────────────────
+type AiField = 'comments' | 'praise' | 'improvement' | 'leader_summary' | 'exec_one_liner' | 'strengths'
+type AiMode = 'polish' | 'expand'
+
+function AiAssistButtons({
+  field, busy, onRun,
+}: {
+  field: AiField
+  busy: string | null
+  onRun: (f: AiField, m: AiMode) => void
+}) {
+  const isPolishBusy = busy === `${field}:polish`
+  const isExpandBusy = busy === `${field}:expand`
+  const anyBusy = busy !== null
+  return (
+    <div className="absolute top-0 right-0 flex gap-1">
+      <Button
+        type="button" variant="outline" size="sm"
+        className="h-6 px-2 text-[11px]"
+        onClick={() => onRun(field, 'polish')}
+        disabled={anyBusy}
+        title="의미를 유지하며 문장을 다듬습니다"
+      >
+        {isPolishBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />다듬기</>}
+      </Button>
+      <Button
+        type="button" variant="outline" size="sm"
+        className="h-6 px-2 text-[11px] border-brand-300 text-brand-700 hover:bg-brand-50"
+        onClick={() => onRun(field, 'expand')}
+        disabled={anyBusy}
+        title="짧은 메모를 조언/예시까지 포함한 3~5문장 피드백으로 확장합니다"
+      >
+        {isExpandBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-1" />확장하기</>}
+      </Button>
     </div>
   )
 }

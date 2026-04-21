@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Plus, Users, Sparkles, Loader2, Star, ClipboardList, CheckCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -9,9 +9,12 @@ import { Select } from '@/components/ui/Select'
 import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import type { MentorAssignment, MentorDailyReport, AssignmentType, AttitudeLevel } from '@/types/employee-lifecycle'
+
+const ADMIN_ROLES = ['ceo', 'director', 'division_head', 'admin']
 
 // ─── Constants ──────────────────────────────────────────────────
 const ASSIGNMENT_TYPE_LABELS: Record<AssignmentType, string> = {
@@ -52,6 +55,8 @@ interface AssignmentWithNames extends MentorAssignment {
 
 export default function MentorManage() {
   const { toast } = useToast()
+  const { profile } = useAuth()
+  const isAdmin = !!profile?.role && ADMIN_ROLES.includes(profile.role)
 
   const [assignments, setAssignments] = useState<AssignmentWithNames[]>([])
   const [employees, setEmployees] = useState<EmployeeBasic[]>([])
@@ -302,16 +307,24 @@ ${recentSummary}
     fetchData()
   }
 
+  // C4: 일반 직원은 본인이 멘토 또는 멘티인 건만 노출.
+  // profile 미로드 상태라도 본인 이외 데이터가 새어나가지 않도록 빈 배열 반환.
+  const visible = useMemo(() => {
+    if (isAdmin) return assignments
+    if (!profile?.id) return []
+    return assignments.filter((a) => a.mentor_id === profile.id || a.mentee_id === profile.id)
+  }, [assignments, isAdmin, profile?.id])
+
   if (loading) return <PageSpinner />
 
-  const activeAssignments = assignments.filter((a) => a.status === 'active')
-  const completedAssignments = assignments.filter((a) => a.status !== 'active')
+  const activeAssignments = visible.filter((a) => a.status === 'active')
+  const completedAssignments = visible.filter((a) => a.status !== 'active')
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">멘토-멘티 관리</h1>
-        <Button onClick={openNewAssignment}><Plus className="h-4 w-4 mr-1" /> 새 배정</Button>
+        <h1 className="text-2xl font-bold text-gray-900">{isAdmin ? '멘토-멘티 관리' : '나의 멘토링'}</h1>
+        {isAdmin && <Button onClick={openNewAssignment}><Plus className="h-4 w-4 mr-1" /> 새 배정</Button>}
       </div>
 
       {/* Summary cards */}
@@ -361,12 +374,16 @@ ${recentSummary}
                     <Button size="sm" variant="outline" onClick={() => openReportDialog(a)}>
                       <ClipboardList className="h-3 w-3 mr-1" /> 일일 보고
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => completeAssignment(a.id)}>
-                      <CheckCircle className="h-3 w-3 mr-1" /> 완료
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => cancelAssignment(a.id)}>
-                      취소
-                    </Button>
+                    {(isAdmin || a.mentor_id === profile?.id) && (
+                      <Button size="sm" variant="outline" onClick={() => completeAssignment(a.id)}>
+                        <CheckCircle className="h-3 w-3 mr-1" /> 완료
+                      </Button>
+                    )}
+                    {isAdmin && (
+                      <Button size="sm" variant="ghost" onClick={() => cancelAssignment(a.id)}>
+                        취소
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -412,12 +429,14 @@ ${recentSummary}
         </div>
       )}
 
-      {assignments.length === 0 && (
+      {visible.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center">
             <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-400 mb-4">등록된 멘토-멘티 배정이 없습니다.</p>
-            <Button onClick={openNewAssignment}>첫 멘토 배정하기</Button>
+            <p className="text-gray-400 mb-4">
+              {isAdmin ? '등록된 멘토-멘티 배정이 없습니다.' : '현재 참여 중인 멘토링이 없습니다.'}
+            </p>
+            {isAdmin && <Button onClick={openNewAssignment}>첫 멘토 배정하기</Button>}
           </CardContent>
         </Card>
       )}

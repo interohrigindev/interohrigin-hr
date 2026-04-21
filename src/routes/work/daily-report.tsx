@@ -22,6 +22,8 @@ function TaskSection({
   onUpdate,
   onRemove,
   highlight,
+  onImportFromProjects,
+  importLoading,
 }: {
   title: string
   tasks: DailyReportTask[]
@@ -29,13 +31,28 @@ function TaskSection({
   onUpdate: (idx: number, field: keyof DailyReportTask, value: string) => void
   onRemove: (idx: number) => void
   highlight?: boolean
+  onImportFromProjects?: () => void
+  importLoading?: boolean
 }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <CardTitle className={`text-base ${highlight ? 'text-red-700' : ''}`}>{title}</CardTitle>
-          <Button size="sm" variant="outline" onClick={onAdd}>+ 추가</Button>
+          <div className="flex items-center gap-1.5">
+            {onImportFromProjects && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onImportFromProjects}
+                disabled={importLoading}
+                title="내가 담당한 프로젝트의 진행중 단계를 불러옵니다"
+              >
+                {importLoading ? '불러오는 중...' : '📁 프로젝트에서 가져오기'}
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={onAdd}>+ 추가</Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -53,12 +70,14 @@ function TaskSection({
                   onChange={(e) => onUpdate(idx, 'title', e.target.value)}
                   placeholder="작업 제목"
                   className="flex-1"
+                  title={task.title}
                 />
                 <Input
                   value={task.note || ''}
                   onChange={(e) => onUpdate(idx, 'note', e.target.value)}
                   placeholder="메모"
                   className="w-24 sm:w-40"
+                  title={task.note || ''}
                 />
                 <button
                   onClick={() => onRemove(idx)}
@@ -97,6 +116,7 @@ export default function DailyReportPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
+  const [importingProjects, setImportingProjects] = useState(false)
 
   const [selectedDate, setSelectedDate] = useState(formatDate(new Date()))
   const [report, setReport] = useState<DailyReport | null>(null)
@@ -351,6 +371,95 @@ export default function DailyReportPage() {
     setter((prev) => [...prev, { id: crypto.randomUUID(), title: '', status: 'todo' }])
   }
 
+  // C6: 내가 담당한 프로젝트의 "진행중" 단계들을 일일보고 "진행 중 작업"으로 가져오기
+  async function importInProgressFromProjects() {
+    if (!profile?.id) return
+    setImportingProjects(true)
+    try {
+      // 1) 내가 assignee 인 프로젝트
+      const { data: myProjects } = await supabase
+        .from('project_boards')
+        .select('id, project_name')
+        .contains('assignee_ids', [profile.id])
+        .in('status', ['active', 'planning'])
+
+      if (!myProjects || myProjects.length === 0) {
+        toast('담당 프로젝트가 없습니다.', 'info')
+        setImportingProjects(false)
+        return
+      }
+
+      // 2) 그 프로젝트들의 "진행중" 단계
+      const projectIds = myProjects.map((p) => p.id)
+      const { data: stages } = await supabase
+        .from('pipeline_stages')
+        .select('project_id, stage_name, status, stage_assignee_ids')
+        .in('project_id', projectIds)
+        .eq('status', '진행중')
+
+      // 3) 단계 필터 — 정책:
+      //    (a) stage_assignee_ids 에 본인이 명시적으로 포함된 경우 → 포함
+      //    (b) stage_assignee_ids 가 NULL/빈 배열 → 프로젝트 전체 담당이 수행 → 본인도 포함
+      //        (이미 project_boards.assignee_ids 에 본인이 들어가 있음이 1)에서 보장됨)
+      //    (c) 다른 사람 이름만 들어 있으면 제외
+      const myStages = (stages || []).filter((s) => {
+        const ids = (s.stage_assignee_ids || []) as string[]
+        if (!ids || ids.length === 0) return true  // 단계별 담당자 미지정 → 프로젝트 담당자 전체
+        return ids.includes(profile.id)
+      })
+
+      if (myStages.length === 0) {
+        toast('진행중 단계가 없습니다.', 'info')
+        setImportingProjects(false)
+        return
+      }
+
+      const projectNameMap = new Map(myProjects.map((p) => [p.id, p.project_name as string]))
+
+      // 4) 기존 진행중 작업 title 목록 (중복 방지)
+      const existingTitles = new Set(inProgress.map((t) => t.title.trim().toLowerCase()))
+
+      // 긴 제목 처리: 단계명이 기본 title, 프로젝트명이 길면 note로 분리
+      const STAGE_LABEL_LIMIT = 60
+      const newTasks: DailyReportTask[] = []
+      for (const s of myStages) {
+        const projName = projectNameMap.get(s.project_id) || '프로젝트'
+        const combined = `[${projName}] ${s.stage_name}`
+        let title: string
+        let note: string
+        if (combined.length <= STAGE_LABEL_LIMIT) {
+          title = combined
+          note = ''
+        } else {
+          // 프로젝트명이 길면 단계명만 title, 프로젝트명은 note로
+          title = s.stage_name
+          note = projName
+        }
+        const dedupeKey = `${projName}|${s.stage_name}`.toLowerCase()
+        if (existingTitles.has(dedupeKey)) continue
+        existingTitles.add(dedupeKey)
+        // 기존 title 중복 체크 (동일 text 이미 있는 경우)
+        if (existingTitles.has(title.trim().toLowerCase())) continue
+        newTasks.push({
+          id: crypto.randomUUID(),
+          title,
+          status: 'in_progress' as const,
+          note,
+        })
+      }
+
+      if (newTasks.length === 0) {
+        toast('이미 모두 추가되어 있습니다.', 'info')
+      } else {
+        setInProgress((prev) => [...prev, ...newTasks])
+        toast(`${newTasks.length}개 단계를 불러왔습니다.`, 'success')
+      }
+    } catch (err: unknown) {
+      toast('불러오기 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
+    }
+    setImportingProjects(false)
+  }
+
   function updateTask(
     setter: React.Dispatch<React.SetStateAction<DailyReportTask[]>>,
     idx: number,
@@ -597,6 +706,8 @@ ${completedText || '아직 없음'}
         onAdd={() => addTask(setInProgress)}
         onUpdate={(idx, field, value) => updateTask(setInProgress, idx, field, value)}
         onRemove={(idx) => removeTask(setInProgress, idx)}
+        onImportFromProjects={importInProgressFromProjects}
+        importLoading={importingProjects}
       />
 
       {/* Planned for Tomorrow */}

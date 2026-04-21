@@ -83,18 +83,196 @@ export interface AIFileAttachment {
   name?: string
 }
 
-// ─── Unified call ────────────────────────────────────────────────
+// ─── Unified call (자동 폴백 포함) ─────────────────────────────
+// 1차: 전달된 config로 호출
+// 2차: 키 오류 발생 시 다른 활성 provider로 자동 재시도 (최대 2회)
+// 모든 실패 → throw (호출자가 catch하여 처리). 기존 호출자는 코드 변경 없이도 보호됨.
 
 export async function generateAIContent(config: AIConfig, prompt: string, files?: AIFileAttachment[]): Promise<AIResponse> {
-  const content = await callAIProxy(config.apiKey, {
-    provider: config.provider,
-    model: config.model,
+  const body = {
     action: 'generate',
     prompt,
     ...(files && files.length > 0 ? { files } : {}),
-  })
+  }
 
-  return { content, provider: config.provider, model: config.model }
+  // 1차 시도
+  try {
+    const content = await callAIProxy(config.apiKey, {
+      provider: config.provider,
+      model: config.model,
+      ...body,
+    })
+    return { content, provider: config.provider, model: config.model }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    const cls = classifyError(msg)
+    // 키 오류 또는 할당량 초과만 폴백 — 그 외(네트워크 등)는 원본 에러 유지
+    if (!cls.keyError && !cls.quotaError) throw err
+
+    console.warn(`[AI auto-fallback] ${config.provider} ${cls.keyError ? '키 오류' : '할당량'}. 다른 provider 시도.`)
+
+    // 폴백 후보 조회 (현재 config 제외)
+    const { data: candidates } = await supabase
+      .from('ai_settings')
+      .select('provider, api_key, model')
+      .eq('is_active', true)
+      .neq('provider', 'deepgram')
+      .order('updated_at', { ascending: false })
+      .limit(5)
+
+    if (!candidates || candidates.length === 0) throw err
+
+    for (const c of candidates) {
+      if (c.provider === config.provider && c.api_key === config.apiKey) continue
+      try {
+        const content = await callAIProxy(c.api_key, {
+          provider: c.provider,
+          model: c.model,
+          ...body,
+        })
+        return { content, provider: c.provider, model: c.model }
+      } catch (fallbackErr) {
+        const fmsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+        const fcls = classifyError(fmsg)
+        if (!fcls.keyError && !fcls.quotaError) throw fallbackErr
+        console.warn(`[AI auto-fallback] ${c.provider} 실패, 다음 후보 시도`)
+      }
+    }
+
+    // 전체 폴백 실패 → 사용자 친화 메시지로 재throw
+    throw new Error(
+      cls.keyError
+        ? 'AI 키가 유효하지 않습니다. 관리자에게 설정 > AI에서 키 갱신을 요청해주세요.'
+        : 'AI 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+    )
+  }
+}
+
+// ─── 중앙집중 폴백 래퍼 (C3) ──────────────────────────────────
+// API 키 무효 / 할당량 초과 / 네트워크 실패 등으로 1차 provider가 실패해도
+// ai_settings 내 다른 활성 provider로 순차 재시도. 모두 실패하면 안전한 기본값 반환.
+
+export interface AIFallbackResult {
+  success: boolean
+  content: string
+  provider?: string
+  model?: string
+  error?: string
+  /** 키 오류 여부 (true면 관리자에게 설정 안내 필요) */
+  keyError?: boolean
+}
+
+function classifyError(msg: string): { keyError: boolean; quotaError: boolean } {
+  const lower = msg.toLowerCase()
+  const keyError =
+    lower.includes('incorrect api key') ||
+    lower.includes('invalid api key') ||
+    lower.includes('api key not valid') ||
+    lower.includes('api_key') ||
+    lower.includes('unauthoriz') ||
+    lower.includes('401') ||
+    lower.includes('403')
+  const quotaError =
+    lower.includes('quota') ||
+    lower.includes('rate limit') ||
+    lower.includes('429') ||
+    lower.includes('resource_exhausted')
+  return { keyError, quotaError }
+}
+
+/**
+ * 기능키 기반으로 AI 콘텐츠를 생성하되, 실패 시 다른 활성 provider로 자동 폴백.
+ * 모든 provider 실패 시에도 throw 하지 않고 `{ success: false, ... }` 반환.
+ *
+ * @param featureKey ai_feature_settings.feature_key
+ * @param prompt 프롬프트
+ * @param options.fallbackContent 전체 실패 시 사용할 기본 텍스트 (선택)
+ * @param options.files 첨부 파일 (선택)
+ * @param options.maxAttempts 최대 시도 provider 수 (기본 3)
+ */
+export async function generateAIContentSafe(
+  featureKey: string,
+  prompt: string,
+  options?: {
+    fallbackContent?: string
+    files?: AIFileAttachment[]
+    maxAttempts?: number
+  }
+): Promise<AIFallbackResult> {
+  const maxAttempts = options?.maxAttempts ?? 3
+
+  // 1) 시도 후보 목록 수집 (feature 매핑 우선, 그 다음 활성 설정)
+  const tried = new Set<string>()
+  const candidates: AIConfig[] = []
+
+  const primary = await getAIConfigForFeature(featureKey)
+  if (primary) {
+    candidates.push(primary)
+    tried.add(`${primary.provider}:${primary.apiKey}`)
+  }
+
+  const { data: others } = await supabase
+    .from('ai_settings')
+    .select('provider, api_key, model, is_active')
+    .eq('is_active', true)
+    .neq('provider', 'deepgram')
+    .order('updated_at', { ascending: false })
+
+  if (others) {
+    for (const s of others) {
+      const key = `${s.provider}:${s.api_key}`
+      if (tried.has(key)) continue
+      tried.add(key)
+      candidates.push({ provider: s.provider, apiKey: s.api_key, model: s.model })
+      if (candidates.length >= maxAttempts) break
+    }
+  }
+
+  if (candidates.length === 0) {
+    return {
+      success: false,
+      content: options?.fallbackContent ?? '',
+      error: 'AI가 설정되지 않았습니다. 관리자에게 설정 > AI에서 활성 provider를 추가하도록 요청해주세요.',
+      keyError: true,
+    }
+  }
+
+  // 2) 순차 시도
+  let lastErr = ''
+  let lastKeyErr = false
+  for (const cfg of candidates) {
+    try {
+      const res = await generateAIContent(cfg, prompt, options?.files)
+      if (res.content.trim()) {
+        return { success: true, content: res.content, provider: res.provider, model: res.model }
+      }
+      lastErr = '빈 응답'
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const cls = classifyError(msg)
+      lastErr = msg
+      lastKeyErr = cls.keyError
+      // 키 오류 로그 (개발자 디버깅용)
+      if (cls.keyError) {
+        console.warn(`[AI fallback] ${cfg.provider} 키 오류, 다음 provider 시도`, msg)
+      } else if (cls.quotaError) {
+        console.warn(`[AI fallback] ${cfg.provider} 할당량 초과, 다음 provider 시도`)
+      } else {
+        console.warn(`[AI fallback] ${cfg.provider} 실패`, msg)
+      }
+      // 다음 후보로 계속
+    }
+  }
+
+  // 3) 전원 실패
+  return {
+    success: false,
+    content: options?.fallbackContent ?? '',
+    error: lastKeyErr
+      ? 'AI 키가 유효하지 않습니다. 관리자에게 설정 > AI에서 키를 갱신하도록 요청해주세요.'
+      : `AI 호출이 실패했습니다: ${lastErr || '알 수 없는 오류'}`,
+    keyError: lastKeyErr,
+  }
 }
 
 // ─── Multi-turn chat (AI Agent용) ────────────────────────────────

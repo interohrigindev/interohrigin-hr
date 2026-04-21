@@ -14,7 +14,7 @@ import { supabase } from '@/lib/supabase'
 import type { MonthlyCheckin, CheckinTag, CheckinStatus, CheckinNote, SpecialNoteTag } from '@/types/employee-lifecycle'
 
 // ─── Constants ──────────────────────────────────────────────────
-const TAGS: CheckinTag[] = ['이슈', '칭찬', '제안', '기타']
+// C1: 기존 상단 TAGS 탭 제거됨. tag 필드는 DB 호환을 위해 '기타' 기본값 유지.
 const SPECIAL_NOTE_TAGS: SpecialNoteTag[] = ['이슈', '성과', '칭찬', '제안', '기타']
 
 const TAG_COLORS: Record<string, string> = {
@@ -151,20 +151,7 @@ function MonthCheckinCard({
       <CardContent className="space-y-4">
         {canWrite ? (
           <>
-            {/* 구분 태그 */}
-            <div className="flex gap-2">
-              {TAGS.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTag(t)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                    tag === t ? TAG_COLORS[t] + ' ring-2 ring-offset-1 ring-brand-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                  }`}
-                >
-                  [{t}]
-                </button>
-              ))}
-            </div>
+            {/* C1: 상단 이슈/칭찬/제안/기타 탭 제거 — 특이사항 영역(우측)으로 통합 */}
 
             {/* 프로젝트 + 본인(업무 내용) 테이블 형태 */}
             <div className="border rounded-lg overflow-hidden">

@@ -61,6 +61,25 @@ export default function EvaluateList() {
   const myRole = profile?.role as EmployeeRole | undefined
   const requiredStatus = myRole ? ROLE_REQUIRED_STATUS[myRole] : null
 
+  // C1: 일반 직원은 평가자 화면 대신 자기평가 화면으로 유도
+  if (myRole === 'employee') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">
+            {activePeriod.year}년 {activePeriod.quarter}분기 평가
+          </h2>
+        </div>
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-gray-300 bg-white p-12">
+          <ClipboardList className="h-12 w-12 text-gray-300" />
+          <p className="text-gray-700 font-medium">직원 계정은 자기평가만 수행합니다</p>
+          <p className="text-sm text-gray-500">목표 설정과 분기 평가는 <strong>자기평가</strong> 메뉴에서 진행해주세요.</p>
+          <Button onClick={() => navigate('/self-evaluate')}>자기평가로 이동</Button>
+        </div>
+      </div>
+    )
+  }
+
   // CEO: 부서 내 모든 target이 director_done 이상인 부서만 표시
   const ceoReadyDepts = new Set<string>()
   if (myRole === 'ceo') {

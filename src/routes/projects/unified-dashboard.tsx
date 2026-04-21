@@ -17,6 +17,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { RichEditor } from '@/components/ui/RichEditor'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import type { Task } from '@/types/work'
 import type { StageStatus, ProjectUpdate } from '@/types/project-board'
@@ -567,6 +568,7 @@ interface EditingField {
 export default function UnifiedDashboard() {
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { profile } = useAuth()
   const {
     projects, loading: boardLoading, employees: boardEmployees, departments,
     updateProject, updateStageStatus, updateStageDeadline, addUpdate, fetchUpdates, refresh,
@@ -852,7 +854,11 @@ export default function UnifiedDashboard() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">프로젝트 & 업무 대시보드</h1>
-          <p className="text-sm text-gray-500 mt-0.5">전체 프로젝트 현황을 한눈에 파악합니다</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {profile?.role && ['admin', 'ceo', 'division_head', 'director'].includes(profile.role)
+              ? '전체 프로젝트 현황을 한눈에 파악합니다'
+              : `${profile?.name || '내'} 담당 프로젝트 중심으로 표시됩니다`}
+          </p>
         </div>
         <div className="flex gap-2 items-center">
           <Select
@@ -860,8 +866,12 @@ export default function UnifiedDashboard() {
             onChange={(e) => setFilterBrand(e.target.value)}
             options={[{ value: '', label: '전체 브랜드' }, ...brands.map((b) => ({ value: b, label: b }))]}
           />
-          <Button onClick={() => navigate('/admin/projects/new')}>
-            <Plus className="h-4 w-4" /> 새 프로젝트
+          <Button
+            size="lg"
+            onClick={() => navigate('/admin/projects/new')}
+            className="shadow-md hover:shadow-lg transition-shadow font-semibold"
+          >
+            <Plus className="h-5 w-5" /> 새 프로젝트
           </Button>
         </div>
       </div>

@@ -70,6 +70,7 @@ import EmployeeSearch from '@/routes/employees/search'
 import PersonalityAnalysis from '@/routes/employees/analysis'
 import SpecialNotes from '@/routes/employees/notes'
 import ExitManage from '@/routes/employees/exit'
+import HandoverPage from '@/routes/employees/handover'
 
 // 업무관리 (통합 — 작업/보고서/챗봇만 유지)
 import TaskManage from '@/routes/work/tasks'
@@ -206,6 +207,8 @@ function App() {
               {/* OJT/수습 (관리자/임원) */}
               <Route path="admin/ojt" element={<AdminRoute><OJTPrograms /></AdminRoute>} />
               <Route path="admin/ojt/mentor" element={<AdminRoute><MentorManage /></AdminRoute>} />
+              {/* C4: 일반 직원용 — 동일 컴포넌트, 페이지 내부에서 역할별 분기 */}
+              <Route path="my/mentorship" element={<MentorManage />} />
               <Route path="admin/probation" element={<AdminRoute><ProbationManage /></AdminRoute>} />
               <Route path="admin/probation-results" element={<AdminRoute><ProbationResults /></AdminRoute>} />
 
@@ -257,6 +260,9 @@ function App() {
               <Route path="admin/employees/analysis" element={<AdminRoute><PersonalityAnalysis /></AdminRoute>} />
               <Route path="admin/employees/notes" element={<AdminRoute><SpecialNotes /></AdminRoute>} />
               <Route path="admin/employees/exit" element={<AdminRoute><ExitManage /></AdminRoute>} />
+              {/* B1/B3: 인수인계 */}
+              <Route path="admin/employees/handover" element={<AdminRoute><HandoverPage /></AdminRoute>} />
+              <Route path="my/handover" element={<HandoverPage />} />
 
               {/* Phase 1.5: 긴급 업무 + 평가 간소화 */}
               <Route path="admin/urgent" element={<AdminRoute><UrgentDashboard /></AdminRoute>} />

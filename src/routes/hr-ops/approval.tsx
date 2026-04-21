@@ -78,15 +78,17 @@ interface ApprovalTemplate {
 
 type TabKey = 'my_requests' | 'pending_approval' | 'all' | 'template_manage'
 
-const DOC_TYPE_CONFIG: Record<string, { label: string; icon: string; hasAmount: boolean }> = {
-  leave:         { label: '연차/반차/조퇴 신청', icon: '🗓', hasAmount: false },
-  overtime:      { label: '연장/야간/휴일 근무', icon: '🌙', hasAmount: false },
-  expense:       { label: '경비 청구',           icon: '💰', hasAmount: true },
-  business_trip: { label: '출장 신청',           icon: '✈', hasAmount: false },
-  general:       { label: '일반 결재',           icon: '📄', hasAmount: false },
-  purchase:      { label: '구매 요청',           icon: '🛒', hasAmount: true },
-  daily_report:  { label: '일일 업무보고',       icon: '📝', hasAmount: false },
+const DOC_TYPE_CONFIG: Record<string, { label: string; icon: string; hasAmount: boolean; category: string; desc?: string }> = {
+  leave:         { label: '연차/반차/조퇴 신청', icon: '🗓', hasAmount: false, category: '근태', desc: '연차·반차·조퇴' },
+  overtime:      { label: '연장/야간/휴일 근무', icon: '🌙', hasAmount: false, category: '근태', desc: '추가 근무 승인' },
+  business_trip: { label: '출장 신청',           icon: '✈', hasAmount: false, category: '근태', desc: '국내·해외 출장' },
+  expense:       { label: '경비 청구',           icon: '💰', hasAmount: true,  category: '비용', desc: '사용 경비 정산' },
+  purchase:      { label: '구매 요청',           icon: '🛒', hasAmount: true,  category: '비용', desc: '자재·기기 구매' },
+  daily_report:  { label: '일일 업무보고',       icon: '📝', hasAmount: false, category: '업무', desc: '일일 보고서 결재' },
+  general:       { label: '일반 결재',           icon: '📄', hasAmount: false, category: '기타', desc: '자유 양식' },
 }
+
+const DOC_TYPE_CATEGORIES = ['근태', '비용', '업무', '기타'] as const
 
 const STATUS_CONFIG: Record<string, { border: string; badge: 'warning' | 'info' | 'success' | 'danger' | 'default'; label: string }> = {
   draft:      { border: 'border-l-gray-400',    badge: 'default', label: '임시저장' },
@@ -235,32 +237,44 @@ export default function ApprovalManagementPage() {
   const getDocTypeIcon = (t: string) => DOC_TYPE_CONFIG[t]?.icon || '📄'
 
   // Get the matching template for a doc_type + amount condition
+  // 복수 조건 분기 시 가장 "구체적인(specific)" 조건을 우선 (C8 잔여 리스크 2 해소)
   const getTemplateForDocType = (docType: string, amount?: number | null) => {
-    // 1순위: doc_type이 동일한 템플릿들 중 amount가 조건 만족하는 것 (예: expense + 50만원 이상)
     const candidates = templates.filter((t) => t.doc_type === docType && t.is_active !== false)
 
-    // 조건이 있는 템플릿 우선 매칭
     const conditional = candidates.filter(t => t.condition_field && t.condition_operator && t.condition_value)
     if (amount != null && conditional.length > 0) {
-      for (const tmpl of conditional) {
-        const threshold = parseFloat(tmpl.condition_value || '0')
-        if (isNaN(threshold)) continue
-        const op = tmpl.condition_operator
-        const matches =
-          (op === '>=' && amount >= threshold) ||
-          (op === '>' && amount > threshold) ||
-          (op === '<=' && amount <= threshold) ||
-          (op === '<' && amount < threshold) ||
-          (op === '=' && amount === threshold)
-        if (matches) return tmpl
+      // Specificity score: 큰 threshold의 >=/> 또는 작은 threshold의 <=/< 가 더 좁은 범위 = 우선순위 ↑
+      const scored = conditional
+        .map((tmpl) => {
+          const threshold = parseFloat(tmpl.condition_value || '0')
+          if (isNaN(threshold)) return null
+          const op = tmpl.condition_operator || ''
+          const matches =
+            (op === '>=' && amount >= threshold) ||
+            (op === '>' && amount > threshold) ||
+            (op === '<=' && amount <= threshold) ||
+            (op === '<' && amount < threshold) ||
+            (op === '=' && amount === threshold)
+          if (!matches) return null
+          // specificity: `=`은 최고, `>=/>`는 threshold가 클수록, `<=/<`는 작을수록 구체적
+          let specificity = 0
+          if (op === '=') specificity = Number.MAX_SAFE_INTEGER
+          else if (op === '>=' || op === '>') specificity = threshold
+          else if (op === '<=' || op === '<') specificity = -threshold
+          return { tmpl, specificity }
+        })
+        .filter((x): x is { tmpl: typeof conditional[number]; specificity: number } => x !== null)
+
+      if (scored.length > 0) {
+        scored.sort((a, b) => b.specificity - a.specificity)
+        return scored[0].tmpl
       }
     }
 
-    // 2순위: 조건이 없는 기본 템플릿 (expense 같이 이름 짧은 것)
+    // 조건 없는 기본 템플릿
     const defaultTmpl = candidates.find(t => !t.condition_field)
     if (defaultTmpl) return defaultTmpl
 
-    // 3순위: 아무거나
     return candidates[0]
   }
 
@@ -741,11 +755,13 @@ export default function ApprovalManagementPage() {
           approverIds[0] ||
           (step.role === 'ceo' && ceo ? ceo.id : '') ||
           (getApproverOptions(step.role)[0]?.value || '')
+        const actionType = (step as { action_type?: ActionType }).action_type || 'approve'
         return {
           document_id: docData.id,
           step_order: idx + 1,
           approver_id: approverId,
           approver_role: step.role,
+          action_type: actionType,
           action: 'pending',
           comment: null,
           acted_at: null,
@@ -754,9 +770,22 @@ export default function ApprovalManagementPage() {
         }
       })
 
-      const { error: stepsErr } = await supabase
+      let { error: stepsErr } = await supabase
         .from('approval_steps')
         .insert(stepInserts)
+
+      // 방어: action_type 컬럼이 아직 없는 DB에서 실패한 경우 해당 키 제거하고 재시도
+      if (stepsErr && /action_type/i.test(stepsErr.message || '')) {
+        const legacyInserts = stepInserts.map((s) => {
+          const { action_type: _at, ...rest } = s as typeof s & { action_type?: string }
+          return rest
+        })
+        const retry = await supabase.from('approval_steps').insert(legacyInserts)
+        stepsErr = retry.error
+        if (!stepsErr) {
+          console.warn('[approval] action_type 컬럼 미적용 — 레거시 모드로 저장됨. migration 049_approval_step_action_type.sql 실행을 권장합니다.')
+        }
+      }
 
       if (stepsErr) {
         toast('결재라인 생성 실패: ' + stepsErr.message, 'error')
@@ -1374,46 +1403,75 @@ export default function ApprovalManagementPage() {
         </div>
       </Dialog>
 
-      {/* ── New Document Dialog ── */}
+      {/* ── New Document Dialog ── 네이버웍스 Works Flow 런처 스타일 */}
       <Dialog
         open={showNewDialog}
         onClose={() => { setShowNewDialog(false); resetNewForm() }}
-        title="새 결재 신청"
-        className="max-w-[calc(100vw-2rem)] sm:max-w-lg"
+        title={newDocType ? `새 결재 신청 — ${DOC_TYPE_CONFIG[newDocType]?.label}` : '결재 양식 선택'}
+        className="max-w-[calc(100vw-2rem)] sm:max-w-3xl"
       >
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-          {/* Step 1: Doc type selection */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">결재 유형 *</label>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.entries(DOC_TYPE_CONFIG).map(([key, cfg]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setNewDocType(key)
-                    setNewApprovers({})
-                    // Auto-assign CEO if template has ceo role
-                    const tpl = templates.find((t) => t.doc_type === key)
-                    if (tpl && ceo) {
-                      const ceoStep = tpl.steps.find((s) => s.role === 'ceo')
-                      if (ceoStep) {
-                        setNewApprovers((prev) => ({ ...prev, ceo: ceo.id }))
-                      }
-                    }
-                  }}
-                  className={`flex items-center gap-2 p-3 rounded-lg border text-left text-sm transition-colors ${
-                    newDocType === key
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-200'
-                      : 'border-gray-200 hover:bg-gray-50 text-gray-700'
-                  }`}
-                >
-                  <span className="text-lg">{cfg.icon}</span>
-                  <span className="font-medium">{cfg.label}</span>
-                </button>
-              ))}
+        <div className="space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Step 1: 런처 — 카테고리별 타일 그리드 */}
+          {!newDocType && (
+            <div className="space-y-5">
+              <p className="text-sm text-gray-500">결재를 진행할 양식을 선택하세요</p>
+              {DOC_TYPE_CATEGORIES.map((cat) => {
+                const items = Object.entries(DOC_TYPE_CONFIG).filter(([, cfg]) => cfg.category === cat)
+                if (items.length === 0) return null
+                return (
+                  <div key={cat}>
+                    <p className="text-xs font-bold text-gray-500 mb-2 flex items-center gap-2">
+                      <span className="w-1 h-3 bg-brand-500 rounded-full" />
+                      {cat}
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                      {items.map(([key, cfg]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            setNewDocType(key)
+                            setNewApprovers({})
+                            const tpl = templates.find((t) => t.doc_type === key)
+                            if (tpl && ceo) {
+                              const ceoStep = tpl.steps.find((s) => s.role === 'ceo')
+                              if (ceoStep) setNewApprovers((prev) => ({ ...prev, ceo: ceo.id }))
+                            }
+                          }}
+                          className="group flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-brand-400 hover:bg-brand-50 hover:shadow-sm transition-all text-center"
+                        >
+                          <span className="text-3xl transition-transform group-hover:scale-110">{cfg.icon}</span>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800 group-hover:text-brand-700">{cfg.label}</p>
+                            {cfg.desc && <p className="text-[11px] text-gray-500 mt-0.5">{cfg.desc}</p>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-          </div>
+          )}
+
+          {/* Step 2: 선택된 양식 — 헤더 배지 + 뒤로 가기 */}
+          {newDocType && (
+            <div className="flex items-center gap-3 pb-3 border-b">
+              <button
+                onClick={() => { setNewDocType(''); setNewApprovers({}) }}
+                className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+              >
+                ← 양식 다시 선택
+              </button>
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="text-2xl">{DOC_TYPE_CONFIG[newDocType]?.icon}</span>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">{DOC_TYPE_CONFIG[newDocType]?.label}</p>
+                  <p className="text-[11px] text-gray-500">{DOC_TYPE_CONFIG[newDocType]?.desc}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {newDocType && (
             <>
@@ -1522,8 +1580,9 @@ export default function ApprovalManagementPage() {
                     label="내용"
                     value={newContent.body || ''}
                     onChange={(e) => setNewContent((p) => ({ ...p, body: e.target.value }))}
-                    placeholder="결재 내용을 입력하세요"
-                    rows={4}
+                    placeholder="결재 내용을 상세히 입력하세요. 필요 시 첨부 파일은 하단에서 추가할 수 있습니다."
+                    rows={10}
+                    className="font-sans text-sm leading-relaxed"
                   />
                 )}
               </div>
@@ -1701,7 +1760,14 @@ const ROLE_EMPLOYEE_MATCH: Record<string, string[]> = {
   finance: ['admin'],
 }
 
-interface EditStep { role: string; label: string; approver_ids?: string[] }
+type ActionType = 'approve' | 'consult' | 'reference'
+interface EditStep { role: string; label: string; approver_ids?: string[]; action_type?: ActionType }
+
+const ACTION_TYPE_OPTIONS: { value: ActionType; label: string; desc: string; color: string }[] = [
+  { value: 'approve',   label: '결재', desc: '승인/반려 권한',  color: 'bg-brand-100 text-brand-700 border-brand-300' },
+  { value: 'consult',   label: '합의', desc: '동의 표시',        color: 'bg-blue-100 text-blue-700 border-blue-300' },
+  { value: 'reference', label: '참조', desc: '조회만 가능',       color: 'bg-gray-100 text-gray-600 border-gray-300' },
+]
 
 function ApprovalTemplateManager({
   templates,
@@ -1748,7 +1814,7 @@ function ApprovalTemplateManager({
   }
 
   function addStep() {
-    setEditSteps([...editSteps, { role: 'leader', label: '팀장', approver_ids: [] }])
+    setEditSteps([...editSteps, { role: 'leader', label: '팀장', approver_ids: [], action_type: 'approve' }])
   }
 
   function removeStep(idx: number) {
@@ -1796,7 +1862,7 @@ function ApprovalTemplateManager({
     const { data, error } = await supabase.from('approval_templates').insert({
       doc_type: newTmplDocType,
       name: newTmplName.trim(),
-      steps: [{ role: 'leader', label: '팀장 승인', approver_ids: [] }],
+      steps: [{ role: 'leader', label: '팀장 승인', approver_ids: [], action_type: 'approve' }],
       is_active: true,
       condition_field: hasCondition ? 'amount' : null,
       condition_operator: hasCondition ? newTmplCondOp : null,
@@ -1828,6 +1894,21 @@ function ApprovalTemplateManager({
     expense_high: '💰', daily_report: '📝',
   }
 
+  // C8-2: 카테고리 필터
+  const [categoryFilter, setCategoryFilter] = useState<string>('전체')
+  const categoriesInUse = Array.from(new Set(
+    templates.map(t => DOC_TYPE_CONFIG[t.doc_type]?.category || '기타')
+  ))
+  const filteredTemplates = categoryFilter === '전체'
+    ? templates
+    : templates.filter(t => (DOC_TYPE_CONFIG[t.doc_type]?.category || '기타') === categoryFilter)
+
+  const categoryCounts: Record<string, number> = { 전체: templates.length }
+  templates.forEach(t => {
+    const cat = DOC_TYPE_CONFIG[t.doc_type]?.category || '기타'
+    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1
+  })
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -1835,6 +1916,30 @@ function ApprovalTemplateManager({
         <Button size="sm" onClick={() => setShowNewTemplate(true)}>
           <Plus className="h-3.5 w-3.5 mr-1" /> 새 결재선 추가
         </Button>
+      </div>
+
+      {/* C8-2: 카테고리 탭 */}
+      <div className="flex items-center gap-1.5 flex-wrap border-b border-gray-200">
+        {['전체', ...DOC_TYPE_CATEGORIES.filter(c => categoriesInUse.includes(c) || c === '근태')].map((cat) => {
+          const count = categoryCounts[cat] ?? 0
+          const isActive = categoryFilter === cat
+          return (
+            <button
+              key={cat}
+              onClick={() => setCategoryFilter(cat)}
+              className={`px-3 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
+                isActive
+                  ? 'text-brand-700 border-brand-500'
+                  : 'text-gray-500 border-transparent hover:text-gray-700'
+              }`}
+            >
+              {cat}
+              <span className={`text-[10px] px-1.5 rounded-full ${isActive ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'}`}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* 새 결재선 추가 다이얼로그 */}
@@ -1918,8 +2023,15 @@ function ApprovalTemplateManager({
       )}
 
       {/* 타일링 그리드 (2열) */}
+      {filteredTemplates.length === 0 && (
+        <div className="text-center py-8 text-sm text-gray-400">
+          {categoryFilter === '전체'
+            ? '등록된 결재선이 없습니다. "새 결재선 추가" 버튼으로 시작하세요.'
+            : `"${categoryFilter}" 카테고리에 결재선이 없습니다.`}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {templates.map((tmpl) => {
+        {filteredTemplates.map((tmpl) => {
           const isEditing = editingId === tmpl.id
 
           return (
@@ -2041,12 +2153,19 @@ function ApprovalTemplateManager({
                             newSteps.splice(idx, 0, moved)
                             setEditSteps(newSteps)
                           }}
-                          className="bg-gray-50 rounded-lg p-2 space-y-2 hover:bg-gray-100 border border-transparent hover:border-brand-300 transition-colors"
+                          className="bg-white rounded-lg p-3 space-y-2 border-2 border-gray-200 hover:border-brand-400 hover:shadow-sm transition-all"
                         >
+                          {/* 단계 연결선 (첫 단계 아닌 경우) */}
+                          {idx > 0 && (
+                            <div className="absolute -mt-5 left-6 flex flex-col items-center pointer-events-none">
+                              <div className="w-0.5 h-2 bg-brand-200" />
+                              <span className="text-brand-400 text-xs -mt-0.5">▼</span>
+                            </div>
+                          )}
                           {/* 역할 + 이름 */}
                           <div className="flex items-center gap-2 cursor-move">
                             <span className="text-gray-300 text-xs shrink-0">⋮⋮</span>
-                            <span className="text-xs font-bold text-brand-600 w-5 text-center shrink-0">{idx + 1}</span>
+                            <span className="w-6 h-6 rounded-full bg-brand-500 text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-sm">{idx + 1}</span>
                             <select
                               value={step.role}
                               onChange={(e) => updateStep(idx, 'role', e.target.value)}
@@ -2064,6 +2183,27 @@ function ApprovalTemplateManager({
                               placeholder="표시 이름"
                             />
                             <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
+                          </div>
+                          {/* 승인 유형 (결재/합의/참조) */}
+                          <div className="ml-7 flex items-center gap-1 flex-wrap">
+                            <span className="text-[10px] text-gray-500 mr-1">유형:</span>
+                            {ACTION_TYPE_OPTIONS.map((opt) => {
+                              const current = step.action_type || 'approve'
+                              const isActive = current === opt.value
+                              return (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() => setEditSteps(editSteps.map((s, i) => i === idx ? { ...s, action_type: opt.value } : s))}
+                                  title={opt.desc}
+                                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                                    isActive ? opt.color + ' font-semibold' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              )
+                            })}
                           </div>
                           {/* 직원 지정 — 검색 + 추천/전체 직원 선택 */}
                           <div className="ml-7 space-y-1.5">

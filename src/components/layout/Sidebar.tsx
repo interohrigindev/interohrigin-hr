@@ -46,6 +46,7 @@ import {
   Building,
   Mic,
   DollarSign,
+  Package,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -133,6 +134,16 @@ const standaloneItems: NavItem[] = [
     label: '내 평가 결과',
     icon: <ClipboardCheck className="h-5 w-5" />,
   },
+  {
+    to: '/my/mentorship',
+    label: '나의 멘토링',
+    icon: <UserCheck className="h-5 w-5" />,
+  },
+  {
+    to: '/my/handover',
+    label: '나의 인수인계',
+    icon: <Package className="h-5 w-5" />,
+  },
   // { to: '/calendar', label: '캘린더', icon: <CalendarDays className="h-5 w-5" /> }, // 일시 숨김
 ]
 
@@ -172,6 +183,7 @@ const navGroups: NavGroup[] = [
       { to: '/admin/employees/analysis', label: '사주/MBTI 분석', icon: <Sparkles className="h-4 w-4" /> },
       { to: '/admin/employees/notes', label: '특이사항 관리', icon: <AlertCircle className="h-4 w-4" /> },
       { to: '/admin/employees/exit', label: '퇴사 관리', icon: <LogOut className="h-4 w-4" /> },
+      { to: '/admin/employees/handover', label: '인수인계', icon: <Package className="h-4 w-4" /> },
     ],
   },
   {

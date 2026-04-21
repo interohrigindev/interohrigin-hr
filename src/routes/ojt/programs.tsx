@@ -12,7 +12,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, type AIConfig } from '@/lib/ai-client'
+import { generateAIContentSafe } from '@/lib/ai-client'
 import type { OJTProgram, OJTModule, QuizQuestion, OJTEnrollment } from '@/types/employee-lifecycle'
 import type { Department } from '@/types/database'
 
@@ -184,21 +184,6 @@ export default function OJTPrograms() {
     }
     setGeneratingQuiz(true)
     try {
-      const { data: aiSettings } = await supabase
-        .from('ai_settings').select('*').eq('is_active', true).limit(1).single()
-
-      if (!aiSettings) {
-        toast('AI 설정이 필요합니다. 설정 > AI 탭에서 API 키를 등록하세요.', 'error')
-        setGeneratingQuiz(false)
-        return
-      }
-
-      const config: AIConfig = {
-        provider: aiSettings.provider,
-        apiKey: aiSettings.api_key,
-        model: aiSettings.model,
-      }
-
       const moduleSummary = form.modules.map((m) => `- ${m.title}: ${m.content}`).join('\n')
 
       const prompt = `OJT 프로그램 교육 내용을 바탕으로 퀴즈 문제 5개를 생성해주세요.
@@ -220,28 +205,53 @@ ${moduleSummary}
 correct_answer는 0부터 시작하는 정답 인덱스입니다.
 실무에 도움이 되는 이해도 확인 문제를 출제하세요.`
 
-      const result = await generateAIContent(config, prompt)
+      const result = await generateAIContentSafe('ojt_mission', prompt, { maxAttempts: 3 })
+      if (!result.success) {
+        toast(result.error || 'AI 퀴즈 생성 실패', 'error')
+        setGeneratingQuiz(false)
+        return
+      }
+
       const jsonMatch = result.content.match(/\[[\s\S]*\]/)
-      if (!jsonMatch) { toast('AI 응답 파싱 실패', 'error'); setGeneratingQuiz(false); return }
+      if (!jsonMatch) {
+        toast('AI 응답 형식이 올바르지 않습니다. 다시 시도하거나 수동으로 퀴즈를 추가하세요.', 'error')
+        setGeneratingQuiz(false)
+        return
+      }
 
-      const parsed: { question: string; options: string[]; correct_answer: number; explanation?: string }[] = JSON.parse(jsonMatch[0])
+      let parsed: { question: string; options: string[]; correct_answer: number; explanation?: string }[]
+      try {
+        parsed = JSON.parse(jsonMatch[0])
+      } catch {
+        toast('AI 응답 JSON 파싱 실패. 수동으로 퀴즈를 추가하세요.', 'error')
+        setGeneratingQuiz(false)
+        return
+      }
 
-      const newQuestions: QuizQuestion[] = parsed.map((q) => ({
-        id: uid(),
-        question: q.question,
-        options: q.options,
-        correct_answer: q.correct_answer,
-        explanation: q.explanation,
-      }))
+      const newQuestions: QuizQuestion[] = parsed
+        .filter((q) => q && q.question && Array.isArray(q.options) && q.options.length >= 2)
+        .map((q) => ({
+          id: uid(),
+          question: q.question,
+          options: q.options,
+          correct_answer: typeof q.correct_answer === 'number' ? q.correct_answer : 0,
+          explanation: q.explanation,
+        }))
+
+      if (newQuestions.length === 0) {
+        toast('AI가 유효한 퀴즈를 생성하지 못했습니다. 수동 추가를 권장합니다.', 'error')
+        setGeneratingQuiz(false)
+        return
+      }
 
       setForm((prev) => ({
         ...prev,
         quiz_questions: [...prev.quiz_questions, ...newQuestions],
       }))
-      toast(`AI 퀴즈 ${newQuestions.length}개가 생성되었습니다.`, 'success')
+      toast(`AI 퀴즈 ${newQuestions.length}개가 생성되었습니다 (${result.provider}).`, 'success')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '알 수 없는 오류'
-      toast('AI 퀴즈 생성 실패: ' + message, 'error')
+      toast('AI 퀴즈 생성 실패: ' + message + ' · 수동으로 추가할 수 있습니다.', 'error')
     }
     setGeneratingQuiz(false)
   }

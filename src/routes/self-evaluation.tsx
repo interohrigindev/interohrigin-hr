@@ -269,6 +269,17 @@ export default function SelfEvaluation() {
         </div>
       )}
 
+      {/* C1: 목표 설정 제출 후 분기 평가로 전환됐을 때 안내 배너 */}
+      {target && target.status === 'pending' && target.goals_submitted && currentPhase === 'quarterly_eval' && (
+        <div className="bg-brand-50 border border-brand-200 rounded-lg p-4 flex items-start gap-3">
+          <CheckCircle className="h-5 w-5 text-brand-600 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-brand-800">목표 설정이 완료되었습니다. 이제 분기 평가를 진행해주세요.</p>
+            <p className="text-brand-700 mt-0.5">각 항목마다 <strong>점수(0~100)</strong>와 <strong>자기 코멘트</strong>를 입력한 뒤 하단 "평가 제출" 버튼을 눌러주세요.</p>
+          </div>
+        </div>
+      )}
+
       {/* Top info bar */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -368,7 +379,7 @@ export default function SelfEvaluation() {
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
             {currentPhase === 'goal_setting'
-              ? '목표 설정을 제출하시겠습니까? 제출 후에도 수정할 수 없습니다.'
+              ? '목표 설정을 제출하시겠습니까? 제출 후 목표는 수정할 수 없으며, 이어서 분기 평가 단계로 이동합니다.'
               : '분기 평가를 제출하시겠습니까? 제출 후에는 수정할 수 없습니다.'}
           </p>
           <div className="flex justify-end gap-3">

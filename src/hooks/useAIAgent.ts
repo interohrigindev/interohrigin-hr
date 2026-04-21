@@ -139,7 +139,7 @@ export function useAIAgent() {
   }
 
   // ─── 메시지 전송 ─────────────────────────────────────────
-  async function sendMessage(content: string): Promise<{ error: string | null }> {
+  async function sendMessage(content: string, options?: { extraContext?: string }): Promise<{ error: string | null }> {
     if (!profile?.id || !content.trim()) return { error: '입력 필요' }
 
     setSending(true)
@@ -206,7 +206,10 @@ export function useAIAgent() {
 
       // RAG: 플랫폼 실시간 데이터 컨텍스트 빌드
       const platformContext = await buildPlatformContext(profile?.id)
-      const systemPrompt = getSystemPrompt(taskType, profile?.name, profile?.role, platformContext)
+      const augmentedContext = options?.extraContext
+        ? `${platformContext}\n\n[추가 컨텍스트]\n${options.extraContext}`
+        : platformContext
+      const systemPrompt = getSystemPrompt(taskType, profile?.name, profile?.role, augmentedContext)
 
       // AI 호출 (실패 시 다른 provider로 자동 fallback)
       let response

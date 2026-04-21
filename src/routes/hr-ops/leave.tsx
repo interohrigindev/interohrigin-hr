@@ -101,7 +101,12 @@ export default function LeaveManagementPage() {
   const [filterDept, setFilterDept] = useState('')
   const [currentYear] = useState(new Date().getFullYear())
   const [showRequestDialog, setShowRequestDialog] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'requests'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'calendar' | 'requests'>('overview')
+
+  // C7: 월간 캘린더 상태
+  const now = new Date()
+  const [calendarYear, setCalendarYear] = useState(now.getFullYear())
+  const [calendarMonth, setCalendarMonth] = useState(now.getMonth()) // 0~11
 
   // 연차 신청 폼
   const [reqLeaveType, setReqLeaveType] = useState('annual')
@@ -425,6 +430,7 @@ export default function LeaveManagementPage() {
         <div className="flex bg-gray-100 rounded-lg p-0.5">
           {([
             { key: 'overview' as const, label: '연차 현황' },
+            { key: 'calendar' as const, label: '월간 캘린더' },
             { key: 'requests' as const, label: `신청/결재 ${pendingRequests > 0 ? `(${pendingRequests})` : ''}` },
           ]).map(({ key, label }) => (
             <button key={key} onClick={() => setActiveTab(key)} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === key ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
@@ -657,6 +663,21 @@ export default function LeaveManagementPage() {
         )
       )}
 
+      {/* ─── 월간 캘린더 (C7) ───────────────────────────── */}
+      {activeTab === 'calendar' && (
+        <LeaveCalendar
+          year={calendarYear}
+          month={calendarMonth}
+          onChangeMonth={(y, m) => { setCalendarYear(y); setCalendarMonth(m) }}
+          leaveRequests={leaveRequests}
+          employees={employees}
+          departments={departments}
+          filterDept={filterDept}
+          profileId={profile?.id}
+          isAdmin={isAdmin}
+        />
+      )}
+
       {/* ─── 신청/결재 관리 ───────────────────────────── */}
       {activeTab === 'requests' && (
         <div className="space-y-3">
@@ -810,6 +831,214 @@ export default function LeaveManagementPage() {
           </div>
         </div>
       </Dialog>
+    </div>
+  )
+}
+
+/* ─── C7: 월간 연차 캘린더 ───────────────────────────── */
+
+const KOREAN_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
+
+function LeaveCalendar({
+  year, month, onChangeMonth,
+  leaveRequests, employees, departments, filterDept, profileId, isAdmin,
+}: {
+  year: number
+  month: number
+  onChangeMonth: (y: number, m: number) => void
+  leaveRequests: LeaveRequest[]
+  employees: Employee[]
+  departments: Department[]
+  filterDept: string
+  profileId: string | undefined
+  isAdmin: boolean
+}) {
+  // 방어: 월 경계 안전 계산
+  const safeMonth = Math.max(0, Math.min(11, month))
+  const firstDay = new Date(year, safeMonth, 1)
+  const lastDay = new Date(year, safeMonth + 1, 0)
+  const daysInMonth = lastDay.getDate()
+  const startWeekday = firstDay.getDay() // 0=일
+
+  // 부서 필터 (부서 선택 시 하위 팀 포함)
+  const allowedEmpIds = useMemo(() => {
+    if (!filterDept) return null // null = 전체
+    const selected = departments.find(d => d.name === filterDept)
+    if (!selected) return new Set<string>()
+    const teamIds = departments.filter(d => d.parent_id === selected.id).map(d => d.id)
+    const allowIds = new Set<string>([selected.id, ...teamIds])
+    return new Set<string>(employees.filter(e => e.department_id && allowIds.has(e.department_id)).map(e => e.id))
+  }, [filterDept, departments, employees])
+
+  // 날짜별 휴가 매핑 (승인된 것만, pending은 희미하게)
+  const leavesByDate = useMemo(() => {
+    const map = new Map<string, Array<{ emp: Employee; req: LeaveRequest }>>()
+    const empMap = new Map(employees.map(e => [e.id, e]))
+
+    for (const req of leaveRequests) {
+      // 방어: 날짜 파싱
+      let sd: Date, ed: Date
+      try {
+        sd = new Date(req.start_date + 'T00:00:00')
+        ed = new Date(req.end_date + 'T00:00:00')
+        if (isNaN(sd.getTime()) || isNaN(ed.getTime())) continue
+      } catch { continue }
+
+      const emp = empMap.get(req.employee_id)
+      if (!emp) continue
+      if (!isAdmin && req.employee_id !== profileId) continue
+      if (allowedEmpIds && !allowedEmpIds.has(req.employee_id)) continue
+
+      // 해당 월과 겹치는 날짜만 iterate
+      const iterStart = sd < firstDay ? new Date(firstDay) : new Date(sd)
+      const iterEnd = ed > lastDay ? new Date(lastDay) : new Date(ed)
+      if (iterEnd < iterStart) continue
+
+      const cursor = new Date(iterStart)
+      while (cursor <= iterEnd) {
+        const key = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-${String(cursor.getDate()).padStart(2,'0')}`
+        const list = map.get(key) || []
+        list.push({ emp, req })
+        map.set(key, list)
+        cursor.setDate(cursor.getDate() + 1)
+      }
+    }
+    return map
+  }, [leaveRequests, employees, allowedEmpIds, isAdmin, profileId, firstDay, lastDay])
+
+  // 캘린더 그리드: 앞 공백 + 실제 날짜
+  const cells: Array<{ day: number | null; dateKey: string | null }> = []
+  for (let i = 0; i < startWeekday; i++) cells.push({ day: null, dateKey: null })
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateKey = `${year}-${String(safeMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    cells.push({ day: d, dateKey })
+  }
+  // 주말 맞추기 (7배수)
+  while (cells.length % 7 !== 0) cells.push({ day: null, dateKey: null })
+
+  const goPrev = () => {
+    const m = safeMonth - 1
+    if (m < 0) onChangeMonth(year - 1, 11)
+    else onChangeMonth(year, m)
+  }
+  const goNext = () => {
+    const m = safeMonth + 1
+    if (m > 11) onChangeMonth(year + 1, 0)
+    else onChangeMonth(year, m)
+  }
+  const goToday = () => { const n = new Date(); onChangeMonth(n.getFullYear(), n.getMonth()) }
+
+  const totalInMonth = Array.from(leavesByDate.values()).reduce((acc, arr) => acc + arr.length, 0)
+
+  // 범례용 유형 색
+  const typeColor = (t: string) => {
+    if (t === 'annual') return 'bg-brand-100 text-brand-700 border-brand-300'
+    if (t === 'half_am' || t === 'half_pm') return 'bg-amber-100 text-amber-700 border-amber-300'
+    if (t === 'sick') return 'bg-rose-100 text-rose-700 border-rose-300'
+    if (t === 'child') return 'bg-emerald-100 text-emerald-700 border-emerald-300'
+    if (t === 'special') return 'bg-violet-100 text-violet-700 border-violet-300'
+    return 'bg-gray-100 text-gray-600 border-gray-300'
+  }
+  const typeShort = (t: string) => {
+    if (t === 'annual') return '연차'
+    if (t === 'half_am') return 'AM'
+    if (t === 'half_pm') return 'PM'
+    if (t === 'sick') return '병가'
+    if (t === 'child') return '자녀'
+    if (t === 'special') return '특별'
+    return t
+  }
+  const statusOpacity = (s: string) => (s === 'approved' ? '' : 'opacity-60')
+
+  return (
+    <div className="space-y-3">
+      {/* 컨트롤 바 */}
+      <Card>
+        <CardContent className="py-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={goPrev}>◀</Button>
+              <span className="text-base font-bold text-gray-800 min-w-[120px] text-center">
+                {year}년 {safeMonth + 1}월
+              </span>
+              <Button size="sm" variant="outline" onClick={goNext}>▶</Button>
+              <Button size="sm" variant="outline" onClick={goToday} className="ml-1">오늘</Button>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+              <span>이번 달 휴가: <strong className="text-brand-600">{totalInMonth}건</strong></span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { k: 'annual',  l: '연차' },
+                  { k: 'half_am', l: '반차' },
+                  { k: 'sick',    l: '병가' },
+                  { k: 'child',   l: '자녀' },
+                  { k: 'special', l: '특별' },
+                ].map(i => (
+                  <span key={i.k} className={`text-[10px] px-1.5 py-0.5 rounded border ${typeColor(i.k)}`}>{i.l}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 캘린더 그리드 */}
+      <Card>
+        <CardContent className="p-2 sm:p-3">
+          {/* 요일 헤더 */}
+          <div className="grid grid-cols-7 mb-1">
+            {KOREAN_WEEKDAYS.map((w, i) => (
+              <div key={w} className={`text-center text-xs font-semibold py-1 ${i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-500'}`}>
+                {w}
+              </div>
+            ))}
+          </div>
+          {/* 날짜 셀 */}
+          <div className="grid grid-cols-7 gap-px bg-gray-200 rounded overflow-hidden">
+            {(() => {
+              const today = new Date()
+              const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
+              return cells.map((c, idx) => {
+                const weekday = idx % 7
+                const isToday = c.dateKey === todayKey
+              const leaves = c.dateKey ? (leavesByDate.get(c.dateKey) || []) : []
+              return (
+                <div
+                  key={idx}
+                  className={`bg-white min-h-[80px] sm:min-h-[96px] p-1.5 flex flex-col gap-0.5 ${c.day === null ? 'bg-gray-50' : ''} ${isToday ? 'ring-2 ring-brand-400 ring-inset' : ''}`}
+                >
+                  {c.day !== null && (
+                    <div className={`text-[11px] font-semibold ${weekday === 0 ? 'text-red-500' : weekday === 6 ? 'text-blue-500' : 'text-gray-600'}`}>
+                      {c.day}
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-0.5 overflow-hidden">
+                    {leaves.slice(0, 3).map(({ emp, req }, i) => (
+                      <div
+                        key={`${req.id}-${i}`}
+                        className={`text-[10px] px-1 py-0.5 rounded border truncate ${typeColor(req.leave_type)} ${statusOpacity(req.approval_status)}`}
+                        title={`${emp.name} — ${LEAVE_TYPE_LABELS[req.leave_type] || req.leave_type} (${LEAVE_STATUS_LABELS[req.approval_status] || req.approval_status})`}
+                      >
+                        <span className="font-semibold">{emp.name.slice(0, 3)}</span>
+                        <span className="ml-1 opacity-80">{typeShort(req.leave_type)}</span>
+                      </div>
+                    ))}
+                    {leaves.length > 3 && (
+                      <div className="text-[10px] text-gray-500 px-1">+{leaves.length - 3}명</div>
+                    )}
+                  </div>
+                </div>
+              )
+            })
+            })()}
+          </div>
+          {totalInMonth === 0 && (
+            <div className="text-center text-xs text-gray-400 py-6">
+              이번 달 등록된 휴가가 없습니다.
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

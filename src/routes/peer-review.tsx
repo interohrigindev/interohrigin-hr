@@ -12,7 +12,8 @@ import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { usePeerReview } from '@/hooks/usePeerReview'
 import { supabase } from '@/lib/supabase'
-import type { PeerReview } from '@/types/employee-lifecycle'
+import type { PeerReview, PeerReviewCriteriaKey } from '@/types/employee-lifecycle'
+import { PEER_REVIEW_CRITERIA, PEER_REVIEW_MAX_PER_ITEM } from '@/types/employee-lifecycle'
 
 interface EmployeeBasic {
   id: string
@@ -38,12 +39,16 @@ export default function PeerReviewPage() {
 
   const { assignments, myReviews, allReviews, loading, saving, saveReview, submitReview, assignReviewer } = usePeerReview(selectedPeriod || undefined)
 
-  // Review dialog
+  // Review dialog (C2: 10항목 × 10점)
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
   const [reviewTarget, setReviewTarget] = useState<string>('')
-  const [reviewScore, setReviewScore] = useState(70)
+  const [reviewItemScores, setReviewItemScores] = useState<Record<PeerReviewCriteriaKey, number>>(
+    () => PEER_REVIEW_CRITERIA.reduce((acc, c) => ({ ...acc, [c.key]: 0 }), {} as Record<PeerReviewCriteriaKey, number>)
+  )
   const [reviewStrengths, setReviewStrengths] = useState('')
   const [reviewImprovements, setReviewImprovements] = useState('')
+
+  const reviewTotalScore = PEER_REVIEW_CRITERIA.reduce((sum, c) => sum + (reviewItemScores[c.key] || 0), 0)
 
   // Assignment dialog (admin)
   const [assignDialogOpen, setAssignDialogOpen] = useState(false)
@@ -84,17 +89,28 @@ export default function PeerReviewPage() {
   function openReviewDialog(revieweeId: string) {
     const existing = getMyReview(revieweeId)
     setReviewTarget(revieweeId)
-    setReviewScore(existing?.overall_score || 70)
+    // 기존 item_scores가 있으면 복원, 없으면 0으로 초기화
+    const restored = PEER_REVIEW_CRITERIA.reduce((acc, c) => ({
+      ...acc,
+      [c.key]: (existing?.item_scores as Record<string, number> | null | undefined)?.[c.key] ?? 0,
+    }), {} as Record<PeerReviewCriteriaKey, number>)
+    setReviewItemScores(restored)
     setReviewStrengths(existing?.strengths || '')
     setReviewImprovements(existing?.improvements || '')
     setReviewDialogOpen(true)
+  }
+
+  function setItemScore(key: PeerReviewCriteriaKey, value: number) {
+    const clamped = Math.min(PEER_REVIEW_MAX_PER_ITEM, Math.max(0, value))
+    setReviewItemScores((prev) => ({ ...prev, [key]: clamped }))
   }
 
   async function handleSaveReview() {
     if (!reviewTarget) return
     const result = await saveReview({
       reviewee_id: reviewTarget,
-      overall_score: reviewScore,
+      overall_score: reviewTotalScore,
+      item_scores: reviewItemScores,
       strengths: reviewStrengths,
       improvements: reviewImprovements,
     })
@@ -104,10 +120,16 @@ export default function PeerReviewPage() {
 
   async function handleSubmitReview() {
     if (!reviewTarget) return
-    if (reviewScore < 0 || reviewScore > 100) { toast('점수는 0~100 사이로 입력하세요.', 'error'); return }
+    // 제출 전 검증: 모든 항목이 1점 이상
+    const unfilled = PEER_REVIEW_CRITERIA.filter((c) => (reviewItemScores[c.key] || 0) < 1)
+    if (unfilled.length > 0) {
+      toast(`모든 항목에 1~10점을 부여해주세요 (미입력: ${unfilled.length}개)`, 'error')
+      return
+    }
     const result = await submitReview({
       reviewee_id: reviewTarget,
-      overall_score: reviewScore,
+      overall_score: reviewTotalScore,
+      item_scores: reviewItemScores,
       strengths: reviewStrengths,
       improvements: reviewImprovements,
     })
@@ -251,6 +273,42 @@ export default function PeerReviewPage() {
                     {/* Detail comments visible only to director+ */}
                     {canSeeDetails && (
                       <div className="mt-3 space-y-2">
+                        {/* C2: 항목별 평균 (리뷰어들 합산) */}
+                        {(() => {
+                          const itemAggr: Partial<Record<PeerReviewCriteriaKey, { sum: number; count: number }>> = {}
+                          data.reviews.forEach((r) => {
+                            const scores = r.item_scores as Record<string, number> | null | undefined
+                            if (!scores) return
+                            for (const c of PEER_REVIEW_CRITERIA) {
+                              const v = scores[c.key]
+                              if (typeof v !== 'number') continue
+                              if (!itemAggr[c.key]) itemAggr[c.key] = { sum: 0, count: 0 }
+                              itemAggr[c.key]!.sum += v
+                              itemAggr[c.key]!.count += 1
+                            }
+                          })
+                          const hasItemData = Object.keys(itemAggr).length > 0
+                          if (!hasItemData) return null
+                          return (
+                            <div className="bg-gray-50 rounded p-2.5">
+                              <p className="text-[11px] font-semibold text-gray-600 mb-1.5">항목별 평균 (10점 만점)</p>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {PEER_REVIEW_CRITERIA.map((c) => {
+                                  const a = itemAggr[c.key]
+                                  if (!a) return null
+                                  const avg = a.sum / a.count
+                                  return (
+                                    <div key={c.key} className="flex items-center justify-between text-xs">
+                                      <span className="text-gray-600">{c.label}</span>
+                                      <span className="font-medium text-brand-600">{avg.toFixed(1)}/10</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })()}
+
                         {data.reviews.map((r, i) => (
                           <div key={r.id} className="bg-gray-50 rounded p-2 text-xs">
                             <div className="flex items-center justify-between mb-1">
@@ -291,40 +349,78 @@ export default function PeerReviewPage() {
         open={reviewDialogOpen}
         onClose={() => setReviewDialogOpen(false)}
         title={`동료 평가 - ${getEmployeeName(reviewTarget)}`}
+        className="max-w-2xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-4">
           <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-            이 평가는 익명으로 처리됩니다. 리더는 합산 점수만 확인 가능합니다.
+            10개 항목을 각 <strong>1~10점</strong>으로 평가합니다 (총 100점). 익명 처리되며 리더는 합산 점수만 확인 가능합니다.
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">종합 점수 (0~100)</label>
+          {/* 총점 요약 (고정 상단) */}
+          <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b pb-3 z-10">
             <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={reviewScore}
-                onChange={(e) => setReviewScore(parseInt(e.target.value))}
-                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-500"
-              />
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={reviewScore}
-                onChange={(e) => setReviewScore(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-                className="w-16 text-center text-sm border rounded px-2 py-1"
-              />
+              <span className="text-sm font-medium text-gray-700">총점</span>
+              <span className={`text-2xl font-bold ${
+                reviewTotalScore >= 85 ? 'text-emerald-600'
+                : reviewTotalScore >= 70 ? 'text-brand-600'
+                : reviewTotalScore >= 50 ? 'text-amber-600'
+                : 'text-red-500'
+              }`}>{reviewTotalScore}</span>
+              <span className="text-sm text-gray-500">/ 100</span>
+              <div className="flex-1">
+                <ProgressBar
+                  value={reviewTotalScore}
+                  max={100}
+                  size="sm"
+                  color={reviewTotalScore >= 85 ? 'emerald' : reviewTotalScore >= 70 ? 'brand' : reviewTotalScore >= 50 ? 'amber' : 'red'}
+                />
+              </div>
             </div>
-            <div className="mt-1">
-              <ProgressBar
-                value={reviewScore}
-                max={100}
-                size="sm"
-                color={reviewScore >= 85 ? 'emerald' : reviewScore >= 70 ? 'brand' : reviewScore >= 50 ? 'amber' : 'red'}
-              />
-            </div>
+          </div>
+
+          {/* 10개 항목 × 10점 */}
+          <div className="space-y-2">
+            {PEER_REVIEW_CRITERIA.map((c) => {
+              const value = reviewItemScores[c.key] || 0
+              return (
+                <div key={c.key} className="p-3 border border-gray-200 rounded-lg">
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-800">{c.label}</p>
+                      <p className="text-[11px] text-gray-500 truncate">{c.desc}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-base font-bold text-brand-600 w-8 text-right">{value}</span>
+                      <span className="text-xs text-gray-400">/ {PEER_REVIEW_MAX_PER_ITEM}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min={0}
+                      max={PEER_REVIEW_MAX_PER_ITEM}
+                      value={value}
+                      onChange={(e) => setItemScore(c.key, parseInt(e.target.value))}
+                      className="flex-1 h-1.5 bg-gray-200 rounded appearance-none cursor-pointer accent-brand-500"
+                    />
+                    {/* 0~10 점 버튼 */}
+                    <div className="flex gap-0.5">
+                      {[...Array(PEER_REVIEW_MAX_PER_ITEM + 1)].map((_, n) => (
+                        <button
+                          key={n}
+                          onClick={() => setItemScore(c.key, n)}
+                          className={`w-5 h-5 rounded text-[10px] font-semibold transition-colors ${
+                            n === value ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
           <Textarea

@@ -58,16 +58,19 @@ export function usePeerReview(periodId?: string) {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  async function saveReview(data: {
+  interface PeerReviewInput {
     reviewee_id: string
     overall_score: number
+    item_scores?: Record<string, number> | null
     strengths: string
     improvements: string
-  }): Promise<{ error: string | null }> {
+  }
+
+  async function upsertReview(data: PeerReviewInput, submitted: boolean): Promise<{ error: string | null }> {
     if (!profile?.id) return { error: '로그인이 필요합니다' }
     setSaving(true)
 
-    const row = {
+    const row: Record<string, unknown> = {
       period_id: periodId || null,
       reviewer_id: profile.id,
       reviewee_id: data.reviewee_id,
@@ -75,8 +78,9 @@ export function usePeerReview(periodId?: string) {
       strengths: data.strengths || null,
       improvements: data.improvements || null,
       is_anonymous: true,
-      is_submitted: false,
+      is_submitted: submitted,
     }
+    if (data.item_scores) row.item_scores = data.item_scores
 
     const { error } = await supabase
       .from('peer_reviews')
@@ -88,35 +92,8 @@ export function usePeerReview(periodId?: string) {
     return { error: null }
   }
 
-  async function submitReview(data: {
-    reviewee_id: string
-    overall_score: number
-    strengths: string
-    improvements: string
-  }): Promise<{ error: string | null }> {
-    if (!profile?.id) return { error: '로그인이 필요합니다' }
-    setSaving(true)
-
-    const row = {
-      period_id: periodId || null,
-      reviewer_id: profile.id,
-      reviewee_id: data.reviewee_id,
-      overall_score: data.overall_score,
-      strengths: data.strengths || null,
-      improvements: data.improvements || null,
-      is_anonymous: true,
-      is_submitted: true,
-    }
-
-    const { error } = await supabase
-      .from('peer_reviews')
-      .upsert(row, { onConflict: 'period_id,reviewer_id,reviewee_id' })
-
-    setSaving(false)
-    if (error) return { error: error.message }
-    await fetchData()
-    return { error: null }
-  }
+  async function saveReview(data: PeerReviewInput) { return upsertReview(data, false) }
+  async function submitReview(data: PeerReviewInput) { return upsertReview(data, true) }
 
   // Admin: assign peer reviewers
   async function assignReviewer(reviewerId: string, revieweeId: string): Promise<{ error: string | null }> {

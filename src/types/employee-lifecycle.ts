@@ -204,12 +204,31 @@ export interface MonthlyCheckin {
 }
 
 // ─── 동료 다면 평가 ────────────────────────────────────────────
+// C2: 10항목 × 10점 = 100점 구조
+export const PEER_REVIEW_CRITERIA = [
+  { key: 'collaboration', label: '협업', desc: '팀원과 원활하게 협력하고 기여하는가' },
+  { key: 'communication', label: '소통', desc: '명확하고 건설적인 커뮤니케이션' },
+  { key: 'responsibility', label: '책임감', desc: '맡은 업무에 끝까지 책임지는가' },
+  { key: 'expertise', label: '전문성', desc: '업무에 대한 지식과 숙련도' },
+  { key: 'initiative', label: '적극성', desc: '주도적으로 문제를 찾고 해결하려는가' },
+  { key: 'problem_solving', label: '문제해결', desc: '복잡한 이슈를 구조적으로 해결' },
+  { key: 'reliability', label: '신뢰성', desc: '약속·일정·품질을 꾸준히 지키는가' },
+  { key: 'quality', label: '품질', desc: '산출물의 완성도와 디테일' },
+  { key: 'growth_mindset', label: '성장 자세', desc: '피드백 수용 및 지속 학습' },
+  { key: 'culture_fit', label: '조직 문화 기여', desc: '팀 분위기와 가치에 긍정적 기여' },
+] as const
+
+export type PeerReviewCriteriaKey = typeof PEER_REVIEW_CRITERIA[number]['key']
+export const PEER_REVIEW_MAX_PER_ITEM = 10
+
 export interface PeerReview {
   id: string
   period_id: string | null
   reviewer_id: string
   reviewee_id: string
   overall_score: number | null
+  // C2: 10개 항목별 점수 (각 0~10). JSONB 컬럼. 기존 데이터는 null 가능.
+  item_scores?: Partial<Record<PeerReviewCriteriaKey, number>> | null
   strengths: string | null
   improvements: string | null
   is_anonymous: boolean
@@ -237,6 +256,82 @@ export interface SpecialNote {
   note_type: NoteType
   content: string
   severity: Severity
+  created_at: string
+}
+
+// ─── 인수인계 (B1) ──────────────────────────────────────────────
+export type HandoverStatus = 'draft' | 'generated' | 'reviewed' | 'completed'
+export type HandoverAssetType = 'contract' | 'device' | 'document' | 'account' | 'other'
+export type HandoverReturnStatus = 'pending' | 'returned' | 'n_a'
+
+export const HANDOVER_ASSET_TYPE_LABELS: Record<HandoverAssetType, string> = {
+  contract: '계약서',
+  device:   '기기/장비',
+  document: '문서',
+  account:  '계정/권한',
+  other:    '기타',
+}
+
+export const HANDOVER_RETURN_LABELS: Record<HandoverReturnStatus, string> = {
+  pending:  '반납 대기',
+  returned: '반납 완료',
+  n_a:      '해당 없음',
+}
+
+export const HANDOVER_STATUS_LABELS: Record<HandoverStatus, string> = {
+  draft:     '초안 작성 중',
+  generated: 'AI 생성 완료',
+  reviewed:  '검토 완료',
+  completed: '인수인계 종료',
+}
+
+export interface HandoverDocumentContent {
+  overview?: string
+  projects?: Array<{
+    name: string
+    role?: string
+    status?: string
+    handover_points?: string[]
+    successor_action?: string[]
+  }>
+  daily_summary?: string
+  pending_tasks?: Array<{ title: string; note?: string }>
+  knowhow?: string
+  contacts?: Array<{ name: string; role?: string; contact?: string }>
+}
+
+export interface HandoverDocument {
+  id: string
+  employee_id: string
+  successor_id: string | null
+  status: HandoverStatus
+  content: HandoverDocumentContent | null
+  ai_generated_at: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface HandoverAsset {
+  id: string
+  employee_id: string
+  asset_type: HandoverAssetType
+  name: string
+  location: string | null
+  url: string | null
+  note: string | null
+  return_status: HandoverReturnStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface HandoverChat {
+  id: string
+  handover_id: string
+  asker_id: string | null
+  question: string
+  answer: string | null
+  sources: Array<{ type: 'project' | 'report' | 'asset'; ref_id?: string; snippet?: string }> | null
   created_at: string
 }
 
