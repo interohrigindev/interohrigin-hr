@@ -35,6 +35,9 @@ const ENROLLMENT_STATUS_VARIANTS: Record<string, 'default' | 'primary' | 'succes
   dropped: 'danger',
 }
 
+// D2-4: 미팅노트 지시 — 퀴즈 기능 실사용 의미 없음 → UI 숨김 (DB/데이터는 유지)
+const SHOW_QUIZ_FEATURE = false
+
 export default function OJTPrograms() {
   const { profile } = useAuth()
   const { toast } = useToast()
@@ -393,7 +396,7 @@ correct_answer는 0부터 시작하는 정답 인덱스입니다.
                 <div className="flex flex-wrap gap-2 text-xs">
                   <Badge variant="primary">{p.duration_days}일 과정</Badge>
                   <Badge variant="info">{(p.modules || []).length}개 모듈</Badge>
-                  <Badge variant="purple">{(p.quiz_questions || []).length}개 퀴즈</Badge>
+                  {SHOW_QUIZ_FEATURE && <Badge variant="purple">{(p.quiz_questions || []).length}개 퀴즈</Badge>}
                   {p.job_type && <Badge variant="default">{p.job_type}</Badge>}
                 </div>
               </CardContent>
@@ -452,8 +455,8 @@ correct_answer는 0부터 시작하는 정답 인덱스입니다.
             </div>
           </div>
 
-          {/* Quiz Questions */}
-          <div className="border-t pt-4">
+          {/* Quiz Questions — D2-4: 미팅노트 지시로 UI 숨김 */}
+          {SHOW_QUIZ_FEATURE && <div className="border-t pt-4">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold text-gray-900">퀴즈 문제</h4>
               <Button variant="outline" size="sm" onClick={generateQuizWithAI} disabled={generatingQuiz}>
@@ -515,7 +518,7 @@ correct_answer는 0부터 시작하는 정답 인덱스입니다.
                 <Button variant="outline" size="sm" onClick={addQuiz} className="shrink-0">추가</Button>
               </div>
             </div>
-          </div>
+          </div>}
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t">
