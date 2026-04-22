@@ -141,6 +141,15 @@ export default function DailyReportPage() {
   // 일일보고 결재선 템플릿 (관리자가 결재선 관리에서 설정)
   const [reportTemplate, setReportTemplate] = useState<{ id: string; steps: { role: string; label: string; approver_ids?: string[] }[] } | null>(null)
 
+  // D2-4: OJT 진행 상황 (멘티인 경우)
+  const [ojtInfo, setOjtInfo] = useState<{
+    program_id: string
+    program_name: string
+    current_week: number
+    total_weeks: number
+    weekly_report_status: 'none' | 'draft' | 'submitted' | 'reviewed'
+  } | null>(null)
+
   const employeeId = profile?.id
 
   // 결재선 선택용 직원 로드
@@ -160,6 +169,50 @@ export default function DailyReportPage() {
       .then(({ data }) => {
         if (data) setReportTemplate(data as typeof reportTemplate)
       })
+  }, [])
+
+  // D2-4: 내 OJT 진행 상황 로드 (멘티인 경우)
+  useEffect(() => {
+    if (!profile?.id) return
+    async function fetchOJT() {
+      const { data: enrollment } = await supabase
+        .from('ojt_enrollments')
+        .select('program_id, started_at, status, ojt_programs!inner(name, duration_days)')
+        .eq('employee_id', profile!.id)
+        .in('status', ['enrolled', 'in_progress'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!enrollment) { setOjtInfo(null); return }
+
+      const rawProg = (enrollment as unknown as { ojt_programs: { name: string; duration_days: number } }).ojt_programs
+      if (!rawProg) { setOjtInfo(null); return }
+
+      const startDate = enrollment.started_at ? new Date(enrollment.started_at) : new Date()
+      const now = new Date()
+      const daysSince = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+      const currentWeek = Math.max(1, Math.ceil((daysSince + 1) / 5))
+      const totalWeeks = Math.max(1, Math.ceil(rawProg.duration_days / 5))
+
+      // 이번 주차의 보고서 상태
+      const { data: rpt } = await supabase
+        .from('ojt_weekly_reports')
+        .select('status')
+        .eq('program_id', enrollment.program_id)
+        .eq('mentee_id', profile!.id)
+        .eq('week_number', currentWeek)
+        .maybeSingle()
+
+      setOjtInfo({
+        program_id: enrollment.program_id,
+        program_name: rawProg.name,
+        current_week: currentWeek,
+        total_weeks: totalWeeks,
+        weekly_report_status: (rpt?.status as 'draft' | 'submitted' | 'reviewed' | undefined) || 'none',
+      })
+    }
+    fetchOJT()
   }, [])
 
   // 현재 보고서가 이미 결재 전송되었는지 체크
@@ -604,6 +657,37 @@ ${completedText || '아직 없음'}
 
   return (
     <div className="space-y-6">
+      {/* D2-4: OJT 중인 멘티에게 주차별 보고서 바로가기 배너 표시 */}
+      {ojtInfo && (
+        <Card className="bg-gradient-to-r from-brand-50 to-violet-50 border-brand-200">
+          <CardContent className="py-3 px-4 flex items-center gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                <span className="text-sm font-bold text-brand-800">🎓 OJT 진행 중</span>
+                <Badge variant="primary" className="text-[10px]">
+                  {ojtInfo.current_week}/{ojtInfo.total_weeks}주차
+                </Badge>
+                {ojtInfo.weekly_report_status === 'reviewed' && <Badge variant="success" className="text-[10px]">이번 주 검토완료</Badge>}
+                {ojtInfo.weekly_report_status === 'submitted' && <Badge variant="info" className="text-[10px]">이번 주 제출됨</Badge>}
+                {ojtInfo.weekly_report_status === 'draft' && <Badge variant="warning" className="text-[10px]">이번 주 작성 중</Badge>}
+                {ojtInfo.weekly_report_status === 'none' && <Badge variant="danger" className="text-[10px]">이번 주 미작성</Badge>}
+              </div>
+              <p className="text-xs text-gray-600 line-clamp-1">{ojtInfo.program_name}</p>
+            </div>
+            <Button
+              size="sm"
+              variant={ojtInfo.weekly_report_status === 'none' || ojtInfo.weekly_report_status === 'draft' ? 'primary' : 'outline'}
+              onClick={() => window.location.assign('/ojt/weekly')}
+              className="shrink-0"
+            >
+              {ojtInfo.weekly_report_status === 'none' ? '주차별 보고서 작성' :
+               ojtInfo.weekly_report_status === 'draft' ? '이어 쓰기' :
+               '주차별 보고서 보기'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">일일 업무 보고서</h1>
         <div className="flex gap-2 shrink-0">
@@ -839,6 +923,14 @@ ${completedText || '아직 없음'}
                   }
 
                   // 1) approval_documents 생성
+                  // D2-4: OJT 멘티는 이번 주차 보고서 참조 포함 → 결재자가 함께 확인 가능
+                  const ojtContext = ojtInfo ? {
+                    ojt_program_id: ojtInfo.program_id,
+                    ojt_program_name: ojtInfo.program_name,
+                    ojt_current_week: ojtInfo.current_week,
+                    ojt_weekly_report_status: ojtInfo.weekly_report_status,
+                  } : {}
+
                   const { data: doc, error: docErr } = await supabase.from('approval_documents').insert({
                     doc_type: 'daily_report',
                     title: `일일 업무보고 (${selectedDate})`,
@@ -848,6 +940,7 @@ ${completedText || '아직 없음'}
                       completed,
                       in_progress: inProgress,
                       planned,
+                      ...ojtContext,
                     },
                     requester_id: profile.id,
                     department: profile.department_id || '',
