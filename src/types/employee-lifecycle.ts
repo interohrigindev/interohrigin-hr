@@ -74,6 +74,44 @@ export interface OJTModule {
   order: number
 }
 
+// D2-4: 세부 일정표 (일차별)
+export interface OJTScheduleItem {
+  id: string
+  program_id: string
+  day_number: number
+  time_slot: string | null
+  title: string
+  description: string | null
+  output: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+// D2-4: 주차별 보고서 (멘티 작성, 멘토 피드백)
+export type OJTWeeklyReportStatus = 'draft' | 'submitted' | 'reviewed'
+
+export interface OJTWeeklyReportContent {
+  learned?: string            // 이번 주 배운 점
+  challenges?: string         // 어려웠던 점
+  next_week?: string          // 다음 주 계획
+  feedback_request?: string   // 멘토에게 질문·요청
+}
+
+export interface OJTWeeklyReport {
+  id: string
+  program_id: string
+  mentee_id: string
+  week_number: number
+  content: OJTWeeklyReportContent
+  status: OJTWeeklyReportStatus
+  mentor_feedback: string | null
+  submitted_at: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface QuizQuestion {
   id: string
   question: string

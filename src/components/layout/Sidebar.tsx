@@ -165,6 +165,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/admin/ojt', label: 'OJT 프로그램', icon: <GraduationCap className="h-4 w-4" />, end: true },
       // D2-1: 멘토-멘티는 OJT 프로그램 내부에서 관리 → 독립 메뉴 숨김
+      { to: '/admin/ojt/weekly-reports', label: '주차별 보고서', icon: <CalendarCheck className="h-4 w-4" /> },
       { to: '/admin/probation', label: '수습 평가', icon: <ClipboardCheck className="h-4 w-4" /> },
       { to: '/admin/probation-results', label: '평가 결과', icon: <FileBarChart className="h-4 w-4" /> },
     ],
@@ -201,7 +202,8 @@ const navGroups: NavGroup[] = [
     label: '인사평가',
     icon: <LineChart className="h-5 w-5" />,
     items: [
-      // D2-1: 정규직 평가 통합 컨테이너 (자기평가 → 평가하기 → 내 결과 모두 포함)
+      // D2-3: 정규직 평가 통합 허브 (모든 하위 단계로 진입)
+      { to: '/evaluation', label: '정규직 평가', icon: <Award className="h-4 w-4" />, end: true },
       { to: '/self-evaluation', label: '자기평가', icon: <PenSquare className="h-4 w-4" />, hideForRoles: ['director', 'division_head', 'ceo', 'admin'] as EmployeeRole[] },
       { to: '/evaluate', label: '평가하기', icon: <ClipboardList className="h-4 w-4" />, minRole: 'leader' as EmployeeRole, hideForRoles: ['admin'] as EmployeeRole[] },
       { to: '/my-evaluations', label: '내 평가 결과', icon: <ClipboardCheck className="h-4 w-4" /> },

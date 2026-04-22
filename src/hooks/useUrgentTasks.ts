@@ -116,6 +116,31 @@ export function useUrgentTaskMutations() {
       .insert(data)
       .select()
       .single()
+
+    // D3-2: 담당자에게 이메일 자동 발송 (실패해도 생성은 성공 처리)
+    if (!error && result && data.assigned_to?.length > 0) {
+      try {
+        const { urgentTaskNotificationEmail } = await import('@/lib/email-templates')
+        const { data: assignees } = await supabase
+          .from('employees')
+          .select('id, name, email')
+          .in('id', data.assigned_to)
+          .eq('is_active', true)
+
+        for (const a of assignees || []) {
+          if (!a.email) continue
+          const mail = urgentTaskNotificationEmail(
+            a.name, data.title, data.priority, data.deadline, data.description || null, 'assigned'
+          )
+          fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: a.email, subject: mail.subject, html: mail.html }),
+          }).catch(() => { /* 이메일 실패는 무시 */ })
+        }
+      } catch { /* import 실패 시도 무시 */ }
+    }
+
     return { data: result, error }
   }
 

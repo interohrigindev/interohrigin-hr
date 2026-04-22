@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import FloatingAIAgent from '@/components/ai-agent/FloatingAIAgent'
+import { UrgentTaskPopup } from '@/components/urgent/UrgentTaskPopup'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AdminRoute } from '@/components/layout/AdminRoute'
 import Login from '@/routes/login'
@@ -37,6 +38,8 @@ import RecruitmentSettings from '@/routes/recruitment/settings'
 // OJT/수습
 import OJTPrograms from '@/routes/ojt/programs'
 import MentorManage from '@/routes/ojt/mentor'
+import OJTWeeklyReports from '@/routes/ojt/weekly-reports'
+import EvaluationHub from '@/routes/evaluation-hub'
 import ProbationManage from '@/routes/ojt/probation'
 import ProbationResults from '@/routes/ojt/probation-results'
 
@@ -207,6 +210,9 @@ function App() {
               {/* OJT/수습 (관리자/임원) */}
               <Route path="admin/ojt" element={<AdminRoute><OJTPrograms /></AdminRoute>} />
               <Route path="admin/ojt/mentor" element={<AdminRoute><MentorManage /></AdminRoute>} />
+              <Route path="admin/ojt/weekly-reports" element={<AdminRoute><OJTWeeklyReports /></AdminRoute>} />
+              <Route path="ojt/weekly" element={<OJTWeeklyReports />} />
+              <Route path="evaluation" element={<EvaluationHub />} />
               {/* C4: 일반 직원용 — 동일 컴포넌트, 페이지 내부에서 역할별 분기 */}
               <Route path="my/mentorship" element={<MentorManage />} />
               <Route path="admin/probation" element={<AdminRoute><ProbationManage /></AdminRoute>} />
@@ -286,6 +292,7 @@ function App() {
             </Route>
           </Routes>
           <FloatingAIAgent />
+          <UrgentTaskPopup />
         </BrowserRouter>
       </ToastProvider>
     </AuthProvider>

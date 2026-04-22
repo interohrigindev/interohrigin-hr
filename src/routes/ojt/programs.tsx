@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { generateAIContentSafe } from '@/lib/ai-client'
-import type { OJTProgram, OJTModule, QuizQuestion, OJTEnrollment } from '@/types/employee-lifecycle'
+import type { OJTProgram, OJTModule, QuizQuestion, OJTEnrollment, OJTScheduleItem } from '@/types/employee-lifecycle'
 import type { Department } from '@/types/database'
 
 // ─── Helper: generate unique id ─────────────────────────────────
@@ -83,6 +83,50 @@ export default function OJTPrograms() {
   const [quizCorrect, setQuizCorrect] = useState(0)
   const [quizExplanation, setQuizExplanation] = useState('')
 
+  // D2-4: 세부 일정표 (일차별)
+  const [scheduleItems, setScheduleItems] = useState<OJTScheduleItem[]>([])
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [newSchDay, setNewSchDay] = useState(1)
+  const [newSchTime, setNewSchTime] = useState('')
+  const [newSchTitle, setNewSchTitle] = useState('')
+  const [newSchDesc, setNewSchDesc] = useState('')
+  const [newSchOutput, setNewSchOutput] = useState('')
+
+  async function loadScheduleItems(programId: string) {
+    setScheduleLoading(true)
+    const { data } = await supabase
+      .from('ojt_schedule_items')
+      .select('*')
+      .eq('program_id', programId)
+      .order('day_number', { ascending: true })
+      .order('sort_order', { ascending: true })
+    setScheduleItems((data || []) as OJTScheduleItem[])
+    setScheduleLoading(false)
+  }
+
+  async function addScheduleItem(programId: string) {
+    if (!newSchTitle.trim()) { toast('과제명을 입력하세요.', 'error'); return }
+    const { error } = await supabase.from('ojt_schedule_items').insert({
+      program_id: programId,
+      day_number: newSchDay,
+      time_slot: newSchTime.trim() || null,
+      title: newSchTitle.trim(),
+      description: newSchDesc.trim() || null,
+      output: newSchOutput.trim() || null,
+      sort_order: scheduleItems.filter(s => s.day_number === newSchDay).length,
+    })
+    if (error) { toast('추가 실패: ' + error.message, 'error'); return }
+    setNewSchTime(''); setNewSchTitle(''); setNewSchDesc(''); setNewSchOutput('')
+    await loadScheduleItems(programId)
+    toast('세부 일정이 추가되었습니다.', 'success')
+  }
+
+  async function removeScheduleItem(id: string, programId: string) {
+    const { error } = await supabase.from('ojt_schedule_items').delete().eq('id', id)
+    if (error) { toast('삭제 실패: ' + error.message, 'error'); return }
+    await loadScheduleItems(programId)
+  }
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     const [progRes, deptRes] = await Promise.all([
@@ -131,6 +175,7 @@ export default function OJTPrograms() {
       quiz_questions: p.quiz_questions || [],
     })
     setDialogOpen(true)
+    loadScheduleItems(p.id)
   }
 
   function addModule() {
@@ -454,6 +499,75 @@ correct_answer는 0부터 시작하는 정답 인덱스입니다.
               <Button variant="outline" size="sm" onClick={addModule} className="shrink-0">추가</Button>
             </div>
           </div>
+
+          {/* D2-4: 세부 일정표 — 프로그램 저장 후(편집 모드)에만 활성 */}
+          {editingId && (
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-gray-900">📅 세부 일정표</h4>
+                <span className="text-[11px] text-gray-400">{scheduleItems.length}개 일정</span>
+              </div>
+
+              {scheduleLoading ? (
+                <p className="text-xs text-gray-400">불러오는 중...</p>
+              ) : scheduleItems.length > 0 ? (
+                <div className="space-y-1.5 mb-3">
+                  {(() => {
+                    const byDay = scheduleItems.reduce<Record<number, OJTScheduleItem[]>>((acc, it) => {
+                      if (!acc[it.day_number]) acc[it.day_number] = []
+                      acc[it.day_number].push(it)
+                      return acc
+                    }, {})
+                    const days = Object.keys(byDay).map(Number).sort((a, b) => a - b)
+                    return days.map((day) => (
+                      <div key={day} className="bg-gray-50 rounded-lg p-2.5 border-l-4 border-brand-400">
+                        <p className="text-xs font-bold text-brand-700 mb-1.5">{day}일차</p>
+                        <div className="space-y-1">
+                          {byDay[day].map((it) => (
+                            <div key={it.id} className="flex items-start gap-2 px-2 py-1.5 bg-white rounded border border-gray-200">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {it.time_slot && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">{it.time_slot}</span>}
+                                  <span className="text-sm text-gray-800 font-medium">{it.title}</span>
+                                </div>
+                                {it.description && <p className="text-[11px] text-gray-500 mt-0.5">{it.description}</p>}
+                                {it.output && <p className="text-[11px] text-emerald-600 mt-0.5">🎯 산출물: {it.output}</p>}
+                              </div>
+                              <button onClick={() => removeScheduleItem(it.id, editingId)} className="text-red-400 hover:text-red-600 shrink-0">
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  })()}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 mb-3">아직 등록된 세부 일정이 없습니다.</p>
+              )}
+
+              <div className="border rounded-lg p-3 space-y-2 bg-white">
+                <p className="text-[11px] font-medium text-gray-600">새 일정 추가</p>
+                <div className="grid grid-cols-12 gap-2">
+                  <div className="col-span-2">
+                    <Input type="number" min="1" placeholder="일차" value={String(newSchDay)} onChange={(e) => setNewSchDay(Number(e.target.value) || 1)} />
+                  </div>
+                  <div className="col-span-3">
+                    <Input placeholder="시간 (예: 09:00-10:30)" value={newSchTime} onChange={(e) => setNewSchTime(e.target.value)} />
+                  </div>
+                  <div className="col-span-7">
+                    <Input placeholder="과제명 *" value={newSchTitle} onChange={(e) => setNewSchTitle(e.target.value)} />
+                  </div>
+                </div>
+                <Input placeholder="상세 설명 (선택)" value={newSchDesc} onChange={(e) => setNewSchDesc(e.target.value)} />
+                <div className="flex gap-2">
+                  <Input placeholder="기대 산출물 (선택)" value={newSchOutput} onChange={(e) => setNewSchOutput(e.target.value)} />
+                  <Button variant="outline" size="sm" onClick={() => addScheduleItem(editingId)} className="shrink-0">추가</Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Quiz Questions — D2-4: 미팅노트 지시로 UI 숨김 */}
           {SHOW_QUIZ_FEATURE && <div className="border-t pt-4">

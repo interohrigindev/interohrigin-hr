@@ -453,3 +453,75 @@ export function annualLeavePromotionEmail(
     `.trim(),
   }
 }
+
+// D3-2: 긴급업무 할당·마감 임박 알림 이메일
+export function urgentTaskNotificationEmail(
+  employeeName: string,
+  taskTitle: string,
+  priority: number,
+  deadline: string,
+  description: string | null,
+  kind: 'assigned' | 'due_today' | 'overdue',
+): { subject: string; html: string } {
+  const kindMeta: Record<string, { label: string; color: string; bg: string; border: string }> = {
+    assigned:  { label: '신규 할당',     color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+    due_today: { label: '오늘 마감',     color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+    overdue:   { label: '마감일 경과',   color: '#991b1b', bg: '#fef2f2', border: '#fca5a5' },
+  }
+  const m = kindMeta[kind]
+  const priorityLabel = priority === 1 ? 'P1 (최우선)' : priority === 2 ? 'P2 (중요)' : `P${priority}`
+
+  return {
+    subject: `[인터오리진아이앤씨] [${m.label}] 긴급 업무 — ${taskTitle}`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">긴급 업무 알림</p>
+    </div>
+
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${employeeName}</strong>님, 안녕하세요.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
+        담당하고 계신 긴급 업무가 <strong style="color:${m.color};">${m.label}</strong> 상태입니다. 빠르게 확인해 주세요.
+      </p>
+
+      <div style="background:${m.bg};border:1px solid ${m.border};border-radius:12px;padding:20px;margin:20px 0;">
+        <p style="font-size:12px;color:${m.color};margin:0 0 8px;font-weight:bold;">${priorityLabel}</p>
+        <p style="font-size:16px;color:#1f2937;margin:0 0 12px;font-weight:bold;">${taskTitle}</p>
+        ${description ? `<p style="font-size:13px;color:#4b5563;margin:0 0 12px;line-height:1.6;">${description.replace(/</g, '&lt;').replace(/\n/g, '<br>')}</p>` : ''}
+        <table style="width:100%;font-size:13px;color:#374151;margin-top:8px;">
+          <tr>
+            <td style="padding:4px 0;color:#6b7280;">우선순위</td>
+            <td style="padding:4px 0;text-align:right;font-weight:bold;color:${m.color};">${priorityLabel}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;color:#6b7280;">마감일</td>
+            <td style="padding:4px 0;text-align:right;font-weight:bold;color:#1f2937;">${deadline}</td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:20px 0 12px;">
+        HR 플랫폼에서 상세 내용을 확인하고 진행 상태를 업데이트해 주세요.
+      </p>
+    </div>
+
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진아이앤씨 HR 시스템에서 자동 발송되었습니다.<br>
+        문의: admin@interohriginhr.com
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim(),
+  }
+}
