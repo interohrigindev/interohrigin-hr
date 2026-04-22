@@ -96,13 +96,14 @@ const standaloneItems: NavItem[] = [
     to: '/ceo-report',
     label: 'CEO 리포트',
     icon: <BarChart3 className="h-5 w-5" />,
-    hideForRoles: ['employee', 'leader'] as EmployeeRole[],
+    // CEO·시스템 관리자만 접근 (director/division_head/hr_admin 제외)
+    hideForRoles: ['employee', 'leader', 'director', 'division_head', 'hr_admin'] as EmployeeRole[],
   },
   {
     to: '/employee-signal',
     label: '직원 신호등',
     icon: <Users className="h-5 w-5" />,
-    hideForRoles: ['employee', 'leader'] as EmployeeRole[],
+    hideForRoles: ['employee', 'leader', 'director', 'division_head', 'hr_admin'] as EmployeeRole[],
   },
   {
     to: '/bulletin',
