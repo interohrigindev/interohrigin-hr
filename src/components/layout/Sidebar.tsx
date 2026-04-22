@@ -109,11 +109,7 @@ const standaloneItems: NavItem[] = [
     label: '게시판',
     icon: <FileText className="h-5 w-5" />,
   },
-  {
-    to: '/my/handover',
-    label: '나의 인수인계',
-    icon: <Package className="h-5 w-5" />,
-  },
+  // D2-1: '나의 인수인계' → 프로젝트 그룹 하위로 이동
 ]
 
 // 그룹 메뉴
@@ -179,6 +175,7 @@ const navGroups: NavGroup[] = [
       { to: '/admin/projects/new', label: '새 프로젝트', icon: <Plus className="h-4 w-4" /> },
       { to: '/admin/work/tasks', label: '작업 관리', icon: <ClipboardCheck className="h-4 w-4" /> },
       // D2-1: 일일 보고서는 상위 standalone 으로 이동
+      { to: '/my/handover', label: '나의 인수인계', icon: <Package className="h-4 w-4" /> },
       { to: '/admin/projects/settings', label: '권한 설정', icon: <Settings className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
     ],
   },
