@@ -84,6 +84,9 @@ export interface OJTScheduleItem {
   description: string | null
   output: string | null
   sort_order: number
+  // migration 055 — 멘티 코멘트
+  mentee_comment?: string | null
+  mentee_commented_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -106,6 +109,13 @@ export interface OJTWeeklyReport {
   content: OJTWeeklyReportContent
   status: OJTWeeklyReportStatus
   mentor_feedback: string | null
+  // migration 055 — 멀티 롤 피드백 (리더/임원/대표 각자 코멘트)
+  leader_feedback?: string | null
+  leader_feedback_at?: string | null
+  exec_feedback?: string | null
+  exec_feedback_at?: string | null
+  ceo_feedback?: string | null
+  ceo_feedback_at?: string | null
   submitted_at: string | null
   reviewed_at: string | null
   created_at: string

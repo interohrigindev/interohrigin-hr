@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   BarChart3,
-  PenSquare,
-  ClipboardList,
+  // PenSquare, ClipboardList, // D2-3: 인사평가 그룹에서 제거되어 미사용
   FileText,
   Settings,
   X,
@@ -202,11 +201,8 @@ const navGroups: NavGroup[] = [
     label: '인사평가',
     icon: <LineChart className="h-5 w-5" />,
     items: [
-      // D2-3: 정규직 평가 통합 허브 (모든 하위 단계로 진입)
+      // D2-3: 정규직 평가 통합 허브 (자기평가/평가하기/내 평가 결과는 허브 내부에서 네비게이션)
       { to: '/evaluation', label: '정규직 평가', icon: <Award className="h-4 w-4" />, end: true },
-      { to: '/self-evaluation', label: '자기평가', icon: <PenSquare className="h-4 w-4" />, hideForRoles: ['director', 'division_head', 'ceo', 'admin'] as EmployeeRole[] },
-      { to: '/evaluate', label: '평가하기', icon: <ClipboardList className="h-4 w-4" />, minRole: 'leader' as EmployeeRole, hideForRoles: ['admin'] as EmployeeRole[] },
-      { to: '/my-evaluations', label: '내 평가 결과', icon: <ClipboardCheck className="h-4 w-4" /> },
       { to: '/monthly-checkin', label: '월간 업무 점검', icon: <CalendarCheck className="h-4 w-4" /> },
       { to: '/peer-review', label: '동료 평가', icon: <UsersRound className="h-4 w-4" /> },
       { to: '/eval-dashboard', label: '평가 대시보드', icon: <BarChart3 className="h-4 w-4" />, minRole: 'director' as EmployeeRole },

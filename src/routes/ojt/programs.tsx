@@ -495,6 +495,12 @@ correct_answer는 0부터 시작하는 정답 인덱스입니다.
                                     </div>
                                     {it.description && <p className="text-[11px] text-gray-500 mt-0.5">{it.description}</p>}
                                     {it.output && <p className="text-[11px] text-emerald-600 mt-0.5">🎯 산출물: {it.output}</p>}
+                                    {it.mentee_comment && (
+                                      <div className="mt-1.5 px-2 py-1.5 bg-amber-50 border-l-2 border-amber-300 rounded text-[11px] text-amber-900">
+                                        <span className="font-bold mr-1">💬 멘티 코멘트:</span>
+                                        {it.mentee_comment}
+                                      </div>
+                                    )}
                                   </div>
                                   <button onClick={() => removeScheduleItem(it.id, editingId)} className="text-red-400 hover:text-red-600 shrink-0">
                                     <Trash2 className="h-3 w-3" />
