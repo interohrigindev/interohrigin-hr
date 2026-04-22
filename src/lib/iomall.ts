@@ -13,7 +13,7 @@
 import { supabase } from '@/lib/supabase'
 
 export const IOMALL_URL =
-  import.meta.env.VITE_IOMALL_URL || 'https://iomall.interohrigin.com'
+  import.meta.env.VITE_IOMALL_URL || 'https://iomall.pages.dev'
 
 /**
  * 현재 HR 세션을 IO Mall로 전달하며 새 탭으로 이동.

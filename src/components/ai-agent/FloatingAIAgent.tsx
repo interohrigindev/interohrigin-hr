@@ -79,6 +79,8 @@ export default function FloatingAIAgent() {
   const { employees } = useProjectBoard()
 
   const [isOpen, setIsOpen] = useState(false)
+  // IO 빠른링크 팝업 (닫힌 상태에서 IO 버튼 클릭 시 위로 떠오름)
+  const [showQuickMenu, setShowQuickMenu] = useState(false)
   const [input, setInput] = useState('')
   const [view, setView] = useState<'list' | 'chat' | 'search' | 'meeting'>('list')
   const [searchQuery, setSearchQuery] = useState('')
@@ -158,22 +160,82 @@ export default function FloatingAIAgent() {
     <>
       <style>{CHAT_STYLES}</style>
 
-      {/* 플로팅 버튼 */}
+      {/* IO 플로팅 버튼 + 빠른 링크 팝업 */}
       {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 w-12 h-12 md:w-14 md:h-14 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-600/30 flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-        >
-          <Bot className="h-6 w-6" />
-          {activeConvs.length > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full text-[10px] font-bold flex items-center justify-center">
-              {activeConvs.length}
-            </span>
+        <>
+          {/* 빠른 링크 팝업 (위로 펼침) */}
+          {showQuickMenu && (
+            <>
+              {/* 바깥 클릭으로 닫기 */}
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowQuickMenu(false)}
+              />
+              <div className="fixed bottom-36 md:bottom-24 right-4 md:right-6 z-50 w-56 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-in slide-in-from-bottom-2">
+                <div className="px-4 py-2.5 bg-gradient-to-r from-violet-600 to-violet-500 text-white">
+                  <p className="text-xs font-bold">IO 빠른 링크</p>
+                </div>
+                <div className="py-1.5">
+                  <QuickLinkItem
+                    icon="🤖"
+                    label="AI 챗봇"
+                    desc="문의·요청 대화"
+                    onClick={() => { setShowQuickMenu(false); setIsOpen(true) }}
+                    accent
+                  />
+                  <QuickLinkItem
+                    icon="🏠"
+                    label="메인"
+                    desc="홈 대시보드"
+                    onClick={() => { setShowQuickMenu(false); navigate('/') }}
+                  />
+                  <QuickLinkItem
+                    icon="📋"
+                    label="일일 보고서"
+                    desc="오늘 업무 기록"
+                    onClick={() => { setShowQuickMenu(false); navigate('/work/daily-report') }}
+                  />
+                  <QuickLinkItem
+                    icon="📝"
+                    label="전자 결재"
+                    desc="결재 신청·처리"
+                    onClick={() => { setShowQuickMenu(false); navigate('/admin/approval') }}
+                  />
+                  <QuickLinkItem
+                    icon="📅"
+                    label="연차 관리"
+                    desc="연차 신청·조회"
+                    onClick={() => { setShowQuickMenu(false); navigate('/admin/leave') }}
+                  />
+                  <QuickLinkItem
+                    icon="🎓"
+                    label="정규직 평가"
+                    desc="평가 허브"
+                    onClick={() => { setShowQuickMenu(false); navigate('/evaluation') }}
+                  />
+                </div>
+              </div>
+            </>
           )}
-          {handoverMode && (
-            <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white" />
-          )}
-        </button>
+
+          {/* IO 버튼 */}
+          <button
+            onClick={() => setShowQuickMenu((v) => !v)}
+            className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 w-12 h-12 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white shadow-lg shadow-violet-600/30 flex items-center justify-center transition-all hover:scale-110 active:scale-95 font-black text-lg md:text-xl tracking-tight"
+            aria-label="IO 빠른 링크 열기"
+            title="IO 빠른 링크"
+          >
+            <span className="leading-none">IO</span>
+            {activeConvs.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full text-[10px] font-bold flex items-center justify-center">
+                {activeConvs.length}
+              </span>
+            )}
+            {handoverMode && (
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white" />
+            )}
+          </button>
+        </>
       )}
 
       {/* 채팅 패널 */}
@@ -536,5 +598,31 @@ function ConvItem({ conv, onSelect, onBookmark, onArchive, onDelete }: {
         </div>
       </div>
     </div>
+  )
+}
+
+// IO 빠른 링크 개별 아이템
+function QuickLinkItem({
+  icon, label, desc, onClick, accent,
+}: {
+  icon: string
+  label: string
+  desc?: string
+  onClick: () => void
+  accent?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+        accent ? 'bg-violet-50/40 hover:bg-violet-50' : 'hover:bg-gray-50'
+      }`}
+    >
+      <span className="text-xl leading-none shrink-0">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-semibold ${accent ? 'text-violet-700' : 'text-gray-800'}`}>{label}</p>
+        {desc && <p className="text-[11px] text-gray-400 leading-tight">{desc}</p>}
+      </div>
+    </button>
   )
 }

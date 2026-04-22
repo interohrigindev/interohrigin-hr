@@ -27,12 +27,19 @@ export function Header({ onMenuToggle }: HeaderProps) {
             <Menu className="h-5 w-5" />
           </button>
 
-          <img src={logoSvg} alt="InterOhrigin" className="h-7 w-7 md:h-8 md:w-8" />
-          <h1 className="text-base md:text-lg font-bold tracking-tight text-gray-900">
-            <span className="hidden sm:inline">인터오리진 </span>
-            <span className="sm:hidden">IO </span>
-            <span className="text-brand-600">HR Platform</span>
-          </h1>
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-3 rounded-lg px-1.5 py-1 -ml-1.5 hover:bg-gray-100 transition-colors"
+            aria-label="메인으로 이동"
+            title="메인으로 이동"
+          >
+            <img src={logoSvg} alt="InterOhrigin" className="h-7 w-7 md:h-8 md:w-8" />
+            <h1 className="text-base md:text-lg font-bold tracking-tight text-gray-900">
+              <span className="hidden sm:inline">인터오리진 </span>
+              <span className="sm:hidden">IO </span>
+              <span className="text-brand-600">HR Platform</span>
+            </h1>
+          </button>
         </div>
 
         {/* Right: user info + logout */}
