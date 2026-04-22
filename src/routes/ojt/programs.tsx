@@ -399,6 +399,151 @@ correct_answer는 0부터 시작하는 정답 인덱스입니다.
 
   if (loading) return <PageSpinner />
 
+  // D2-4: 편집 모드는 전체 페이지로 전환 (Dialog 제거)
+  if (dialogOpen) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={() => setDialogOpen(false)}>
+              ← 목록으로
+            </Button>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {editingId ? 'OJT 프로그램 수정' : '새 OJT 프로그램'}
+            </h1>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>취소</Button>
+            <Button onClick={handleSave}>저장</Button>
+          </div>
+        </div>
+
+        <Card>
+          <CardContent className="py-6">
+            <div className="space-y-6">
+              {/* Basic info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input label="프로그램 이름 *" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="신입사원 OJT" />
+                <Input label="교육 기간 (일)" type="number" value={form.duration_days} onChange={(e) => setForm((p) => ({ ...p, duration_days: Number(e.target.value) }))} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Select
+                  label="부서"
+                  value={form.department_id}
+                  onChange={(e) => setForm((p) => ({ ...p, department_id: e.target.value }))}
+                  options={[{ value: '', label: '전사 공통' }, ...departments.map((d) => ({ value: d.id, label: d.name }))]}
+                />
+                <Input label="직무 유형" value={form.job_type} onChange={(e) => setForm((p) => ({ ...p, job_type: e.target.value }))} placeholder="예: 개발, 마케팅" />
+              </div>
+              <Textarea label="프로그램 설명" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={3} />
+
+              {/* Modules */}
+              <div className="border-t pt-5">
+                <h4 className="text-sm font-bold text-gray-900 mb-3">📚 교육 모듈</h4>
+                {form.modules.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {form.modules.map((m) => (
+                      <div key={m.id} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
+                        <span className="text-xs text-gray-400 mt-0.5">{m.order}.</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800">{m.title}</p>
+                          {m.content && <p className="text-xs text-gray-500">{m.content}</p>}
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => removeModule(m.id)}>
+                          <Trash2 className="h-3 w-3 text-red-400" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2 flex-wrap">
+                  <Input placeholder="모듈 제목" value={moduleTitle} onChange={(e) => setModuleTitle(e.target.value)} className="flex-1 min-w-[200px]" />
+                  <Input placeholder="내용 요약" value={moduleContent} onChange={(e) => setModuleContent(e.target.value)} className="flex-1 min-w-[200px]" />
+                  <Button variant="outline" size="sm" onClick={addModule} className="shrink-0">추가</Button>
+                </div>
+              </div>
+
+              {/* 세부 일정표 */}
+              {editingId && (
+                <div className="border-t pt-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-gray-900">📅 세부 일정표</h4>
+                    <span className="text-[11px] text-gray-400">{scheduleItems.length}개 일정</span>
+                  </div>
+
+                  {scheduleLoading ? (
+                    <p className="text-xs text-gray-400">불러오는 중...</p>
+                  ) : scheduleItems.length > 0 ? (
+                    <div className="space-y-2 mb-3">
+                      {(() => {
+                        const byDay = scheduleItems.reduce<Record<number, OJTScheduleItem[]>>((acc, it) => {
+                          if (!acc[it.day_number]) acc[it.day_number] = []
+                          acc[it.day_number].push(it)
+                          return acc
+                        }, {})
+                        const days = Object.keys(byDay).map(Number).sort((a, b) => a - b)
+                        return days.map((day) => (
+                          <div key={day} className="bg-gray-50 rounded-lg p-3 border-l-4 border-brand-400">
+                            <p className="text-xs font-bold text-brand-700 mb-2">{day}일차</p>
+                            <div className="space-y-1.5">
+                              {byDay[day].map((it) => (
+                                <div key={it.id} className="flex items-start gap-2 px-2.5 py-2 bg-white rounded border border-gray-200">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {it.time_slot && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">{it.time_slot}</span>}
+                                      <span className="text-sm text-gray-800 font-medium">{it.title}</span>
+                                    </div>
+                                    {it.description && <p className="text-[11px] text-gray-500 mt-0.5">{it.description}</p>}
+                                    {it.output && <p className="text-[11px] text-emerald-600 mt-0.5">🎯 산출물: {it.output}</p>}
+                                  </div>
+                                  <button onClick={() => removeScheduleItem(it.id, editingId)} className="text-red-400 hover:text-red-600 shrink-0">
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      })()}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 mb-3">아직 등록된 세부 일정이 없습니다.</p>
+                  )}
+
+                  <div className="border rounded-lg p-3 space-y-2 bg-white">
+                    <p className="text-[11px] font-medium text-gray-600">새 일정 추가</p>
+                    <div className="grid grid-cols-12 gap-2">
+                      <div className="col-span-3 md:col-span-2">
+                        <Input type="number" min="1" placeholder="일차" value={String(newSchDay)} onChange={(e) => setNewSchDay(Number(e.target.value) || 1)} />
+                      </div>
+                      <div className="col-span-4 md:col-span-3">
+                        <Input placeholder="시간 (예: 09:00-10:30)" value={newSchTime} onChange={(e) => setNewSchTime(e.target.value)} />
+                      </div>
+                      <div className="col-span-5 md:col-span-7">
+                        <Input placeholder="과제명 *" value={newSchTitle} onChange={(e) => setNewSchTitle(e.target.value)} />
+                      </div>
+                    </div>
+                    <Input placeholder="상세 설명 (선택)" value={newSchDesc} onChange={(e) => setNewSchDesc(e.target.value)} />
+                    <div className="flex gap-2">
+                      <Input placeholder="기대 산출물 (선택)" value={newSchOutput} onChange={(e) => setNewSchOutput(e.target.value)} />
+                      <Button variant="outline" size="sm" onClick={() => addScheduleItem(editingId)} className="shrink-0">추가</Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions (하단) */}
+              <div className="flex justify-end gap-3 pt-5 border-t">
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>취소</Button>
+                <Button onClick={handleSave}>저장</Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -450,9 +595,9 @@ correct_answer는 0부터 시작하는 정답 인덱스입니다.
         </div>
       )}
 
-      {/* ─── Program Create/Edit Dialog ──────────────────────────── */}
+      {/* ─── OLD: Program Create/Edit Dialog (사용 안 함, 전체 페이지로 전환됨) ──────────────────────────── */}
       <Dialog
-        open={dialogOpen}
+        open={false}
         onClose={() => setDialogOpen(false)}
         title={editingId ? 'OJT 프로그램 수정' : '새 OJT 프로그램'}
         className="max-w-2xl max-h-[85vh] overflow-y-auto"
