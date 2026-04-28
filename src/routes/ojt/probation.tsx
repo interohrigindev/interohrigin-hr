@@ -313,9 +313,38 @@ ${prevSummary}
                         }
                         if (!roundDate) return <span className="text-gray-400">-</span>
                         const diff = Math.ceil((roundDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                        if (diff < 0) return <span className="text-red-600 font-bold">D+{Math.abs(diff)} 초과</span>
-                        if (diff <= 7) return <span className="text-amber-600 font-semibold">D-{diff}</span>
-                        return <span className="text-gray-400">예정</span>
+                        const dateLabel = formatDate(roundDate)
+                        // 입사일 기준 평가 예정일을 함께 표시 (D-day 와 함께)
+                        if (diff < 0) {
+                          return (
+                            <span className="inline-flex flex-col items-center leading-tight">
+                              <span className="text-red-600 font-bold text-sm">D+{Math.abs(diff)} 초과</span>
+                              <span className="text-[10px] text-gray-400">{dateLabel}</span>
+                            </span>
+                          )
+                        }
+                        if (diff === 0) {
+                          return (
+                            <span className="inline-flex flex-col items-center leading-tight">
+                              <span className="text-amber-600 font-bold text-sm">D-day</span>
+                              <span className="text-[10px] text-gray-500">{dateLabel}</span>
+                            </span>
+                          )
+                        }
+                        if (diff <= 7) {
+                          return (
+                            <span className="inline-flex flex-col items-center leading-tight">
+                              <span className="text-amber-600 font-semibold text-sm">D-{diff}</span>
+                              <span className="text-[10px] text-gray-500">{dateLabel}</span>
+                            </span>
+                          )
+                        }
+                        return (
+                          <span className="inline-flex flex-col items-center leading-tight">
+                            <span className="text-gray-700 text-sm font-medium">{dateLabel}</span>
+                            <span className="text-[10px] text-gray-400">D-{diff}</span>
+                          </span>
+                        )
                       }
 
                       return (
