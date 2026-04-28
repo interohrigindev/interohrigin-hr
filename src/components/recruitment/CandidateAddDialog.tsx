@@ -209,7 +209,7 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
             <Input label="이메일 *" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@email.com" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="연락처" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-1234-5678" />
+            <Input label="연락처 (선택)" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-1234-5678" />
             <Input label="출처 (선택)" value={sourceDetail} onChange={(e) => setSourceDetail(e.target.value)} placeholder="지인 추천, 이메일 직접 등" />
           </div>
         </div>
