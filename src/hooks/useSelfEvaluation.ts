@@ -156,10 +156,11 @@ export function useSelfEvaluation() {
     }
 
     // 2) goals_submitted 플래그 업데이트
-    const { error: flagErr } = await supabase
-      .from('evaluation_targets')
-      .update({ goals_submitted: true, goals_submitted_at: new Date().toISOString() })
-      .eq('id', target.id)
+    //    RLS 'target_update_admin' 으로 직원 직접 UPDATE 가 막혀있어
+    //    SECURITY DEFINER RPC 'submit_self_goals' 로 우회 (migration 057)
+    const { error: flagErr } = await supabase.rpc('submit_self_goals', {
+      p_target_id: target.id,
+    })
 
     if (flagErr) {
       setSubmitting(false)
