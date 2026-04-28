@@ -40,10 +40,10 @@ BEGIN
     RAISE EXCEPTION '현재 단계(%)에서 % 역할이 평가를 진행할 수 없습니다.', v_current_status, p_role;
   END IF;
 
-  -- 직원 직무 조회 (없으면 모든 항목 대상)
+  -- 직원 직무 조회 (UNIQUE 제약으로 1행만 존재)
   SELECT job_type_id INTO v_job_type_id
   FROM employee_job_assignments WHERE employee_id = v_employee_id
-  ORDER BY assigned_at DESC NULLS LAST LIMIT 1;
+  LIMIT 1;
 
   -- 직무 + 활성 + 매핑 조건에 맞는 항목만 카운트
   WITH eligible_items AS (
