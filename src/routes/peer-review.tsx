@@ -186,7 +186,7 @@ export default function PeerReviewPage() {
 
       {/* Info banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-        익명으로 동료를 평가합니다 (100점 만점). 리더는 합산 점수만 확인 가능하며, 개별 코멘트는 임원 이상만 열람할 수 있습니다.
+        동료를 100점 만점으로 평가합니다. 리더는 합산 점수만 확인 가능하며, 임원 이상은 평가자 실명·개별 코멘트를 모두 열람할 수 있습니다.
         동료 평가 점수는 최종 평가의 15%에 반영됩니다.
       </div>
 
@@ -309,10 +309,13 @@ export default function PeerReviewPage() {
                           )
                         })()}
 
-                        {data.reviews.map((r, i) => (
+                        {data.reviews.map((r) => (
                           <div key={r.id} className="bg-gray-50 rounded p-2 text-xs">
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-gray-500">익명 평가자 #{i + 1}</span>
+                              {/* 임원(director) 이상은 평가자 실명 노출 — 미팅노트 요청 */}
+                              <span className="text-gray-700 font-medium">
+                                평가자: {getEmployeeName(r.reviewer_id) || r.reviewer_id}
+                              </span>
                               <span className="font-medium text-brand-600">{r.overall_score}점</span>
                             </div>
                             {r.strengths && <p className="text-emerald-600">강점: {r.strengths}</p>}
@@ -353,7 +356,7 @@ export default function PeerReviewPage() {
       >
         <div className="space-y-4">
           <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-            10개 항목을 각 <strong>1~10점</strong>으로 평가합니다 (총 100점). 익명 처리되며 리더는 합산 점수만 확인 가능합니다.
+            10개 항목을 각 <strong>1~10점</strong>으로 평가합니다 (총 100점). 리더는 합산 점수만, 임원 이상은 평가자 실명까지 확인합니다.
           </div>
 
           {/* 총점 요약 (고정 상단) */}

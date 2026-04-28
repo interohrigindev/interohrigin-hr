@@ -159,7 +159,9 @@ export default function SelfEvaluation() {
       if (error) {
         toast('제출 중 오류가 발생했습니다: ' + error, 'error')
       } else {
-        toast('목표 설정이 제출되었습니다')
+        toast('목표 설정이 제출되었습니다. 이어서 분기 평가 단계로 자동 진입합니다.', 'success')
+        // 화면 위로 스크롤하여 단계 전환을 사용자가 인지할 수 있게
+        window.scrollTo({ top: 0, behavior: 'smooth' })
       }
     } else {
       const { error } = await submit(formData)

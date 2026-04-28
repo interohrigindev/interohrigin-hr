@@ -166,12 +166,17 @@ export function useSelfEvaluation() {
       return { error: flagErr.message }
     }
 
-    // 3) 상태 새로고침
+    // 3) 상태 새로고침 — 새로 가져온 데이터가 null/undefined 이면 로컬에 goals_submitted=true 만 강제
     const [newTarget, newSelf] = await Promise.all([
       supabase.from('evaluation_targets').select('*').eq('id', target.id).single(),
       supabase.from('self_evaluations').select('*').eq('target_id', target.id),
     ])
-    setTarget(newTarget.data)
+    if (newTarget.data) {
+      setTarget(newTarget.data)
+    } else {
+      // RLS·네트워크 이슈로 갱신이 실패한 경우라도 goal_setting → quarterly_eval 전환은 강제
+      setTarget({ ...target, goals_submitted: true, goals_submitted_at: new Date().toISOString() } as typeof target)
+    }
     setSelfEvals(newSelf.data ?? [])
 
     setSubmitting(false)
