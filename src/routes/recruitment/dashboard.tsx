@@ -10,6 +10,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useRecruitmentStats, useCandidates, useJobPostings } from '@/hooks/useRecruitment'
+import { CandidateAddDialog } from '@/components/recruitment/CandidateAddDialog'
 import { supabase } from '@/lib/supabase'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, POSTING_STATUS_LABELS, POSTING_STATUS_COLORS } from '@/lib/recruitment-constants'
 import type { CandidateStatus, PostingStatus } from '@/types/recruitment'
@@ -55,6 +56,8 @@ export default function RecruitmentDashboard() {
   const [initialized, setInitialized] = useState(false)
   const [showRejected, setShowRejected] = useState(false)
   const [activeStatCard, setActiveStatCard] = useState<string | null>(null)
+  // 외부 이력서 업로드로 지원자 추가
+  const [addCandidateOpen, setAddCandidateOpen] = useState(false)
 
   // ─── 직원 등록 다이얼로그 ────────────────────────────────
   const [departments, setDepartments] = useState<Department[]>([])
@@ -176,10 +179,22 @@ export default function RecruitmentDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">채용 대시보드</h1>
-        <Button className="shrink-0" onClick={() => navigate('/admin/recruitment/jobs/new')}>
-          새 채용공고
-        </Button>
+        <div className="flex gap-2 shrink-0">
+          <Button variant="outline" onClick={() => setAddCandidateOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-1" /> 지원자 추가
+          </Button>
+          <Button onClick={() => navigate('/admin/recruitment/jobs/new')}>
+            새 채용공고
+          </Button>
+        </div>
       </div>
+
+      {/* 외부 이력서 업로드 모달 */}
+      <CandidateAddDialog
+        open={addCandidateOpen}
+        onClose={() => setAddCandidateOpen(false)}
+        onCreated={() => refetchCandidates()}
+      />
 
       {/* 통계 카드 */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
