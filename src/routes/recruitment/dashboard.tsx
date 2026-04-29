@@ -272,12 +272,22 @@ export default function RecruitmentDashboard() {
             <div className="divide-y">
               {candidates.slice(0, 20).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((c) => {
                 const posting = postings.find((p) => p.id === c.job_posting_id)
+                const pfFiles = ((c as unknown as { portfolio_files?: unknown[] }).portfolio_files || []) as unknown[]
+                const pfLinks = ((c as unknown as { portfolio_links?: unknown[] }).portfolio_links || []) as unknown[]
+                const hasPortfolio = pfFiles.length > 0 || pfLinks.length > 0
                 return (
                   <div key={c.id} className="flex items-center justify-between py-3 px-2 hover:bg-blue-50/50 cursor-pointer rounded-lg transition-colors" onClick={() => navigate(`/admin/recruitment/candidates/${c.id}`)}>
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700">{c.name[0]}</div>
                       <div>
-                        <p className="font-medium text-sm text-gray-900">{c.name}</p>
+                        <p className="font-medium text-sm text-gray-900 flex items-center gap-1.5">
+                          {c.name}
+                          {hasPortfolio && (
+                            <span className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 font-normal">
+                              📎 {pfFiles.length > 0 && `${pfFiles.length}개`}{pfLinks.length > 0 && ` 🔗${pfLinks.length}`}
+                            </span>
+                          )}
+                        </p>
                         <p className="text-xs text-gray-500">{posting?.title || '공고 미배정'}</p>
                       </div>
                     </div>

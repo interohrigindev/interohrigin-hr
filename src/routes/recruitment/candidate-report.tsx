@@ -34,6 +34,8 @@ export default function CandidateReport() {
   const [, setActiveTab] = useState<'resume' | 'comprehensive'>('resume')
   const [resumeSignedUrl, setResumeSignedUrl] = useState<string | null>(null)
   const [coverLetterSignedUrl, setCoverLetterSignedUrl] = useState<string | null>(null)
+  // 포트폴리오 파일별 signed URL 매핑 (path → URL)
+  const [portfolioSignedUrls, setPortfolioSignedUrls] = useState<Record<string, string>>({})
   const [surveyQuestions, setSurveyQuestions] = useState<{ id: string; question: string; type: string; options?: string[]; required?: boolean }[]>([])
   const [resendingSurvey, setResendingSurvey] = useState(false)
   const [surveyReanalyzing, setSurveyReanalyzing] = useState(false)
@@ -85,6 +87,22 @@ export default function CandidateReport() {
           if (sUrl?.signedUrl) setCoverLetterSignedUrl(sUrl.signedUrl)
         } else if (cand.cover_letter_url) {
           setCoverLetterSignedUrl(cand.cover_letter_url)
+        }
+
+        // 포트폴리오 파일별 signed URL 일괄 생성
+        const pfList = (cand as unknown as { portfolio_files?: { path: string; filename: string; size: number }[] }).portfolio_files || []
+        if (pfList.length > 0) {
+          const urlMap: Record<string, string> = {}
+          for (const pf of pfList) {
+            if (!pf.path) continue
+            if (pf.path.startsWith('http')) {
+              urlMap[pf.path] = pf.path
+              continue
+            }
+            const { data } = await supabase.storage.from('resumes').createSignedUrl(pf.path, 3600)
+            if (data?.signedUrl) urlMap[pf.path] = data.signedUrl
+          }
+          setPortfolioSignedUrls(urlMap)
         }
       }
       if (analysisRes.data) setAnalysis(analysisRes.data as ResumeAnalysis)
@@ -282,6 +300,15 @@ ${postingInfo || '정보 없음'}
 이력서: ${candidate.resume_url ? '제출됨 (파일 첨부)' : '미제출'}
 자기소개서 파일: ${candidate.cover_letter_url ? '제출됨 (파일 첨부)' : '미제출'}
 자기소개서 텍스트: ${candidate.cover_letter_text || '작성하지 않음'}
+${(() => {
+  const pfFiles = (candidate as unknown as { portfolio_files?: { filename: string; size: number }[] }).portfolio_files || []
+  const pfLinks = (candidate as unknown as { portfolio_links?: { url: string; label: string }[] }).portfolio_links || []
+  if (pfFiles.length === 0 && pfLinks.length === 0) return ''
+  const parts: string[] = []
+  if (pfFiles.length > 0) parts.push(`포트폴리오 파일: ${pfFiles.map((p) => p.filename).join(', ')} (${pfFiles.length}개)`)
+  if (pfLinks.length > 0) parts.push(`포트폴리오 링크: ${pfLinks.map((l) => `${l.label || '링크'}(${l.url})`).join(' | ')}`)
+  return parts.join('\n')
+})()}
 ${fileInfo}
 
 [요청사항]
@@ -817,6 +844,15 @@ ${postingInfo || '정보 없음'}
 이력서: ${candidate.resume_url ? '제출됨 (파일 첨부)' : '미제출'}
 자기소개서 파일: ${candidate.cover_letter_url ? '제출됨 (파일 첨부)' : '미제출'}
 자기소개서 텍스트: ${candidate.cover_letter_text || '작성하지 않음'}
+${(() => {
+  const pfFiles = (candidate as unknown as { portfolio_files?: { filename: string; size: number }[] }).portfolio_files || []
+  const pfLinks = (candidate as unknown as { portfolio_links?: { url: string; label: string }[] }).portfolio_links || []
+  if (pfFiles.length === 0 && pfLinks.length === 0) return ''
+  const parts: string[] = []
+  if (pfFiles.length > 0) parts.push(`포트폴리오 파일: ${pfFiles.map((p) => p.filename).join(', ')} (${pfFiles.length}개)`)
+  if (pfLinks.length > 0) parts.push(`포트폴리오 링크: ${pfLinks.map((l) => `${l.label || '링크'}(${l.url})`).join(' | ')}`)
+  return parts.join('\n')
+})()}
 ${fileInfo}
 
 [사전 질의서 응답]
@@ -1006,6 +1042,47 @@ ${surveyText || '응답 없음'}
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{candidate.cover_letter_text}</p>
                 </div>
               )}
+
+              {/* 포트폴리오 — 파일 목록 + 외부 링크 */}
+              {(() => {
+                const pfFiles = (candidate as unknown as { portfolio_files?: { path: string; filename: string; size: number }[] }).portfolio_files || []
+                const pfLinks = (candidate as unknown as { portfolio_links?: { url: string; label: string }[] }).portfolio_links || []
+                if (pfFiles.length === 0 && pfLinks.length === 0) return null
+                return (
+                  <div className="mt-2 pt-3 border-t border-gray-100 space-y-2">
+                    <p className="text-xs font-bold text-gray-600">
+                      📎 포트폴리오 ({pfFiles.length}개 파일 / {pfLinks.length}개 링크)
+                    </p>
+                    {pfFiles.map((pf, i) => {
+                      const url = portfolioSignedUrls[pf.path]
+                      return (
+                        <div key={`pf-${i}`} className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="text-emerald-600 shrink-0">📄</span>
+                            <span className="text-sm text-emerald-900 truncate">{pf.filename}</span>
+                            <span className="text-[10px] text-emerald-600 shrink-0">({(pf.size / 1024 / 1024).toFixed(1)}MB)</span>
+                          </div>
+                          {url ? (
+                            <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-700 hover:underline shrink-0">다운로드</a>
+                          ) : (
+                            <span className="text-xs text-gray-400 shrink-0">URL 생성 중...</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {pfLinks.map((l, i) => (
+                      <div key={`pl-${i}`} className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="text-blue-600 shrink-0">🔗</span>
+                          <span className="text-sm text-blue-900 font-medium shrink-0">{l.label || '포트폴리오'}</span>
+                          <span className="text-xs text-blue-700 truncate">{l.url}</span>
+                        </div>
+                        <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-700 hover:underline shrink-0">열기</a>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
             </CardContent>
           </Card>
 
