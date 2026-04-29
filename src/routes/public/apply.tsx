@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { Upload, FileText, Loader2, CheckCircle, MapPin, Clock, Users, Banknote, CalendarDays, Briefcase, Gift, ListChecks, Building2, ArrowLeft, ChevronRight } from 'lucide-react'
+import { Upload, FileText, Loader2, CheckCircle, MapPin, Clock, Users, Banknote, CalendarDays, Briefcase, Gift, ListChecks, Building2, ArrowLeft, ChevronRight, Plus, X, Link as LinkIcon, FolderUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { JobPosting } from '@/types/recruitment'
 import { formatDate } from '@/lib/utils'
@@ -56,7 +56,12 @@ export default function PublicApply() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', cover_letter_text: '', agency_name: '', agency_contact: '', agency_email: '' })
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [coverLetterFile, setCoverLetterFile] = useState<File | null>(null)
+  // 포트폴리오: 다중 파일 + 링크 (드라이브 등)
+  const [portfolioFiles, setPortfolioFiles] = useState<File[]>([])
+  const [portfolioLinks, setPortfolioLinks] = useState<{ url: string; label: string }[]>([])
   const [error, setError] = useState('')
+
+  const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 
   useEffect(() => {
     if (!postingId) return
@@ -72,30 +77,57 @@ export default function PublicApply() {
     e.preventDefault()
     setError('')
     if (!form.name.trim() || !form.email.trim()) { setError('이름과 이메일은 필수입니다.'); return }
-    if (!resumeFile) { setError('이력서 및 포트폴리오를 업로드해주세요.'); return }
+    if (!resumeFile) { setError('이력서를 업로드해주세요.'); return }
     if (isAgency && (!form.agency_name.trim() || !form.agency_contact.trim() || !form.agency_email.trim())) {
       setError('업체명, 담당자명, 담당자 이메일은 필수입니다.'); return
+    }
+    // 50MB 초과 파일 사전 검사
+    const allFiles: { f: File; label: string }[] = [
+      { f: resumeFile, label: '이력서' },
+      ...(coverLetterFile ? [{ f: coverLetterFile, label: '자기소개서' }] : []),
+      ...portfolioFiles.map((f) => ({ f, label: `포트폴리오(${f.name})` })),
+    ]
+    for (const { f, label } of allFiles) {
+      if (f.size > MAX_FILE_SIZE) {
+        setError(`${label} 파일이 50MB 를 초과합니다. Drive 등 외부 링크를 이용해주세요.`)
+        return
+      }
     }
 
     setSubmitting(true)
     try {
-      // 파일명에서 확장자만 추출 (한글 등 특수문자 제거)
       const getExt = (name: string) => {
         const dot = name.lastIndexOf('.')
         return dot >= 0 ? name.slice(dot).toLowerCase() : ''
       }
 
-      // 파일 경로만 DB에 저장 (private 버킷이므로 public URL 사용 불가)
+      // 1) 이력서 업로드
       const resumePath = `${postingId}/${Date.now()}_resume${getExt(resumeFile.name)}`
       const { error: uploadErr } = await supabase.storage.from('resumes').upload(resumePath, resumeFile)
       if (uploadErr) throw new Error('이력서 업로드 실패: ' + uploadErr.message)
 
-      let coverLetterPath = null
+      // 2) 자기소개서 업로드 (선택)
+      let coverLetterPath: string | null = null
       if (coverLetterFile) {
         coverLetterPath = `${postingId}/${Date.now()}_cover_letter${getExt(coverLetterFile.name)}`
         const { error: clUploadErr } = await supabase.storage.from('resumes').upload(coverLetterPath, coverLetterFile)
         if (clUploadErr) throw new Error('자기소개서 업로드 실패: ' + clUploadErr.message)
       }
+
+      // 3) 포트폴리오 파일 다중 업로드
+      const uploadedPortfolioFiles: { path: string; filename: string; size: number }[] = []
+      for (let i = 0; i < portfolioFiles.length; i++) {
+        const pf = portfolioFiles[i]
+        const path = `${postingId}/${Date.now()}_portfolio_${i}${getExt(pf.name)}`
+        const { error: pfErr } = await supabase.storage.from('resumes').upload(path, pf)
+        if (pfErr) throw new Error(`포트폴리오 업로드 실패 (${pf.name}): ${pfErr.message}`)
+        uploadedPortfolioFiles.push({ path, filename: pf.name, size: pf.size })
+      }
+
+      // 4) 포트폴리오 링크 정리 (URL 채워진 항목만)
+      const cleanLinks = portfolioLinks
+        .map((l) => ({ url: l.url.trim(), label: l.label.trim() }))
+        .filter((l) => l.url.length > 0)
 
       const { error: insertErr } = await supabase.rpc('submit_application', {
         p_job_posting_id: postingId,
@@ -109,11 +141,41 @@ export default function PublicApply() {
         p_resume_url: resumePath,
         p_cover_letter_url: coverLetterPath,
         p_cover_letter_text: form.cover_letter_text || null,
+        p_portfolio_files: uploadedPortfolioFiles,
+        p_portfolio_links: cleanLinks,
       })
       if (insertErr) throw new Error('지원서 제출 실패: ' + insertErr.message)
       setStep('done')
     } catch (err: any) { setError(err.message) }
     setSubmitting(false)
+  }
+
+  function addPortfolioFiles(filesList: FileList | null) {
+    if (!filesList) return
+    const newFiles = Array.from(filesList)
+    const oversized = newFiles.filter((f) => f.size > MAX_FILE_SIZE)
+    if (oversized.length > 0) {
+      setError(`${oversized.map((f) => f.name).join(', ')} 파일이 50MB 를 초과합니다. Drive 링크를 이용해주세요.`)
+      return
+    }
+    setError('')
+    setPortfolioFiles((prev) => [...prev, ...newFiles])
+  }
+
+  function removePortfolioFile(idx: number) {
+    setPortfolioFiles((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  function addPortfolioLink() {
+    setPortfolioLinks((prev) => [...prev, { url: '', label: '' }])
+  }
+
+  function updatePortfolioLink(idx: number, key: 'url' | 'label', value: string) {
+    setPortfolioLinks((prev) => prev.map((l, i) => i === idx ? { ...l, [key]: value } : l))
+  }
+
+  function removePortfolioLink(idx: number) {
+    setPortfolioLinks((prev) => prev.filter((_, i) => i !== idx))
   }
 
   if (loading) {
@@ -221,11 +283,11 @@ export default function PublicApply() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">이력서 및 포트폴리오 * (PDF, 이미지)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">이력서 * (PDF, 이미지)</label>
               <label className="flex items-center gap-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-6 cursor-pointer hover:border-brand-400 transition-colors">
                 <Upload className="h-6 w-6 text-gray-400" />
                 <span className="flex-1">
-                  {resumeFile ? <span className="text-sm font-medium text-brand-600">{resumeFile.name}</span> : <span className="text-sm text-gray-500">파일을 선택하거나 드래그하세요</span>}
+                  {resumeFile ? <span className="text-sm font-medium text-brand-600">{resumeFile.name}</span> : <span className="text-sm text-gray-500">파일을 선택하거나 드래그하세요 (50MB 이하)</span>}
                 </span>
                 <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={(e) => setResumeFile(e.target.files?.[0] || null)} />
               </label>
@@ -241,6 +303,77 @@ export default function PublicApply() {
               <textarea value={form.cover_letter_text} onChange={(e) => updateForm('cover_letter_text', e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none" rows={6}
                 placeholder="직접 자기소개서를 작성하실 수 있습니다." />
+            </div>
+
+            {/* 포트폴리오 섹션 — 다중 파일 + 외부 링크 */}
+            <div className="border-t border-gray-100 pt-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1">포트폴리오 (선택)</label>
+              <p className="text-xs text-gray-500 mb-3">
+                디자이너·콘텐츠 직무는 여러 작품을 첨부할 수 있습니다. 50MB 초과 파일은 Google Drive 등 외부 링크로 등록해주세요.
+              </p>
+
+              {/* 파일 목록 */}
+              {portfolioFiles.length > 0 && (
+                <div className="space-y-1.5 mb-2">
+                  {portfolioFiles.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <FolderUp className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span className="text-sm text-emerald-900 truncate flex-1">{f.name}</span>
+                      <span className="text-[10px] text-emerald-600 shrink-0">{(f.size / 1024 / 1024).toFixed(1)}MB</span>
+                      <button type="button" onClick={() => removePortfolioFile(i)} className="text-emerald-700 hover:text-emerald-900 shrink-0">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 파일 추가 */}
+              <label className="flex items-center justify-center gap-2 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 cursor-pointer hover:border-brand-400 transition-colors mb-3">
+                <Upload className="h-4 w-4 text-gray-400" />
+                <span className="text-sm text-gray-600">파일 추가 (PDF, 이미지, ZIP — 여러 개 선택 가능)</span>
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.zip,.ai,.psd"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addPortfolioFiles(e.target.files)}
+                />
+              </label>
+
+              {/* 외부 링크 */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-600">🔗 외부 링크 (Google Drive, Behance, Notion 등)</p>
+                {portfolioLinks.map((l, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <LinkIcon className="h-4 w-4 text-gray-400 shrink-0" />
+                    <input
+                      type="text"
+                      value={l.label}
+                      onChange={(e) => updatePortfolioLink(i, 'label', e.target.value)}
+                      className="w-32 rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+                      placeholder="제목 (예: 포트폴리오 1)"
+                    />
+                    <input
+                      type="url"
+                      value={l.url}
+                      onChange={(e) => updatePortfolioLink(i, 'url', e.target.value)}
+                      className="flex-1 rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+                      placeholder="https://drive.google.com/..."
+                    />
+                    <button type="button" onClick={() => removePortfolioLink(i)} className="text-gray-400 hover:text-red-500 shrink-0">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addPortfolioLink}
+                  className="flex items-center gap-1.5 text-sm text-brand-600 hover:text-brand-700 font-medium"
+                >
+                  <Plus className="h-4 w-4" /> 링크 추가
+                </button>
+              </div>
             </div>
 
             <button type="submit" disabled={submitting}
