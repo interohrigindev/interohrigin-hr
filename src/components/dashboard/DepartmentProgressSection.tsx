@@ -32,8 +32,20 @@ export function DepartmentProgressSection({ rows, selectedDepartment, department
       const deptRows = rows.filter((r) => r.department_name === dept)
       const counts: Record<string, number> = {}
       STATUS_ORDER.forEach((s) => { counts[s] = 0 })
+      // 누계 카운트:
+      //   - 'pending' 은 정확 매칭 (자기평가 안 한 대기 인원)
+      //   - 그 외는 해당 단계 이상 도달한 모든 건을 누계
+      //     (예: 이사 평가 완료 → 자기/리더/이사 모두 +1)
       deptRows.forEach((r) => {
-        if (counts[r.status] !== undefined) counts[r.status]++
+        const idx = STATUS_ORDER.indexOf(r.status as typeof STATUS_ORDER[number])
+        if (idx === -1) return
+        STATUS_ORDER.forEach((s, sIdx) => {
+          if (s === 'pending') {
+            if (r.status === 'pending') counts[s]++
+          } else if (sIdx <= idx) {
+            counts[s]++
+          }
+        })
       })
       map.set(dept, { name: dept, total: deptRows.length, counts })
     }

@@ -10,6 +10,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { Dialog } from '@/components/ui/Dialog'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import type { Task, TaskStatus, TaskPriority, Project, TaskImage } from '@/types/work'
 import type { Employee } from '@/types/database'
@@ -64,6 +65,14 @@ const emptyForm: TaskForm = {
 
 export default function TaskManage() {
   const { toast } = useToast()
+  const { profile } = useAuth()
+  // 권한 분기:
+  //   임원·대표·관리자: 전체 작업 조회
+  //   리더: 본인 부서 직원 + 본인 작업만
+  //   일반 직원·인사담당: 본인 작업만
+  const myRole = profile?.role
+  const isExecutive = !!myRole && ['director', 'division_head', 'ceo', 'admin'].includes(myRole)
+  const isLeader = myRole === 'leader'
   const [loading, setLoading] = useState(true)
   const [tasks, setTasks] = useState<Task[]>([])
   const [projects, setProjects] = useState<Project[]>([])
@@ -95,8 +104,26 @@ export default function TaskManage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // 권한 기반 작업 가시 범위 계산
+  const myDeptEmpIds = (() => {
+    if (!isLeader || !profile?.department_id) return null
+    return new Set(employees.filter((e) => e.department_id === profile.department_id).map((e) => e.id))
+  })()
+
   // Filter
   const filtered = tasks.filter((t) => {
+    // 권한 가드 (UI 필터 적용 전)
+    if (!isExecutive) {
+      if (isLeader) {
+        // 본인 부서 직원의 작업 + 본인 작업
+        if (myDeptEmpIds && t.assignee_id && !myDeptEmpIds.has(t.assignee_id)) {
+          if (t.assignee_id !== profile?.id) return false
+        }
+      } else {
+        // 일반 직원·인사담당: 본인이 담당자인 작업만
+        if (t.assignee_id !== profile?.id) return false
+      }
+    }
     if (filterStatus && t.status !== filterStatus) return false
     if (filterPriority && t.priority !== filterPriority) return false
     if (filterProject && t.project_id !== filterProject) return false

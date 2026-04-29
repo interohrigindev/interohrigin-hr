@@ -438,9 +438,9 @@ export default function ProjectBoardPage() {
                 {group.projects.length > 0 && (
                   <div className={`flex items-center gap-4 px-4 py-2 ${colorSet.light} border-t ${colorSet.border} text-[11px] text-gray-500`}>
                     <span>{group.projects.length}개 프로젝트</span>
-                    <span>진행중: {group.projects.filter((p) => p.status === 'active').length}</span>
+                    <span>진행중: {group.projects.filter((p) => p.status === 'active' && !isProjectCompleted(p)).length}</span>
                     <span>홀딩: {group.projects.filter((p) => p.status === 'holding').length}</span>
-                    <span>완료: {group.projects.filter((p) => p.status === 'completed').length}</span>
+                    <span>완료: {group.projects.filter(isProjectCompleted).length}</span>
                     <span className="text-red-500">
                       지연: {group.projects.reduce((acc, p) => acc + getProjectProgress(p).delayed, 0)}단계
                     </span>
@@ -691,14 +691,21 @@ export default function ProjectBoardPage() {
 
   // ─── Stats ────────────────────────────────────────────────
   const totalProjects = filtered.length
+
+  // 프로젝트 완료 판정: status='completed' 이거나 모든 stage가 '완료'면 완료로 간주
+  const isProjectCompleted = (p: ProjectWithStages) =>
+    p.status === 'completed' ||
+    (p.status === 'active' && p.stages.length > 0 && p.stages.every((s) => s.status === '완료'))
+
   const delayedStages = filtered.flatMap((p) => p.stages).filter((s) => {
     if (s.status === '완료') return false
     const days = getDaysUntil(s.deadline)
     return days !== null && days < 0
   }).length
-  const activeCount = filtered.filter((p) => p.status === 'active').length
+  // active 상태이지만 모든 stage 완료된 프로젝트는 활성에서 제외하고 완료로 카운트
+  const activeCount = filtered.filter((p) => p.status === 'active' && !isProjectCompleted(p)).length
   const holdingCount = filtered.filter((p) => p.status === 'holding').length
-  const completedCount = filtered.filter((p) => p.status === 'completed').length
+  const completedCount = filtered.filter(isProjectCompleted).length
   return (
     <div className="space-y-4">
       {/* Header */}

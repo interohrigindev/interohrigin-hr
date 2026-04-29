@@ -112,29 +112,13 @@ export default function EvaluateList() {
     )
   }
 
-  // CEO: 부서 내 모든 target이 director_done 이상인 부서만 표시
-  const ceoReadyDepts = new Set<string>()
-  if (myRole === 'ceo') {
-    const deptTargets: Record<string, typeof targets> = {}
-    targets.forEach((t) => {
-      const dId = t.employee.department_id ?? '__none__'
-      if (!deptTargets[dId]) deptTargets[dId] = []
-      deptTargets[dId].push(t)
-    })
-    const directorDoneIdx = STATUS_ORDER.indexOf('director_done')
-    for (const [dId, dts] of Object.entries(deptTargets)) {
-      const allReady = dts.every(
-        (t) => STATUS_ORDER.indexOf(t.status) >= directorDoneIdx
-      )
-      if (allReady) ceoReadyDepts.add(dId)
-    }
-  }
-
   // 내 관할 부서 트리 (leader/director/division_head 용)
   const mySubtree = (myRole === 'leader' || myRole === 'director' || myRole === 'division_head')
     ? collectSubtreeIds(profile?.department_id)
     : null
 
+  // CEO 는 부서·트리 무관하게 director_done 이상이면 즉시 노출
+  // (이전: 부서 내 전원이 이사평가 완료해야 노출 → 한 명만 진행돼도 부서 통째로 막힘)
   const filteredTargets = targets.filter((t) => {
     if (!myRole || !requiredStatus) return false
 
@@ -142,12 +126,6 @@ export default function EvaluateList() {
     if (mySubtree && mySubtree.size > 0) {
       const empDeptId = t.employee.department_id
       if (!empDeptId || !mySubtree.has(empDeptId)) return false
-    }
-
-    // CEO: 부서단위 필터
-    if (myRole === 'ceo') {
-      const dId = t.employee.department_id ?? '__none__'
-      if (!ceoReadyDepts.has(dId)) return false
     }
 
     const targetIdx = STATUS_ORDER.indexOf(t.status)
