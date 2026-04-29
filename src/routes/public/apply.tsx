@@ -72,7 +72,7 @@ export default function PublicApply() {
     e.preventDefault()
     setError('')
     if (!form.name.trim() || !form.email.trim()) { setError('이름과 이메일은 필수입니다.'); return }
-    if (!resumeFile) { setError('이력서를 업로드해주세요.'); return }
+    if (!resumeFile) { setError('이력서 및 포트폴리오를 업로드해주세요.'); return }
     if (isAgency && (!form.agency_name.trim() || !form.agency_contact.trim() || !form.agency_email.trim())) {
       setError('업체명, 담당자명, 담당자 이메일은 필수입니다.'); return
     }
@@ -221,7 +221,7 @@ export default function PublicApply() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">이력서 * (PDF, 이미지)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">이력서 및 포트폴리오 * (PDF, 이미지)</label>
               <label className="flex items-center gap-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-6 cursor-pointer hover:border-brand-400 transition-colors">
                 <Upload className="h-6 w-6 text-gray-400" />
                 <span className="flex-1">
