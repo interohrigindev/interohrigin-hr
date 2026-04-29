@@ -13,7 +13,12 @@ COMMENT ON COLUMN public.candidates.portfolio_files IS
 COMMENT ON COLUMN public.candidates.portfolio_links IS
   '포트폴리오 외부 링크 목록 [{url: 링크, label: 표시명}] — Google Drive 등';
 
--- 2) submit_application RPC 갱신 — 하위호환 유지 (기존 호출도 정상 동작)
+-- 2) submit_application RPC 갱신 — 새 파라미터 추가하여 시그니처 변경
+--    PostgreSQL은 기본값과 무관하게 매개변수 개수가 다르면 별도 함수로 인식 → 기존 함수 명시적 DROP 필요
+DROP FUNCTION IF EXISTS public.submit_application(
+  uuid, text, text, text, text, text, text, text, text
+);
+
 CREATE OR REPLACE FUNCTION public.submit_application(
   p_job_posting_id uuid, p_name text, p_email text,
   p_phone text DEFAULT NULL, p_source_channel text DEFAULT 'direct',
