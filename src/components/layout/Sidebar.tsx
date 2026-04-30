@@ -403,35 +403,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         )
       })}
 
-      {/* 사이드바 최하단 — 시스템 관리자 전용 (그룹 메뉴들보다 아래) */}
-      {visibleBottomItems.length > 0 && (
-        <>
-          <div className="my-2 border-t border-gray-200" />
-          {visibleBottomItems.map((item) => {
-            const path = resolvePath(item)
-            return (
-              <NavLink
-                key={path}
-                to={path}
-                end={item.end}
-                onClick={onClose}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-brand-50 text-brand-700'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  )
-                }
-              >
-                {item.icon}
-                <span className="flex-1">{item.label}</span>
-              </NavLink>
-            )
-          })}
-        </>
-      )}
-
       {/* 구분선 + 일반 설정 */}
       {hasRole('director') && (
         <>
@@ -481,6 +452,35 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <DollarSign className="h-5 w-5" />
             비용 관리
           </NavLink>
+        </>
+      )}
+
+      {/* 사이드바 진짜 최하단 — 시스템 관리자 전용 (비용 관리 아래) */}
+      {visibleBottomItems.length > 0 && (
+        <>
+          <div className="my-2 border-t border-gray-200" />
+          {visibleBottomItems.map((item) => {
+            const path = resolvePath(item)
+            return (
+              <NavLink
+                key={path}
+                to={path}
+                end={item.end}
+                onClick={onClose}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  )
+                }
+              >
+                {item.icon}
+                <span className="flex-1">{item.label}</span>
+              </NavLink>
+            )
+          })}
         </>
       )}
     </nav>
