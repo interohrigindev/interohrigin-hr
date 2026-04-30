@@ -76,7 +76,8 @@ export default function MonitoringDashboard() {
   // Phase 3 AI 분석 — 조건부 return 위에 선언 (hooks 규칙)
   const [aiRunning, setAiRunning] = useState(false)
 
-  const canAccess = hasRole('ceo') || hasRole('admin')
+  // 시스템 모니터링은 시스템 관리자(admin) 전용 — CEO 도 접근 불가
+  const canAccess = hasRole('admin')
 
   async function fetchAll() {
     setLoading(true)

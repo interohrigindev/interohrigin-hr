@@ -110,13 +110,14 @@ const standaloneItems: NavItem[] = [
     label: '게시판',
     icon: <FileText className="h-5 w-5" />,
   },
+  // D2-1: '나의 인수인계' → 프로젝트 그룹 하위로 이동
+  // 시스템 모니터링: 시스템 관리자(admin) 전용 — 메뉴 가장 하단
   {
     to: '/admin/monitoring',
     label: '시스템 모니터링',
     icon: <ShieldCheck className="h-5 w-5" />,
-    hideForRoles: ['employee', 'leader', 'director', 'division_head', 'hr_admin'] as EmployeeRole[],
+    hideForRoles: ['employee', 'leader', 'director', 'division_head', 'hr_admin', 'ceo'] as EmployeeRole[],
   },
-  // D2-1: '나의 인수인계' → 프로젝트 그룹 하위로 이동
 ]
 
 // 그룹 메뉴
