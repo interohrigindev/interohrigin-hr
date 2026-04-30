@@ -3,6 +3,9 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import FloatingAIAgent from '@/components/ai-agent/FloatingAIAgent'
 import { UrgentTaskPopup } from '@/components/urgent/UrgentTaskPopup'
+import { PwaInit } from '@/components/PwaInit'
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
+import MonitoringDashboard from '@/routes/admin/monitoring'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AdminRoute } from '@/components/layout/AdminRoute'
 import Login from '@/routes/login'
@@ -289,10 +292,15 @@ function App() {
               <Route path="admin/hr/ai-report" element={<AdminRoute><AIEvalReport /></AdminRoute>} />
               <Route path="admin/hr/verification" element={<AdminRoute><AIVerification /></AdminRoute>} />
               <Route path="admin/hr/exit" element={<AdminRoute><ExitManagement /></AdminRoute>} />
+
+              {/* 시스템 모니터링 — admin/ceo 전용 */}
+              <Route path="admin/monitoring" element={<AdminRoute><MonitoringDashboard /></AdminRoute>} />
             </Route>
           </Routes>
           <FloatingAIAgent />
           <UrgentTaskPopup />
+          <PwaInit />
+          <MobileBottomNav />
         </BrowserRouter>
       </ToastProvider>
     </AuthProvider>

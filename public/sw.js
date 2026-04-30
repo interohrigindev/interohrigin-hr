@@ -1,22 +1,49 @@
-const CACHE_NAME = 'io-hr-v3'
+// IO HR Service Worker — PWA 정적 자원 캐시 + Web Push
+// IO Mall 패턴 동일
 
-// 설치 — 이전 캐시 모두 삭제 후 즉시 활성화
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-  )
+const CACHE_NAME = 'io-hr-v4'
+
+self.addEventListener('install', () => {
   self.skipWaiting()
 })
 
-// 활성화 — 모든 캐시 정리
+// 활성화 — 이전 캐시 정리
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
   )
-  self.clients.claim()
 })
 
-// fetch 핸들러 없음 — JS/CSS는 Vite 해시로 캐시 버스팅, 푸시 알림만 사용
+// 정적 자원 NetworkFirst + Cache Fallback
+// 동적 호출(Supabase / API / Functions) 은 캐시 제외 → 항상 최신 데이터
+self.addEventListener('fetch', (event) => {
+  const req = event.request
+  if (req.method !== 'GET') return
+
+  const url = new URL(req.url)
+  const isDynamic =
+    url.hostname.includes('supabase.co') ||
+    url.hostname.includes('supabase.in') ||
+    url.hostname.includes('googleapis.com') ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/functions/')
+
+  if (isDynamic) return
+
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        if (res.ok && res.type === 'basic') {
+          const copy = res.clone()
+          caches.open(CACHE_NAME).then((c) => c.put(req, copy))
+        }
+        return res
+      })
+      .catch(() => caches.match(req))
+  )
+})
 
 // 푸시 알림 수신
 self.addEventListener('push', (event) => {
@@ -32,7 +59,7 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(title, options))
 })
 
-// 알림 클릭 — 해당 페이지 열기
+// 알림 클릭
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const url = event.notification.data?.url || '/'
