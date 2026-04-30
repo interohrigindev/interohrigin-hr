@@ -889,7 +889,7 @@ export default function UnifiedDashboard() {
           <Select
             value={filterBrand}
             onChange={(e) => setFilterBrand(e.target.value)}
-            options={[{ value: '', label: '전체 브랜드' }, ...brands.map((b) => ({ value: b, label: b }))]}
+            options={[{ value: '', label: '전체 본부' }, ...brands.map((b) => ({ value: b, label: b }))]}
           />
           <Button
             size="lg"

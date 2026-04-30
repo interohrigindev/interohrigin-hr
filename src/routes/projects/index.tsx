@@ -819,7 +819,7 @@ export default function ProjectBoardPage() {
               value={groupBy}
               onChange={(e) => setGroupBy(e.target.value as GroupByOption)}
               options={[
-                { value: 'brand', label: '브랜드별' },
+                { value: 'brand', label: '본부별' },
                 { value: 'status', label: '상태별' },
                 { value: 'none', label: '그룹 없음' },
               ]}
@@ -828,7 +828,7 @@ export default function ProjectBoardPage() {
           <Select
             value={filterBrand}
             onChange={(e) => setFilterBrand(e.target.value)}
-            options={[{ value: '', label: '전체 브랜드' }, ...brands.map((b) => ({ value: b, label: b }))]}
+            options={[{ value: '', label: '전체 본부' }, ...brands.map((b) => ({ value: b, label: b }))]}
           />
           <Select
             value={filterStatus}
