@@ -708,9 +708,14 @@ export default function UnifiedDashboard() {
 
   const brands = useMemo(() => [...new Set(projects.map((p) => p.brand))], [projects])
 
+  // 완료 판정: status='completed' 또는 모든 stage가 '완료' 인 active 프로젝트
+  const isProjectCompleted = (p: typeof filteredProjects[number]) =>
+    p.status === 'completed' ||
+    (p.status === 'active' && p.stages.length > 0 && p.stages.every((s) => s.status === '완료'))
+
   // Stats
-  const activeProjects = filteredProjects.filter((p) => p.status === 'active')
-  const completedProjects = filteredProjects.filter((p) => p.status === 'completed')
+  const activeProjects = filteredProjects.filter((p) => p.status === 'active' && !isProjectCompleted(p))
+  const completedProjects = filteredProjects.filter(isProjectCompleted)
   const holdingProjects = filteredProjects.filter((p) => p.status === 'holding')
   const allStages = filteredProjects.flatMap((p) => p.stages)
   const completedStages = allStages.filter((s) => s.status === '완료').length
@@ -740,20 +745,40 @@ export default function UnifiedDashboard() {
     return { ...p, progress, completed, delayed, currentStage, linkedTasks, total }
   }), [filteredProjects, tasks])
 
-  // Group by brand
+  // Group by brand — 완료 프로젝트는 마지막에 별도 블록으로 분리
   const groupedByBrand = useMemo(() => {
     const map = new Map<string, typeof projectsWithProgress>()
+    const completed: typeof projectsWithProgress = []
     for (const p of projectsWithProgress) {
+      const isDone = p.status === 'completed' ||
+        (p.status === 'active' && p.stages.length > 0 && p.stages.every((s) => s.status === '완료'))
+      if (isDone) {
+        completed.push(p)
+        continue
+      }
       const list = map.get(p.brand) || []
       list.push(p)
       map.set(p.brand, list)
     }
-    return [...map.entries()].map(([brand, items], idx) => ({
+    const result = [...map.entries()].map(([brand, items], idx) => ({
       brand,
       items: items.sort((a, b) => a.priority - b.priority),
       color: GROUP_COLORS[idx % GROUP_COLORS.length],
+      isCompletedGroup: false,
     }))
+    if (completed.length > 0) {
+      result.push({
+        brand: `✅ 완료된 프로젝트 (${completed.length})`,
+        items: completed.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')),
+        color: GROUP_COLORS[0],
+        isCompletedGroup: true,
+      })
+    }
+    return result
   }, [projectsWithProgress])
+
+  // 완료 그룹은 기본 접힘 (사용자가 펼치지 않으면 안 보임)
+  const [completedGroupExpanded, setCompletedGroupExpanded] = useState(false)
 
   // Drag & Drop handler
   const handleDrop = useCallback(async (e: React.DragEvent, targetId: string) => {
@@ -965,22 +990,39 @@ export default function UnifiedDashboard() {
               else priorityDist.low++
             }
 
+            const isCompletedGroup = group.isCompletedGroup
+            const isCollapsed = isCompletedGroup && !completedGroupExpanded
             return (
               <div key={group.brand} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                 {/* ── Group Header ─────────────────────────────── */}
-                <div className={`flex items-center gap-3 px-4 py-3 ${group.color.header}`}>
-                  <div className={`w-1.5 h-8 rounded-full ${group.color.bar}`} />
-                  <h2 className={`text-sm font-bold ${group.color.text}`}>
+                <button
+                  onClick={() => isCompletedGroup ? setCompletedGroupExpanded((v) => !v) : undefined}
+                  className={`w-full flex items-center gap-3 px-4 py-3 ${isCompletedGroup ? 'bg-emerald-50 hover:bg-emerald-100 cursor-pointer' : group.color.header} text-left transition-colors`}
+                  type="button"
+                >
+                  <div className={`w-1.5 h-8 rounded-full ${isCompletedGroup ? 'bg-emerald-500' : group.color.bar}`} />
+                  <h2 className={`text-sm font-bold ${isCompletedGroup ? 'text-emerald-800' : group.color.text}`}>
                     {group.brand}
                   </h2>
-                  <Badge className={`${group.color.light} ${group.color.text} text-[10px]`}>
-                    {group.items.length}개 프로젝트
-                  </Badge>
-                  <span className="text-[10px] text-gray-400 ml-auto flex items-center gap-1">
-                    <GripVertical className="h-3 w-3" /> 드래그로 우선순위 변경
-                  </span>
-                </div>
+                  {!isCompletedGroup && (
+                    <Badge className={`${group.color.light} ${group.color.text} text-[10px]`}>
+                      {group.items.length}개 프로젝트
+                    </Badge>
+                  )}
+                  {isCompletedGroup ? (
+                    <span className="text-[11px] text-emerald-700 ml-auto">
+                      {isCollapsed ? '▶ 펼치기' : '▼ 접기'}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-gray-400 ml-auto flex items-center gap-1">
+                      <GripVertical className="h-3 w-3" /> 드래그로 우선순위 변경
+                    </span>
+                  )}
+                </button>
 
+                {/* 완료 그룹은 접힘 상태일 때 본문 미렌더 */}
+                {!isCollapsed && (
+                  <>
                 {/* ── Table Headers ────────────────────────────── */}
                 <div className="overflow-x-auto">
                 <div className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wide min-w-[700px]">
@@ -1437,6 +1479,8 @@ export default function UnifiedDashboard() {
                     <span className="font-bold text-gray-700">{totalTasks}개</span>
                   </div>
                 </div>
+                  </>
+                )}
               </div>
             )
           })

@@ -896,7 +896,13 @@ function LeaveCalendar({
   const startWeekday = firstDay.getDay() // 0=일
 
   // D1-8: 본부(division) 체크박스 다중 필터 — 기본은 전체 선택
-  const divisions = departments.filter((d) => !d.parent_id)
+  // 대표 본부는 부서 단위 필터 의미 없으므로 제외
+  const divisions = departments.filter((d) => {
+    if (d.parent_id) return false
+    const n = (d.name || '').trim()
+    if (/^대표|^CEO|대표이사/i.test(n)) return false
+    return true
+  })
   const [selectedDivisionIds, setSelectedDivisionIds] = useState<Set<string>>(new Set())
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set())
 
