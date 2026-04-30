@@ -112,16 +112,40 @@ export default function ProjectBoardPage() {
     return result
   }, [projects, filterBrand, filterStatus, filterAssignee, searchQuery, sortBy, isPrivileged, showAll, profile?.id])
 
-  // Grouped projects
+  // Grouped projects — 완료된 프로젝트는 항상 별도 그룹으로 분리
+  // (status='completed' 또는 모든 stage='완료' 인 프로젝트)
   const groupedProjects = useMemo(() => {
-    if (groupBy === 'none') return [{ key: '전체', projects: filtered }]
-    const groups = new Map<string, ProjectWithStages[]>()
+    const isCompleted = (p: ProjectWithStages) =>
+      p.status === 'completed' ||
+      (p.status === 'active' && p.stages.length > 0 && p.stages.every((s) => s.status === '완료'))
+
+    const completed: ProjectWithStages[] = []
+    const ongoing: ProjectWithStages[] = []
     for (const p of filtered) {
-      const key = groupBy === 'brand' ? p.brand : PROJECT_STATUS_LABELS[p.status]
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key)!.push(p)
+      if (isCompleted(p)) completed.push(p)
+      else ongoing.push(p)
     }
-    return [...groups.entries()].map(([key, projects]) => ({ key, projects }))
+
+    const result: { key: string; projects: ProjectWithStages[]; isCompletedGroup?: boolean }[] = []
+
+    if (groupBy === 'none') {
+      if (ongoing.length > 0) result.push({ key: '전체', projects: ongoing })
+    } else {
+      const groups = new Map<string, ProjectWithStages[]>()
+      for (const p of ongoing) {
+        const key = groupBy === 'brand' ? p.brand : PROJECT_STATUS_LABELS[p.status]
+        if (!groups.has(key)) groups.set(key, [])
+        groups.get(key)!.push(p)
+      }
+      for (const [key, projects] of groups.entries()) result.push({ key, projects })
+    }
+
+    // 완료 그룹은 항상 마지막에 단일 블록으로
+    if (completed.length > 0) {
+      result.push({ key: `✅ 완료된 프로젝트 (${completed.length})`, projects: completed, isCompletedGroup: true })
+    }
+
+    return result
   }, [filtered, groupBy])
 
   const toggleGroup = useCallback((key: string) => {
@@ -241,7 +265,10 @@ export default function ProjectBoardPage() {
     <div className="space-y-4">
       {groupedProjects.map((group, gi) => {
         const colorSet = GROUP_COLORS[gi % GROUP_COLORS.length]
-        const isCollapsed = collapsedGroups.has(group.key)
+        // 완료 그룹은 명시적으로 펼쳐두지 않은 한 기본 접힘
+        const isCollapsed = group.isCompletedGroup
+          ? !collapsedGroups.has(`__expand_${group.key}`)
+          : collapsedGroups.has(group.key)
         const groupProgress = group.projects.reduce((acc, p) => {
           const prog = getProjectProgress(p)
           return { completed: acc.completed + prog.completed, total: acc.total + prog.total }
@@ -253,10 +280,10 @@ export default function ProjectBoardPage() {
         return (
           <div key={group.key} className="overflow-hidden rounded-lg border border-gray-200">
             {/* Group Header - Monday.com 스타일 */}
-            {groupBy !== 'none' && (
+            {(groupBy !== 'none' || group.isCompletedGroup) && (
               <button
-                onClick={() => toggleGroup(group.key)}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 ${colorSet.light} hover:opacity-90 transition-opacity`}
+                onClick={() => toggleGroup(group.isCompletedGroup ? `__expand_${group.key}` : group.key)}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 ${group.isCompletedGroup ? 'bg-emerald-50' : colorSet.light} hover:opacity-90 transition-opacity`}
               >
                 <div className={`w-1 h-6 rounded-full ${colorSet.bg}`} />
                 {isCollapsed
