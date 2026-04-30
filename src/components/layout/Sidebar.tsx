@@ -111,7 +111,11 @@ const standaloneItems: NavItem[] = [
     icon: <FileText className="h-5 w-5" />,
   },
   // D2-1: '나의 인수인계' → 프로젝트 그룹 하위로 이동
-  // 시스템 모니터링: 시스템 관리자(admin) 전용 — 메뉴 가장 하단
+]
+
+// 사이드바 가장 하단에 별도 노출되는 항목 (그룹 메뉴들 아래)
+// — 시스템 관리자 전용 메뉴
+const bottomItems: NavItem[] = [
   {
     to: '/admin/monitoring',
     label: '시스템 모니터링',
@@ -313,6 +317,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const visibleStandaloneItems = standaloneItems.filter(isItemVisible)
   const visibleGroups = navGroups.filter(isGroupVisible)
+  const visibleBottomItems = bottomItems.filter(isItemVisible)
 
   const navContent = (
     <nav className="flex flex-col gap-1 p-4 overflow-y-auto">
@@ -397,6 +402,35 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
         )
       })}
+
+      {/* 사이드바 최하단 — 시스템 관리자 전용 (그룹 메뉴들보다 아래) */}
+      {visibleBottomItems.length > 0 && (
+        <>
+          <div className="my-2 border-t border-gray-200" />
+          {visibleBottomItems.map((item) => {
+            const path = resolvePath(item)
+            return (
+              <NavLink
+                key={path}
+                to={path}
+                end={item.end}
+                onClick={onClose}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  )
+                }
+              >
+                {item.icon}
+                <span className="flex-1">{item.label}</span>
+              </NavLink>
+            )
+          })}
+        </>
+      )}
 
       {/* 구분선 + 일반 설정 */}
       {hasRole('director') && (
