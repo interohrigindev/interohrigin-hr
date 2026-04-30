@@ -73,6 +73,8 @@ export default function MonitoringDashboard() {
   const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([])
   const [tasks, setTasks] = useState<MaintenanceTask[]>([])
   const [selected, setSelected] = useState<ErrorLog | null>(null)
+  // Phase 3 AI 분석 — 조건부 return 위에 선언 (hooks 규칙)
+  const [aiRunning, setAiRunning] = useState(false)
 
   const canAccess = hasRole('ceo') || hasRole('admin')
 
@@ -111,7 +113,6 @@ export default function MonitoringDashboard() {
   const hcFailing = hcLatest.filter((h) => h.status !== 'pass').length
 
   // Phase 3 — AI 자동 진단 (선택된 에러에 대해)
-  const [aiRunning, setAiRunning] = useState(false)
   async function runAiAnalysis(err: ErrorLog) {
     setAiRunning(true)
     try {
