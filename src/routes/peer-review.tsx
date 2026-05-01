@@ -309,19 +309,22 @@ export default function PeerReviewPage() {
                           )
                         })()}
 
-                        {data.reviews.map((r) => (
-                          <div key={r.id} className="bg-gray-50 rounded p-2 text-xs">
-                            <div className="flex items-center justify-between mb-1">
-                              {/* 임원(director) 이상은 평가자 실명 노출 — 미팅노트 요청 */}
-                              <span className="text-gray-700 font-medium">
-                                평가자: {getEmployeeName(r.reviewer_id) || r.reviewer_id}
-                              </span>
-                              <span className="font-medium text-brand-600">{r.overall_score}점</span>
+                        {/* 평가자 블록 — 한 줄 3명 그리드 */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {data.reviews.map((r) => (
+                            <div key={r.id} className="bg-gray-50 rounded p-2 text-xs">
+                              <div className="flex items-center justify-between mb-1">
+                                {/* 임원(director) 이상은 평가자 실명 노출 — 미팅노트 요청 */}
+                                <span className="text-gray-700 font-medium truncate">
+                                  {getEmployeeName(r.reviewer_id) || r.reviewer_id}
+                                </span>
+                                <span className="font-medium text-brand-600 shrink-0">{r.overall_score}점</span>
+                              </div>
+                              {r.strengths && <p className="text-emerald-600 line-clamp-2">강점: {r.strengths}</p>}
+                              {r.improvements && <p className="text-amber-600 line-clamp-2">개선: {r.improvements}</p>}
                             </div>
-                            {r.strengths && <p className="text-emerald-600">강점: {r.strengths}</p>}
-                            {r.improvements && <p className="text-amber-600">개선: {r.improvements}</p>}
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

@@ -426,7 +426,15 @@ export default function RecruitmentDashboard() {
             <p className="text-gray-400 text-sm py-4 text-center">등록된 채용공고가 없습니다.</p>
           ) : (
             <>
-              {Array.from(candidatesByPosting.entries()).map(([postingId, group]) => {
+              {Array.from(candidatesByPosting.entries())
+                .sort((a, b) => {
+                  // 최신 지원자 접수 기준으로 정렬 (지원자 없는 공고는 뒤로)
+                  const aLatest = a[1].candidates.reduce((max, c) => Math.max(max, new Date(c.created_at).getTime()), 0)
+                  const bLatest = b[1].candidates.reduce((max, c) => Math.max(max, new Date(c.created_at).getTime()), 0)
+                  if (bLatest !== aLatest) return bLatest - aLatest
+                  return 0
+                })
+                .map(([postingId, group]) => {
                 const isOpen = expanded.has(postingId)
                 const filtered = filterCandidates(group.candidates)
                 const newCount = filtered.filter((c) => isNew(c.created_at)).length

@@ -217,6 +217,52 @@ ${prevSummary}
   async function handleSaveEval() {
     if (!selectedEmployeeId) { toast('직원을 선택하세요.', 'error'); return }
 
+    // P0-A: 회차 잠금 / 7일 자동 마감 검증 (관리자는 강제 가능)
+    const allowForceByAdmin = profile?.role === 'admin'
+    const targetEmp = employees.find((e) => e.id === selectedEmployeeId)
+    if (targetEmp) {
+      const ROUND_OFFSET = [14, 42, 70] as const
+      const ACTIVE_WINDOW = 7
+      const idx = STAGES.indexOf(selectedStage)
+      const hire = targetEmp.hire_date ? new Date(targetEmp.hire_date) : null
+
+      // 이전 회차 미완료 체크
+      for (let i = 0; i < idx; i++) {
+        const prevDone = evaluations.some(
+          (ev) => ev.employee_id === selectedEmployeeId && ev.stage === STAGES[i]
+        )
+        if (!prevDone) {
+          if (!allowForceByAdmin) {
+            toast(`${STAGE_LABELS[STAGES[i]]} 평가가 먼저 완료되어야 합니다.`, 'error')
+            return
+          }
+          if (!confirm(`${STAGE_LABELS[STAGES[i]]} 평가가 미완료입니다. 관리자 권한으로 강제 진행할까요?`)) return
+          break
+        }
+      }
+      // 회차 시작일 / 7일 자동 마감 체크
+      if (hire) {
+        const start = new Date(hire.getTime() + ROUND_OFFSET[idx] * 86400 * 1000).getTime()
+        const end = start + ACTIVE_WINDOW * 86400 * 1000
+        const now = Date.now()
+        if (now < start && !allowForceByAdmin) {
+          toast(`${STAGE_LABELS[selectedStage]} 시작일 전입니다.`, 'error')
+          return
+        }
+        const alreadyDone = evaluations.some(
+          (ev) => ev.employee_id === selectedEmployeeId && ev.stage === selectedStage
+            && ev.evaluator_id === (profile?.id || null) && ev.evaluator_role === selectedRole
+        )
+        if (now > end && !alreadyDone) {
+          if (!allowForceByAdmin) {
+            toast('평가 가능 기간(7일) 이 경과해 자동 마감되었습니다.', 'error')
+            return
+          }
+          if (!confirm('7일 자동 마감 기간을 지났습니다. 관리자 권한으로 강제 진행할까요?')) return
+        }
+      }
+    }
+
     // 기존 평가 존재 여부 확인 (upsert 메시지 구분용)
     const existing = evaluations.find(
       (ev) => ev.employee_id === selectedEmployeeId && ev.stage === selectedStage
@@ -262,11 +308,66 @@ ${prevSummary}
 
       {/* 수습 직원 평가 일정 테이블 */}
       {(() => {
-        const probEmps = employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
-        if (probEmps.length === 0) return null
+        const probEmpsRaw = employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
+        if (probEmpsRaw.length === 0) return null
 
         const today = new Date()
         const formatDate = (d: Date | null) => d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}` : '-'
+
+        // 회차별 일자 + 활성 회차 판정 + D-day 정렬
+        const ROUND_OFFSET_DAYS = [14, 42, 70] as const // 1·2·6주차→14일, 2회차→42일, 3회차→70일
+        const ACTIVE_WINDOW_DAYS = 7 // 시작일부터 7일간만 활성
+
+        type RoundMeta = { stage: ProbationStage; date: Date | null; isCompleted: boolean }
+        const buildRounds = (emp: typeof probEmpsRaw[number]): RoundMeta[] => {
+          const hire = emp.hire_date ? new Date(emp.hire_date) : null
+          return STAGES.map((stage, i) => {
+            const date = hire ? new Date(hire.getTime() + ROUND_OFFSET_DAYS[i] * 86400 * 1000) : null
+            const empEvals = evaluations.filter((ev) => ev.employee_id === emp.id && ev.stage === stage)
+            const isCompleted = empEvals.length > 0
+            return { stage, date, isCompleted }
+          })
+        }
+
+        // 활성 회차 = 가장 작은 미완료 회차 (이전 회차 모두 완료여야 함)
+        const getActiveRound = (rounds: RoundMeta[]): RoundMeta | null => {
+          for (const r of rounds) {
+            if (!r.isCompleted) return r
+          }
+          return null
+        }
+
+        // 회차 평가 가능 여부 — 이전 회차 모두 완료 + 활성 윈도우 7일 이내
+        const canEvaluate = (rounds: RoundMeta[], target: ProbationStage): { allowed: boolean; reason?: string } => {
+          const idx = STAGES.indexOf(target)
+          if (idx === -1) return { allowed: false, reason: '잘못된 회차' }
+          // 이전 회차 미완료
+          for (let i = 0; i < idx; i++) {
+            if (!rounds[i].isCompleted) return { allowed: false, reason: `${STAGE_LABELS[STAGES[i]]} 평가가 먼저 완료되어야 합니다.` }
+          }
+          // 7일 자동 마감
+          const r = rounds[idx]
+          if (!r.date) return { allowed: false, reason: '입사일이 등록되지 않았습니다.' }
+          const start = r.date.getTime()
+          const end = start + ACTIVE_WINDOW_DAYS * 86400 * 1000
+          const now = Date.now()
+          if (now < start) return { allowed: false, reason: '회차 시작일 전입니다.' }
+          if (now > end && !r.isCompleted) return { allowed: false, reason: '7일 자동 마감되었습니다 (관리자 강제 해제 필요).' }
+          return { allowed: true }
+        }
+
+        // D-day 임박 순 정렬: 활성 회차 일자가 가까운 직원 우선
+        const probEmps = [...probEmpsRaw].sort((a, b) => {
+          const ra = getActiveRound(buildRounds(a))
+          const rb = getActiveRound(buildRounds(b))
+          const da = ra?.date ? ra.date.getTime() - today.getTime() : Number.MAX_SAFE_INTEGER
+          const db = rb?.date ? rb.date.getTime() - today.getTime() : Number.MAX_SAFE_INTEGER
+          // 음수(초과) 가 먼저 (절대값 작은 순), 양수는 작은 순
+          return Math.abs(da) - Math.abs(db)
+        })
+
+        // 미사용 변수 경고 회피 (canEvaluate 는 handleSave 에서 직접 사용)
+        void canEvaluate
 
         return (
           <Card>
@@ -304,6 +405,18 @@ ${prevSummary}
                         new Date(hire.getTime() + 42 * 24 * 60 * 60 * 1000),
                         new Date(hire.getTime() + 70 * 24 * 60 * 60 * 1000),
                       ] : [null, null, null]
+
+                      // 활성 회차 = 가장 작은 미완료 회차 + 시작일~7일 윈도우 내
+                      const activeStage: ProbationStage | null = (() => {
+                        const rounds = buildRounds(emp)
+                        const active = getActiveRound(rounds)
+                        if (!active || !active.date) return null
+                        const start = active.date.getTime()
+                        const end = start + ACTIVE_WINDOW_DAYS * 86400 * 1000
+                        const now = today.getTime()
+                        if (now >= start && now <= end) return active.stage
+                        return null
+                      })()
 
                       const getRoundCell = (stage: string, roundDate: Date | null) => {
                         const stageEvals = empEvals.filter((ev) => ev.stage === stage)
@@ -373,9 +486,9 @@ ${prevSummary}
                             {emp.annual_salary ? `${(emp.annual_salary / 10000).toFixed(0)}만원` : '-'}
                           </td>
                           <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(hire)}</td>
-                          <td className="py-2.5 px-3 text-center">{getRoundCell('round1', roundDates[0])}</td>
-                          <td className="py-2.5 px-3 text-center">{getRoundCell('round2', roundDates[1])}</td>
-                          <td className="py-2.5 px-3 text-center">{getRoundCell('round3', roundDates[2])}</td>
+                          <td className={`py-2.5 px-3 text-center ${activeStage === 'round1' ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''}`}>{getRoundCell('round1', roundDates[0])}</td>
+                          <td className={`py-2.5 px-3 text-center ${activeStage === 'round2' ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''}`}>{getRoundCell('round2', roundDates[1])}</td>
+                          <td className={`py-2.5 px-3 text-center ${activeStage === 'round3' ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''}`}>{getRoundCell('round3', roundDates[2])}</td>
                           <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(endDate)}</td>
                         </tr>
                       )

@@ -4,6 +4,7 @@ import { Upload, FileText, Loader2, CheckCircle, MapPin, Clock, Users, Banknote,
 import { supabase } from '@/lib/supabase'
 import type { JobPosting } from '@/types/recruitment'
 import { formatDate } from '@/lib/utils'
+import { newCandidateNotificationEmail } from '@/lib/email-templates'
 
 type PageStep = 'detail' | 'apply' | 'done'
 
@@ -129,7 +130,7 @@ export default function PublicApply() {
         .map((l) => ({ url: l.url.trim(), label: l.label.trim() }))
         .filter((l) => l.url.length > 0)
 
-      const { error: insertErr } = await supabase.rpc('submit_application', {
+      const { data: submitRes, error: insertErr } = await supabase.rpc('submit_application', {
         p_job_posting_id: postingId,
         p_name: form.name,
         p_email: form.email,
@@ -145,6 +146,38 @@ export default function PublicApply() {
         p_portfolio_links: cleanLinks,
       })
       if (insertErr) throw new Error('지원서 제출 실패: ' + insertErr.message)
+
+      // 담당자 알림 메일 발송 (실패해도 제출은 성공으로 처리)
+      try {
+        const newCandidateId: string | null = (typeof submitRes === 'string' ? submitRes : (submitRes as any)?.candidate_id) || null
+        const { data: notif } = await supabase.rpc('get_candidate_notification_recipients', { p_job_posting_id: postingId })
+        const recipients: { email: string; name: string }[] = (notif as any)?.recipients || []
+        const jobTitle: string = (notif as any)?.job_title || posting?.title || '채용 공고'
+        if (recipients.length > 0 && newCandidateId) {
+          const sourceLabel = isAgency ? '에이전시' : (source || 'direct')
+          // 중복 이메일 제거
+          const uniqRecipients = Array.from(new Map(recipients.map(r => [r.email.toLowerCase(), r])).values())
+          await Promise.all(uniqRecipients.map(async (r) => {
+            const { subject, html } = newCandidateNotificationEmail(
+              r.name || '담당자',
+              form.name,
+              form.email,
+              form.phone || null,
+              jobTitle,
+              sourceLabel,
+              newCandidateId,
+            )
+            try {
+              await fetch('/api/send-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to: r.email, subject, html }),
+              })
+            } catch { /* 알림 실패는 무시 */ }
+          }))
+        }
+      } catch { /* 알림 실패는 무시 — 지원서 제출은 성공 */ }
+
       setStep('done')
     } catch (err: any) { setError(err.message) }
     setSubmitting(false)

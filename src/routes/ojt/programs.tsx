@@ -86,6 +86,7 @@ export default function OJTPrograms() {
   // D2-4: 세부 일정표 (일차별)
   const [scheduleItems, setScheduleItems] = useState<OJTScheduleItem[]>([])
   const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [scheduleViewMode, setScheduleViewMode] = useState<'list' | 'table'>('table')
   const [newSchDay, setNewSchDay] = useState(1)
   const [newSchTime, setNewSchTime] = useState('')
   const [newSchTitle, setNewSchTitle] = useState('')
@@ -466,14 +467,81 @@ correct_answer는 0부터 시작하는 정답 인덱스입니다.
               {/* 세부 일정표 */}
               {editingId && (
                 <div className="border-t pt-5">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h4 className="text-sm font-bold text-gray-900">📅 세부 일정표</h4>
-                    <span className="text-[11px] text-gray-400">{scheduleItems.length}개 일정</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-gray-400">{scheduleItems.length}개 일정</span>
+                      <button
+                        type="button"
+                        onClick={() => setScheduleViewMode((m) => m === 'list' ? 'table' : 'list')}
+                        className="text-[11px] px-2 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50"
+                      >
+                        {scheduleViewMode === 'list' ? '표 형식' : '카드 형식'}
+                      </button>
+                    </div>
                   </div>
+
+                  {/* 표 형식 보기 (1일차~N일차 × 시간대) */}
+                  {scheduleViewMode === 'table' && scheduleItems.length > 0 && (() => {
+                    const SLOTS: { key: string; label: string }[] = [
+                      { key: 'morning', label: '오전' },
+                      { key: 'lunch', label: '점심' },
+                      { key: 'afternoon', label: '오후' },
+                    ]
+                    const slotOf = (ts: string | null | undefined): string => {
+                      if (!ts) return 'afternoon'
+                      const t = ts.toLowerCase()
+                      if (t.includes('오전') || /(0\d|1[01]):/.test(t)) return 'morning'
+                      if (t.includes('점심') || /(11|12|13):/.test(t)) return 'lunch'
+                      return 'afternoon'
+                    }
+                    const days = Array.from(new Set(scheduleItems.map(s => s.day_number))).sort((a, b) => a - b)
+                    return (
+                      <div className="overflow-x-auto mb-3 border border-gray-200 rounded-lg">
+                        <table className="w-full text-xs">
+                          <thead className="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                              <th className="px-2 py-2 text-left font-semibold text-gray-600 w-16">시간</th>
+                              {days.map(d => (
+                                <th key={d} className="px-2 py-2 text-left font-semibold text-brand-700">{d}일차</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {SLOTS.map(slot => (
+                              <tr key={slot.key} className="border-b border-gray-100">
+                                <td className="px-2 py-2 font-medium text-gray-500 bg-gray-50/50">{slot.label}</td>
+                                {days.map(d => {
+                                  const cellItems = scheduleItems.filter(s => s.day_number === d && slotOf(s.time_slot) === slot.key)
+                                  return (
+                                    <td key={d} className="px-2 py-2 align-top min-w-[140px]">
+                                      {cellItems.length === 0 ? (
+                                        <span className="text-gray-300">-</span>
+                                      ) : (
+                                        <ul className="space-y-1">
+                                          {cellItems.map(it => (
+                                            <li key={it.id} className="text-[11px]">
+                                              {it.time_slot && <span className="text-blue-600 mr-1">{it.time_slot}</span>}
+                                              <span className="text-gray-800 font-medium">{it.title}</span>
+                                              {it.output && <p className="text-[10px] text-emerald-600">🎯 {it.output}</p>}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  })()}
 
                   {scheduleLoading ? (
                     <p className="text-xs text-gray-400">불러오는 중...</p>
-                  ) : scheduleItems.length > 0 ? (
+                  ) : scheduleItems.length > 0 && scheduleViewMode === 'list' ? (
                     <div className="space-y-2 mb-3">
                       {(() => {
                         const byDay = scheduleItems.reduce<Record<number, OJTScheduleItem[]>>((acc, it) => {

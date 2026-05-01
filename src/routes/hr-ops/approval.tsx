@@ -86,7 +86,7 @@ const DOC_TYPE_CONFIG: Record<string, { label: string; icon: string; hasAmount: 
   overtime:      { label: '연장/야간/휴일 근무', icon: '🌙', hasAmount: false, category: '근태', desc: '추가 근무 승인' },
   business_trip: { label: '출장 신청',           icon: '✈', hasAmount: false, category: '근태', desc: '국내·해외 출장' },
   expense:       { label: '경비 청구',           icon: '💰', hasAmount: true,  category: '비용', desc: '사용 경비 정산' },
-  purchase:      { label: '구매 요청',           icon: '🛒', hasAmount: true,  category: '비용', desc: '자재·기기 구매' },
+  purchase:      { label: '사무용품 요청',         icon: '🛒', hasAmount: true,  category: '비용', desc: '사무용품·자재·기기 구매' },
   daily_report:  { label: '일일 업무보고',       icon: '📝', hasAmount: false, category: '업무', desc: '일일 보고서 결재' },
   general:       { label: '일반 결재',           icon: '📄', hasAmount: false, category: '기타', desc: '자유 양식' },
 }
@@ -153,6 +153,9 @@ export default function ApprovalManagementPage() {
   const [newAmount, setNewAmount] = useState('')
   const [newApprovers, setNewApprovers] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  // P0 지출결의서/일반 결재 첨부파일
+  const [newAttachments, setNewAttachments] = useState<{ url: string; filename: string; type: string; size: number }[]>([])
+  const [uploadingAtt, setUploadingAtt] = useState(false)
 
   /* ── Role-based employee lists ── */
 
@@ -713,6 +716,36 @@ export default function ApprovalManagementPage() {
     setNewContent({})
     setNewAmount('')
     setNewApprovers({})
+    setNewAttachments([])
+  }
+
+  async function handleAttachmentUpload(files: FileList | null) {
+    if (!files || files.length === 0 || !profile?.id) return
+    setUploadingAtt(true)
+    try {
+      const uploaded: { url: string; filename: string; type: string; size: number }[] = []
+      for (const f of Array.from(files)) {
+        if (f.size > 50 * 1024 * 1024) {
+          toast(`${f.name} 은 50MB 를 초과합니다.`, 'error')
+          continue
+        }
+        const ext = f.name.split('.').pop() || 'bin'
+        const path = `${profile.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+        const { error } = await supabase.storage.from('approval-attachments').upload(path, f)
+        if (error) {
+          toast(`업로드 실패 (${f.name}): ${error.message}`, 'error')
+          continue
+        }
+        uploaded.push({ url: path, filename: f.name, type: f.type, size: f.size })
+      }
+      if (uploaded.length > 0) setNewAttachments((prev) => [...prev, ...uploaded])
+    } finally {
+      setUploadingAtt(false)
+    }
+  }
+
+  function removeAttachment(idx: number) {
+    setNewAttachments((prev) => prev.filter((_, i) => i !== idx))
   }
 
   async function handleCreateDocument() {
@@ -747,7 +780,7 @@ export default function ApprovalManagementPage() {
         doc_type: newDocType,
         title: newTitle.trim(),
         content: Object.keys(newContent).length > 0 ? newContent : null,
-        attachments: null,
+        attachments: newAttachments.length > 0 ? newAttachments : [],
         requester_id: profile.id,
         department: deptName,
         status: 'submitted',
@@ -1320,23 +1353,10 @@ export default function ApprovalManagementPage() {
               })()}
 
               {/* Attachments */}
-              {doc.attachments && doc.attachments.length > 0 && (
+              {doc.attachments && (doc.attachments as any[]).length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-gray-500 mb-2">첨부파일</p>
-                  <div className="flex flex-wrap gap-2">
-                    {doc.attachments.map((url, idx) => (
-                      <a
-                        key={idx}
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded"
-                      >
-                        <Paperclip className="h-3 w-3" />
-                        첨부 {idx + 1}
-                      </a>
-                    ))}
-                  </div>
+                  <ApprovalAttachments attachments={doc.attachments as any} />
                 </div>
               )}
 
@@ -1583,44 +1603,79 @@ export default function ApprovalManagementPage() {
                     <Input label="사유" value={newContent.reason || ''} onChange={(e) => setNewContent((p) => ({ ...p, reason: e.target.value }))} placeholder="사유를 입력하세요" />
                   </>
                 )}
-                {newDocType === 'overtime' && (
-                  <>
-                    <Select
-                      label="근무 유형"
-                      value={newContent.overtime_type || ''}
-                      onChange={(e) => setNewContent((p) => ({ ...p, overtime_type: e.target.value }))}
-                      options={[
-                        { value: '', label: '선택' },
-                        { value: '연장근무', label: '연장근무' },
-                        { value: '야간근무', label: '야간근무' },
-                        { value: '휴일근무', label: '휴일근무' },
-                      ]}
-                    />
-                    <Input label="근무일" type="date" value={newContent.work_date || ''} onChange={(e) => setNewContent((p) => ({ ...p, work_date: e.target.value }))} />
-                    <div className="grid grid-cols-2 gap-3">
-                      <Input label="시작 시간" type="time" value={newContent.start_time || ''} onChange={(e) => setNewContent((p) => ({ ...p, start_time: e.target.value }))} />
-                      <Input label="종료 시간" type="time" value={newContent.end_time || ''} onChange={(e) => setNewContent((p) => ({ ...p, end_time: e.target.value }))} />
-                    </div>
-                    <Input label="사유" value={newContent.reason || ''} onChange={(e) => setNewContent((p) => ({ ...p, reason: e.target.value }))} placeholder="사유를 입력하세요" />
-                  </>
-                )}
+                {newDocType === 'overtime' && (() => {
+                  // 30분 단위 시간 옵션
+                  const timeOptions: { value: string; label: string }[] = [{ value: '', label: '선택' }]
+                  for (let h = 0; h < 24; h++) {
+                    for (const m of [0, 30]) {
+                      const v = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+                      timeOptions.push({ value: v, label: v })
+                    }
+                  }
+                  return (
+                    <>
+                      <Select
+                        label="근무 유형"
+                        value={newContent.overtime_type || ''}
+                        onChange={(e) => setNewContent((p) => ({ ...p, overtime_type: e.target.value }))}
+                        options={[
+                          { value: '', label: '선택' },
+                          { value: '연장근무', label: '연장근무' },
+                          { value: '야간근무', label: '야간근무' },
+                          { value: '휴일근무', label: '휴일근무' },
+                        ]}
+                      />
+                      <Input label="근무일" type="date" value={newContent.work_date || ''} onChange={(e) => setNewContent((p) => ({ ...p, work_date: e.target.value }))} />
+                      <div className="grid grid-cols-2 gap-3">
+                        <Select label="시작 시간 (30분 단위)" value={newContent.start_time || ''} onChange={(e) => setNewContent((p) => ({ ...p, start_time: e.target.value }))} options={timeOptions} />
+                        <Select label="종료 시간 (30분 단위)" value={newContent.end_time || ''} onChange={(e) => setNewContent((p) => ({ ...p, end_time: e.target.value }))} options={timeOptions} />
+                      </div>
+                      <Input label="사유" value={newContent.reason || ''} onChange={(e) => setNewContent((p) => ({ ...p, reason: e.target.value }))} placeholder="사유를 입력하세요" />
+                    </>
+                  )
+                })()}
                 {newDocType === 'expense' && (
                   <>
-                    <Input label="사용 일자" type="date" value={newContent.expense_date || ''} onChange={(e) => setNewContent((p) => ({ ...p, expense_date: e.target.value }))} />
-                    <Input label="사용 내역" value={newContent.description || ''} onChange={(e) => setNewContent((p) => ({ ...p, description: e.target.value }))} placeholder="사용 내역을 입력하세요" />
-                    <Select
-                      label="분류"
-                      value={newContent.category || ''}
-                      onChange={(e) => setNewContent((p) => ({ ...p, category: e.target.value }))}
-                      options={[
-                        { value: '', label: '선택' },
-                        { value: '교통비', label: '교통비' },
-                        { value: '식비', label: '식비' },
-                        { value: '접대비', label: '접대비' },
-                        { value: '소모품', label: '소모품' },
-                        { value: '기타', label: '기타' },
-                      ]}
-                    />
+                    {/* ① 지급 정보 */}
+                    <div className="bg-white border border-brand-200 rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-bold text-brand-700">① 지급할 총 금액 (VAT 포함)</p>
+                      <Input label="사용 일자" type="date" value={newContent.expense_date || ''} onChange={(e) => setNewContent((p) => ({ ...p, expense_date: e.target.value }))} />
+                      <Select
+                        label="분류"
+                        value={newContent.category || ''}
+                        onChange={(e) => setNewContent((p) => ({ ...p, category: e.target.value }))}
+                        options={[
+                          { value: '', label: '선택' },
+                          { value: '교통비', label: '교통비' },
+                          { value: '식비', label: '식비' },
+                          { value: '접대비', label: '접대비' },
+                          { value: '소모품', label: '소모품' },
+                          { value: '기타', label: '기타' },
+                        ]}
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <Input label="입금 은행" value={newContent.bank_name || ''} onChange={(e) => setNewContent((p) => ({ ...p, bank_name: e.target.value }))} placeholder="예: 국민은행" />
+                        <Input label="예금주" value={newContent.account_holder || ''} onChange={(e) => setNewContent((p) => ({ ...p, account_holder: e.target.value }))} placeholder="예금주명" />
+                        <Input label="계좌번호" value={newContent.account_number || ''} onChange={(e) => setNewContent((p) => ({ ...p, account_number: e.target.value }))} placeholder="계좌번호" />
+                      </div>
+                    </div>
+                    {/* ② 상세 내역 및 품목 */}
+                    <div className="bg-white border border-brand-200 rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-bold text-brand-700">② 상세 내역 및 품목</p>
+                      <Textarea label="지출 내역" value={newContent.description || ''} onChange={(e) => setNewContent((p) => ({ ...p, description: e.target.value }))} placeholder="지출 내역 (품목/단가/수량 등)" rows={4} />
+                      <Textarea label="지출 목적" value={newContent.purpose || ''} onChange={(e) => setNewContent((p) => ({ ...p, purpose: e.target.value }))} placeholder="지출의 목적과 사유" rows={3} />
+                      <Textarea label="특이사항" value={newContent.special_notes || ''} onChange={(e) => setNewContent((p) => ({ ...p, special_notes: e.target.value }))} placeholder="추가 설명/특이사항 (선택)" rows={2} />
+                    </div>
+                    {/* ③ 증빙 자료 첨부 — 하단 공통 첨부영역에서 업로드 */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-xs font-bold text-amber-800">③ 증빙 자료 첨부</p>
+                      <p className="text-[11px] text-amber-700 mt-1">영수증, 카드 명세서, 거래 명세서 등을 아래 첨부파일 영역에서 업로드하세요. (필수)</p>
+                    </div>
+                    {/* ④ 추가 전달 사항 */}
+                    <div className="bg-white border border-brand-200 rounded-lg p-3">
+                      <p className="text-xs font-bold text-brand-700 mb-2">④ 추가 전달 사항</p>
+                      <Textarea label="" value={newContent.additional_notes || ''} onChange={(e) => setNewContent((p) => ({ ...p, additional_notes: e.target.value }))} placeholder="결재자에게 전달할 추가 사항 (선택)" rows={3} />
+                    </div>
                   </>
                 )}
                 {newDocType === 'business_trip' && (
@@ -1649,6 +1704,44 @@ export default function ApprovalManagementPage() {
                     rows={10}
                     className="font-sans text-sm leading-relaxed"
                   />
+                )}
+              </div>
+
+              {/* 첨부파일 영역 (지출결의서 증빙, 일반 결재 첨부 등) */}
+              <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-bold text-gray-700">첨부파일 (영수증/이미지/증빙)</h4>
+                  <label className="cursor-pointer text-xs text-brand-600 hover:underline">
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      accept="image/*,application/pdf,.hwp,.doc,.docx,.xls,.xlsx,.zip"
+                      onChange={(e) => { handleAttachmentUpload(e.target.files); e.target.value = '' }}
+                    />
+                    {uploadingAtt ? '업로드 중…' : '+ 파일 선택'}
+                  </label>
+                </div>
+                {newAttachments.length === 0 ? (
+                  <p className="text-xs text-gray-500">파일은 최대 50MB. 영수증, 사진, PDF, 한글, 엑셀 등 업로드 가능.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {newAttachments.map((a, i) => {
+                      const isImage = a.type?.startsWith('image/')
+                      return (
+                        <li key={i} className="flex items-center justify-between gap-2 bg-white rounded-md border border-gray-200 px-2 py-1.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${isImage ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {isImage ? '이미지' : '파일'}
+                            </span>
+                            <span className="text-xs text-gray-700 truncate">{a.filename}</span>
+                            <span className="text-[10px] text-gray-400 shrink-0">{(a.size / 1024).toFixed(0)}KB</span>
+                          </div>
+                          <button type="button" onClick={() => removeAttachment(i)} className="text-xs text-red-500 hover:text-red-700 shrink-0">제거</button>
+                        </li>
+                      )
+                    })}
+                  </ul>
                 )}
               </div>
 
@@ -2091,7 +2184,7 @@ function ApprovalTemplateManager({
                   <option value="overtime">야간/휴일 근무</option>
                   <option value="expense">경비 청구</option>
                   <option value="business_trip">출장 신청</option>
-                  <option value="purchase">구매 요청</option>
+                  <option value="purchase">사무용품 요청</option>
                   <option value="personnel">인사 결재</option>
                   <option value="resign">퇴사</option>
                 </select>
@@ -2524,6 +2617,57 @@ function ApprovalTemplateManager({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── 결재 첨부파일 렌더링 (이미지는 미리보기, 그 외는 다운로드 링크) ─────
+function ApprovalAttachments({ attachments }: { attachments: any[] }) {
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    (async () => {
+      const map: Record<string, string> = {}
+      for (const a of attachments) {
+        const path = typeof a === 'string' ? a : a?.url
+        if (!path) continue
+        if (path.startsWith('http')) {
+          map[path] = path
+          continue
+        }
+        const { data } = await supabase.storage.from('approval-attachments').createSignedUrl(path, 3600)
+        if (data?.signedUrl) map[path] = data.signedUrl
+      }
+      setSignedUrls(map)
+    })()
+  }, [attachments])
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {attachments.map((a, idx) => {
+        const isObj = typeof a === 'object' && a !== null
+        const path: string = isObj ? a.url : a
+        const filename: string = isObj ? (a.filename || `첨부 ${idx + 1}`) : `첨부 ${idx + 1}`
+        const type: string = isObj ? (a.type || '') : ''
+        const isImage = type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|heic)$/i.test(filename)
+        const url = signedUrls[path] || ''
+        return (
+          <div key={idx} className="border border-gray-200 rounded-lg p-2 bg-white">
+            {isImage && url ? (
+              <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+                <img src={url} alt={filename} className="w-full h-32 object-cover rounded-md mb-1.5" loading="lazy" />
+                <p className="text-[11px] text-gray-600 truncate">{filename}</p>
+              </a>
+            ) : (
+              <a href={url} target="_blank" rel="noopener noreferrer"
+                 className="flex items-center gap-2 text-xs text-blue-600 hover:underline">
+                <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{filename}</span>
+              </a>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

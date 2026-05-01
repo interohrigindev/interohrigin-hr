@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer, Link2, Copy, EyeOff } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -64,6 +64,12 @@ export default function CandidateReport() {
   } | null>(null)
   const [duplicateCandidates, setDuplicateCandidates] = useState<{ id: string; name: string; status: string; created_at: string; job_posting_id: string | null }[]>([])
   const [jobTitle, setJobTitle] = useState<string | null>(null)
+  // 외부 공유 링크
+  const [shareLinks, setShareLinks] = useState<{ id: string; token: string; expires_at: string | null; is_active: boolean; note: string | null; created_at: string; view_count: number; last_viewed_at: string | null }[]>([])
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const [shareNote, setShareNote] = useState('')
+  const [shareExpiresDays, setShareExpiresDays] = useState<string>('14')
+  const [creatingShare, setCreatingShare] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -176,7 +182,65 @@ export default function CandidateReport() {
       setLoading(false)
     }
     fetch()
+    loadShareLinks()
   }, [id])
+
+  async function loadShareLinks() {
+    if (!id) return
+    const { data } = await supabase
+      .from('candidate_share_links')
+      .select('id, token, expires_at, is_active, note, created_at, view_count, last_viewed_at')
+      .eq('candidate_id', id)
+      .order('created_at', { ascending: false })
+    setShareLinks((data as any) || [])
+  }
+
+  async function createShareLink() {
+    if (!id || !profile?.id) return
+    setCreatingShare(true)
+    try {
+      const days = parseInt(shareExpiresDays, 10)
+      const expires_at = days > 0 ? new Date(Date.now() + days * 86400 * 1000).toISOString() : null
+      const { error } = await supabase.from('candidate_share_links').insert({
+        candidate_id: id,
+        expires_at,
+        note: shareNote.trim() || null,
+        created_by: profile.id,
+      })
+      if (error) throw error
+      toast('공유 링크가 생성되었습니다.', 'success')
+      setShareDialogOpen(false)
+      setShareNote('')
+      setShareExpiresDays('14')
+      await loadShareLinks()
+    } catch (e: any) {
+      toast(e.message || '공유 링크 생성 실패', 'error')
+    } finally {
+      setCreatingShare(false)
+    }
+  }
+
+  async function deactivateShareLink(linkId: string) {
+    if (!confirm('이 공유 링크를 비활성화하시겠습니까?')) return
+    const { error } = await supabase
+      .from('candidate_share_links')
+      .update({ is_active: false })
+      .eq('id', linkId)
+    if (error) {
+      toast(error.message, 'error')
+      return
+    }
+    toast('비활성화되었습니다.', 'success')
+    await loadShareLinks()
+  }
+
+  function copyShareUrl(token: string) {
+    const url = `${window.location.origin}/share/candidate/${token}`
+    navigator.clipboard.writeText(url).then(
+      () => toast('링크가 복사되었습니다.', 'success'),
+      () => toast('복사 실패. 직접 복사해주세요.', 'error'),
+    )
+  }
 
   async function runAIAnalysis() {
     if (!candidate) return
@@ -973,6 +1037,99 @@ ${surveyText || '응답 없음'}
           {CANDIDATE_STATUS_LABELS[candidate.status as CandidateStatus]}
         </Badge>
       </div>
+
+      {/* 외부 공유 링크 */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Link2 className="h-4 w-4" /> 외부 공유 링크
+            </CardTitle>
+            <Button size="sm" onClick={() => setShareDialogOpen(true)}>
+              <Link2 className="h-3.5 w-3.5 mr-1" /> 공유 링크 생성
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {shareLinks.length === 0 ? (
+            <p className="text-sm text-gray-500">생성된 공유 링크가 없습니다. 대표님 등 외부 인원에게 로그인 없이 지원자 정보를 보여줄 수 있습니다.</p>
+          ) : (
+            <ul className="space-y-2">
+              {shareLinks.map((lk) => {
+                const expired = lk.expires_at && new Date(lk.expires_at) < new Date()
+                const url = `${window.location.origin}/share/candidate/${lk.token}`
+                return (
+                  <li key={lk.id} className={`border rounded-lg p-3 ${!lk.is_active || expired ? 'bg-gray-50 border-gray-200 opacity-70' : 'border-gray-200'}`}>
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          {lk.note && <span className="text-sm font-medium text-gray-900">{lk.note}</span>}
+                          {!lk.is_active && <Badge variant="default" className="bg-gray-200 text-gray-600">비활성</Badge>}
+                          {expired && lk.is_active && <Badge variant="default" className="bg-amber-100 text-amber-700">만료</Badge>}
+                          {lk.is_active && !expired && <Badge variant="default" className="bg-emerald-100 text-emerald-700">활성</Badge>}
+                        </div>
+                        <p className="text-xs text-gray-500 break-all">{url}</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          생성 {formatDate(lk.created_at, 'yyyy.MM.dd')}
+                          {lk.expires_at && ` · 만료 ${formatDate(lk.expires_at, 'yyyy.MM.dd')}`}
+                          {' · '}조회 {lk.view_count}회
+                          {lk.last_viewed_at && ` (최근 ${formatDate(lk.last_viewed_at, 'yyyy.MM.dd')})`}
+                        </p>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button variant="outline" size="sm" onClick={() => copyShareUrl(lk.token)} disabled={!lk.is_active || !!expired}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                        {lk.is_active && (
+                          <Button variant="outline" size="sm" onClick={() => deactivateShareLink(lk.id)}>
+                            <EyeOff className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} title="공유 링크 생성">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">메모 (선택)</label>
+            <input
+              type="text"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              placeholder="예: 대표님 검토용"
+              value={shareNote}
+              onChange={(e) => setShareNote(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">유효 기간</label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              value={shareExpiresDays}
+              onChange={(e) => setShareExpiresDays(e.target.value)}
+            >
+              <option value="3">3일</option>
+              <option value="7">7일</option>
+              <option value="14">14일 (권장)</option>
+              <option value="30">30일</option>
+              <option value="0">만료 없음</option>
+            </select>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShareDialogOpen(false)}>취소</Button>
+            <Button onClick={createShareLink} disabled={creatingShare}>
+              {creatingShare && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+              생성
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">

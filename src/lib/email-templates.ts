@@ -364,6 +364,55 @@ export function interviewerNotificationEmail(
 }
 
 /* ────────────────────────────────────────────────────
+   새 지원자 접수 알림 (담당자 → hr_admin)
+   ──────────────────────────────────────────────────── */
+export function newCandidateNotificationEmail(
+  recipientName: string,
+  candidateName: string,
+  candidateEmail: string,
+  candidatePhone: string | null,
+  jobTitle: string,
+  source: string,
+  candidateId: string,
+): { subject: string; html: string } {
+  const adminUrl = `https://hr.interohriginhr.com/admin/recruitment/candidates/${candidateId}`
+  return {
+    subject: `[인터오리진아이앤씨] 신규 지원자 접수 — ${candidateName} (${jobTitle})`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#fff;">
+  <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+    <h1 style="color:#fff;font-size:20px;margin:0;">Interohrigin I&amp;C</h1>
+    <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">신규 지원자 접수</p>
+  </div>
+  <div style="padding:32px 28px;">
+    <p style="font-size:15px;color:#1f2937;margin:0 0 16px;"><strong>${recipientName}</strong>님, 새로운 지원자가 접수되었습니다.</p>
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+      <tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;width:100px;">지원자</td><td style="padding:10px 12px;font-size:14px;font-weight:600;color:#1f2937;">${candidateName}</td></tr>
+      <tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">포지션</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">${jobTitle}</td></tr>
+      <tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">이메일</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">${candidateEmail}</td></tr>
+      ${candidatePhone ? '<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">연락처</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">' + candidatePhone + '</td></tr>' : ''}
+      <tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:10px 12px;font-size:13px;color:#6b7280;">유입 경로</td><td style="padding:10px 12px;font-size:14px;color:#1f2937;">${source}</td></tr>
+    </table>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="${adminUrl}" style="display:inline-block;background:#6B3FA0;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">지원자 상세 보기</a>
+    </div>
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;margin-top:20px;">
+      <p style="font-size:13px;color:#1e40af;margin:0;">이력서 검토 후 사전 질의서 발송 또는 면접 일정을 잡아주세요.</p>
+    </div>
+  </div>
+  <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+    <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">인터오리진아이앤씨 채용팀 | admin@interohriginhr.com</p>
+  </div>
+</div>
+</body></html>
+    `.trim(),
+  }
+}
+
+/* ────────────────────────────────────────────────────
    연차 촉진 안내
    ──────────────────────────────────────────────────── */
 export function annualLeavePromotionEmail(

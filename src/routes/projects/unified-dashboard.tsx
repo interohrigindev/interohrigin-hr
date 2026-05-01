@@ -1487,15 +1487,57 @@ export default function UnifiedDashboard() {
         )}
       </div>
 
+      {/* ─── 참여인원별 기여도 (작업 처리량 기준) ──────────────────── */}
+      {assigneeWorkload.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Users className="h-4 w-4 text-brand-500" /> 참여인원별 기여도
+              <span className="text-[11px] font-normal text-gray-400">(현재 활성 프로젝트·작업 기준)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const total = assigneeWorkload.reduce((s, [, d]) => s + d.projects + d.tasks, 0) || 1
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {assigneeWorkload.map(([id, data]) => {
+                    const load = data.projects + data.tasks
+                    const pct = Math.round((load / total) * 100)
+                    return (
+                      <div key={id} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
+                        <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                          {data.name?.[0] || '?'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-xs font-medium text-gray-800 truncate">{data.name}</span>
+                            <span className="text-[10px] text-brand-600 font-bold shrink-0">{pct}%</span>
+                          </div>
+                          <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-brand-500 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </CardContent>
+        </Card>
+      )}
+
       {/* ─── Bottom Widgets ──────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* 주의 필요 */}
+        {/* 주의 필요 — 마감 임박/초과 프로젝트 단계 + 작업 */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2 text-red-700">
-              <AlertTriangle className="h-4 w-4" /> 주의 필요
+              <AlertTriangle className="h-4 w-4" /> 주의 필요 (지연·임박)
               <Badge variant="danger" className="text-[10px]">{delayedStages.length + overdueTasks.length}</Badge>
             </CardTitle>
+            <p className="text-[11px] text-gray-500">마감일이 지났거나 임박한 프로젝트 단계·작업입니다.</p>
           </CardHeader>
           <CardContent>
             {delayedStages.length === 0 && overdueTasks.length === 0 ? (
@@ -1541,12 +1583,13 @@ export default function UnifiedDashboard() {
           </CardContent>
         </Card>
 
-        {/* 담당자별 업무량 */}
+        {/* 담당자별 업무량 — 진행 중 프로젝트 수 + 진행 작업 수 + 지연 건수 */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Users className="h-4 w-4 text-violet-500" /> 담당자별 업무량
             </CardTitle>
+            <p className="text-[11px] text-gray-500">P=참여 프로젝트 / T=진행 작업 / 지연=마감 초과 작업</p>
           </CardHeader>
           <CardContent>
             {assigneeWorkload.length === 0 ? (
