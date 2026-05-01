@@ -122,6 +122,9 @@ export default function TabEmployees() {
 
   // 추가 소속 팀
   const [editExtraTeams, setEditExtraTeams] = useState<string[]>([])
+  // 직무 배정 (자기평가 항목 필터링용)
+  const [jobTypes, setJobTypes] = useState<{ id: string; name: string }[]>([])
+  const [editJobTypeId, setEditJobTypeId] = useState<string>('')
 
   // 비밀번호 변경
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
@@ -138,13 +141,15 @@ export default function TabEmployees() {
   const [togglingEval, setTogglingEval] = useState<Set<string>>(new Set())
 
   const fetchData = useCallback(async () => {
-    const [deptRes, empRes, periodRes] = await Promise.all([
+    const [deptRes, empRes, periodRes, jtRes] = await Promise.all([
       supabase.from('departments').select('*').order('name'),
       supabase.from('employees').select('*, department:departments(*)').order('name'),
       supabase.from('evaluation_periods').select('*').eq('status', 'in_progress').limit(1).single(),
+      supabase.from('job_types').select('id, name').order('sort_order'),
     ])
     setDepartments(deptRes.data ?? [])
     setEmployees(empRes.data ?? [])
+    setJobTypes(jtRes.data ?? [])
 
     if (periodRes.data) {
       setActivePeriodId(periodRes.data.id)
@@ -402,6 +407,14 @@ export default function TabEmployees() {
       .eq('employee_id', emp.id)
     setEditExtraTeams((teamsData || []).map((t: any) => t.department_id))
 
+    // 직무 배정 로드 (자기평가 항목 필터링용)
+    const { data: jobAssignment } = await supabase
+      .from('employee_job_assignments')
+      .select('job_type_id')
+      .eq('employee_id', emp.id)
+      .maybeSingle()
+    setEditJobTypeId(jobAssignment?.job_type_id ?? '')
+
     setEditForm({
       department_id: emp.department_id ?? '',
       role: emp.role,
@@ -452,6 +465,17 @@ export default function TabEmployees() {
       await supabase.from('employee_teams').insert(
         editExtraTeams.map((deptId) => ({ employee_id: editingEmployee.id, department_id: deptId }))
       )
+    }
+
+    // 직무 배정 동기화 (employee_job_assignments) — 자기평가 항목 필터링에 사용
+    await supabase.from('employee_job_assignments').delete().eq('employee_id', editingEmployee.id)
+    if (editJobTypeId) {
+      const { error: jobErr } = await supabase
+        .from('employee_job_assignments')
+        .insert({ employee_id: editingEmployee.id, job_type_id: editJobTypeId })
+      if (jobErr) {
+        toast('직무 배정 저장 실패: ' + jobErr.message, 'error')
+      }
     }
 
     // employee_profiles 업데이���
@@ -1368,7 +1392,7 @@ export default function TabEmployees() {
           <div className={`grid ${canViewSalary ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
             <Input
               id="edit-position"
-              label="직무"
+              label="직무 (텍스트 표시용)"
               value={editForm.position}
               onChange={(e) => setEditForm({ ...editForm, position: e.target.value })}
               placeholder="마케팅, 개발, 디자인 등"
@@ -1390,6 +1414,20 @@ export default function TabEmployees() {
                 placeholder="3000"
               />
             )}
+          </div>
+
+          {/* 평가 직무 (자기평가 항목 필터링) */}
+          <div>
+            <Select
+              id="edit-job-type"
+              label="평가 직무 (자기평가 항목 필터)"
+              options={[{ value: '', label: '미배정 (모든 항목 노출)' }, ...jobTypes.map((jt) => ({ value: jt.id, label: jt.name }))]}
+              value={editJobTypeId}
+              onChange={(e) => setEditJobTypeId(e.target.value)}
+            />
+            <p className="text-[11px] text-gray-500 mt-1">
+              ※ 자기평가 화면에서 보이는 평가 항목은 이 "평가 직무" 배정에 따라 결정됩니다. 위의 텍스트 직무와 별개입니다.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
