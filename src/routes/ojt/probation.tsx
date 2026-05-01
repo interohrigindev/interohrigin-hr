@@ -528,16 +528,16 @@ ${prevSummary}
                         if (diff < 0) {
                           return (
                             <span className="inline-flex flex-col items-center leading-tight">
-                              <span className="text-red-600 font-bold text-sm">D+{Math.abs(diff)} 초과</span>
-                              <span className="text-[10px] text-gray-400">{dateLabel}</span>
+                              <span className="text-brand-700 font-bold text-sm">D+{Math.abs(diff)} 초과</span>
+                              <span className="text-[10px] text-brand-400">{dateLabel}</span>
                             </span>
                           )
                         }
                         if (diff === 0) {
                           return (
                             <span className="inline-flex flex-col items-center leading-tight">
-                              <span className="text-amber-600 font-bold text-sm">D-day</span>
-                              <span className="text-[10px] text-gray-500">{dateLabel}</span>
+                              <span className="text-brand-700 font-bold text-sm">D-day</span>
+                              <span className="text-[10px] text-brand-500">{dateLabel}</span>
                             </span>
                           )
                         }
@@ -592,6 +592,8 @@ ${prevSummary}
                             const rdate = roundDates[sIdx]
                             const diff = rdate ? Math.ceil((rdate.getTime() - today.getTime()) / 86400000) : null
                             const isOverdue = diff !== null && diff < 0
+                            // D-day 도달(diff <= 0) + 미완료 → 보라(brand) 강조 / 그 외 활성 → 앰버
+                            const isDuePast = !isCompleted && diff !== null && diff <= 0
                             const canClick = !isCompleted && !!hire
                             const isAdminLevel = profile?.role && ['admin','ceo','director','division_head'].includes(profile.role)
                             return (
@@ -599,7 +601,8 @@ ${prevSummary}
                                 key={stg}
                                 className={[
                                   'py-2.5 px-3 text-center transition-colors',
-                                  isActive ? 'bg-amber-50 ring-2 ring-inset ring-amber-400 font-semibold' : '',
+                                  isDuePast ? 'bg-brand-50 ring-2 ring-inset ring-brand-400 font-semibold' :
+                                    isActive ? 'bg-amber-50 ring-2 ring-inset ring-amber-400 font-semibold' : '',
                                   canClick ? 'cursor-pointer hover:bg-brand-50' : '',
                                 ].filter(Boolean).join(' ')}
                                 onClick={canClick ? () => {
