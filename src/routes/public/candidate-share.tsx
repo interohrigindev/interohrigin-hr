@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Loader2, FileText, Mail, Phone, Briefcase, Calendar, AlertCircle, ExternalLink, CheckCircle2 } from 'lucide-react'
+import { Loader2, FileText, Mail, Phone, Briefcase, Calendar, AlertCircle, CheckCircle2, Download, ExternalLink } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 
@@ -53,11 +53,15 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: '불합격',
 }
 
+type FileInfo = { url: string; filename: string }
+
 export default function CandidateSharePage() {
   const { token } = useParams<{ token: string }>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<ShareData | null>(null)
+  const [resumeFile, setResumeFile] = useState<FileInfo | null>(null)
+  const [coverLetterFile, setCoverLetterFile] = useState<FileInfo | null>(null)
 
   useEffect(() => {
     if (!token) {
@@ -66,14 +70,29 @@ export default function CandidateSharePage() {
       return
     }
     ;(async () => {
-      const { data, error } = await supabase.rpc('get_shared_candidate', { p_token: token })
-      if (error) {
-        setError(error.message || '링크를 열 수 없습니다')
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('get_shared_candidate', { p_token: token })
+      if (rpcErr) {
+        setError(rpcErr.message || '링크를 열 수 없습니다')
         setLoading(false)
         return
       }
-      setData(data as ShareData)
+      const sd = rpcData as ShareData
+      setData(sd)
       setLoading(false)
+
+      // 이력서/자기소개서 signed URL 가져오기 (있는 경우만)
+      if (sd?.candidate?.resume_url) {
+        try {
+          const r = await fetch(`/api/share-file?token=${encodeURIComponent(token)}&kind=resume`)
+          if (r.ok) setResumeFile(await r.json())
+        } catch { /* 무시 */ }
+      }
+      if (sd?.candidate?.cover_letter_url) {
+        try {
+          const r = await fetch(`/api/share-file?token=${encodeURIComponent(token)}&kind=cover_letter`)
+          if (r.ok) setCoverLetterFile(await r.json())
+        } catch { /* 무시 */ }
+      }
     })()
   }, [token])
 
@@ -194,23 +213,56 @@ export default function CandidateSharePage() {
           </div>
         )}
 
+        {/* 이력서 (인라인 미리보기) */}
+        {(candidate.resume_url || resumeFile) && (
+          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-brand-500" />
+                이력서
+              </h2>
+              {resumeFile && (
+                <div className="flex items-center gap-2">
+                  <a href={resumeFile.url} download={resumeFile.filename}
+                     className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline">
+                    <Download className="h-3.5 w-3.5" /> 다운로드
+                  </a>
+                  <a href={resumeFile.url} target="_blank" rel="noopener noreferrer"
+                     className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600">
+                    <ExternalLink className="h-3.5 w-3.5" /> 새 탭
+                  </a>
+                </div>
+              )}
+            </div>
+            <FilePreview file={resumeFile} />
+          </div>
+        )}
+
         {/* 자기소개 */}
         {(candidate.cover_letter_text || candidate.cover_letter_url) && (
           <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
-            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <FileText className="h-4 w-4 text-brand-500" />
-              자기소개
-            </h2>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-brand-500" />
+                자기소개
+              </h2>
+              {coverLetterFile && (
+                <div className="flex items-center gap-2">
+                  <a href={coverLetterFile.url} download={coverLetterFile.filename}
+                     className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline">
+                    <Download className="h-3.5 w-3.5" /> 다운로드
+                  </a>
+                  <a href={coverLetterFile.url} target="_blank" rel="noopener noreferrer"
+                     className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600">
+                    <ExternalLink className="h-3.5 w-3.5" /> 새 탭
+                  </a>
+                </div>
+              )}
+            </div>
             {candidate.cover_letter_text && (
-              <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{candidate.cover_letter_text}</p>
+              <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed mb-3">{candidate.cover_letter_text}</p>
             )}
-            {candidate.cover_letter_url && (
-              <a href={candidate.cover_letter_url} target="_blank" rel="noopener noreferrer"
-                 className="inline-flex items-center gap-1.5 text-sm text-brand-600 hover:underline mt-2">
-                <ExternalLink className="h-3.5 w-3.5" />
-                자기소개서 파일 열기
-              </a>
-            )}
+            {coverLetterFile && <FilePreview file={coverLetterFile} />}
           </div>
         )}
 
@@ -255,6 +307,47 @@ export default function CandidateSharePage() {
           이 페이지는 외부 공유 링크입니다. 외부 유출 및 재공유를 금지합니다.
         </p>
       </div>
+    </div>
+  )
+}
+
+// 파일 인라인 미리보기 — PDF iframe / 이미지 / 그 외 다운로드 안내
+function FilePreview({ file }: { file: FileInfo | null }) {
+  if (!file) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center text-xs text-gray-400">
+        <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
+        파일을 불러오는 중...
+      </div>
+    )
+  }
+  const ext = (file.filename.split('.').pop() || '').toLowerCase()
+  const isPdf = ext === 'pdf'
+  const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)
+  if (isPdf) {
+    return (
+      <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+        <iframe src={file.url} title={file.filename} className="w-full h-[600px]" />
+      </div>
+    )
+  }
+  if (isImage) {
+    return (
+      <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 text-center">
+        <img src={file.url} alt={file.filename} className="max-w-full max-h-[600px] mx-auto" loading="lazy" />
+      </div>
+    )
+  }
+  // 미리보기 불가 (HWP/DOC/etc)
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
+      <FileText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+      <p className="text-sm text-gray-600 mb-1">{file.filename}</p>
+      <p className="text-xs text-gray-400 mb-3">이 형식은 브라우저에서 미리보기를 지원하지 않습니다. 다운로드 후 확인해주세요.</p>
+      <a href={file.url} download={file.filename}
+         className="inline-flex items-center gap-1.5 text-sm text-brand-600 hover:underline">
+        <Download className="h-3.5 w-3.5" /> 다운로드
+      </a>
     </div>
   )
 }
