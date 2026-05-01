@@ -25,13 +25,13 @@ CREATE POLICY candidate_share_links_admin_all ON public.candidate_share_links
   FOR ALL USING (
     EXISTS (
       SELECT 1 FROM public.employees e
-      WHERE e.user_id = auth.uid()
+      WHERE e.id = auth.uid()
         AND e.role IN ('admin','hr_admin','ceo','director','division_head')
     )
   ) WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.employees e
-      WHERE e.user_id = auth.uid()
+      WHERE e.id = auth.uid()
         AND e.role IN ('admin','hr_admin','ceo','director','division_head')
     )
   );
