@@ -244,7 +244,8 @@ export default function PeerReviewPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            {/* 한 줄 3명 그리드 — 인원이 적어도 3열 폭은 유지 (2명이면 3번째 칸 빈 채로 노출) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {Array.from(revieweeSummary.entries()).map(([revieweeId, data]) => {
                 const avg = data.total / data.count
                 const canSeeDetails = hasRole('director')
@@ -292,7 +293,8 @@ export default function PeerReviewPage() {
                           return (
                             <div className="bg-gray-50 rounded p-2.5">
                               <p className="text-[11px] font-semibold text-gray-600 mb-1.5">항목별 평균 (10점 만점)</p>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1">
+                              {/* 외부 3열 그리드로 카드가 좁아지므로 내부는 2열로 라벨·점수 자연스럽게 인접 */}
+                              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                                 {PEER_REVIEW_CRITERIA.map((c) => {
                                   const a = itemAggr[c.key]
                                   if (!a) return null
@@ -310,8 +312,8 @@ export default function PeerReviewPage() {
                           )
                         })()}
 
-                        {/* 평가자 블록 — 한 줄 3명 그리드 */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {/* 평가자 코멘트 — 외부 3열 그리드 안이라 내부는 한 줄씩 */}
+                        <div className="space-y-1.5">
                           {data.reviews.map((r) => (
                             <div key={r.id} className="bg-gray-50 rounded p-2 text-xs">
                               <div className="flex items-center justify-between mb-1">
