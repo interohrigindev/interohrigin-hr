@@ -156,6 +156,17 @@ export default function ApprovalManagementPage() {
   // P0 지출결의서/일반 결재 첨부파일
   const [newAttachments, setNewAttachments] = useState<{ url: string; filename: string; type: string; size: number }[]>([])
   const [uploadingAtt, setUploadingAtt] = useState(false)
+  // 웹/모바일 분리 — 데스크탑(lg+)은 전체 페이지뷰, 모바일은 모달
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   /* ── Role-based employee lists ── */
 
@@ -1488,14 +1499,14 @@ export default function ApprovalManagementPage() {
         </div>
       </Dialog>
 
-      {/* ── New Document Dialog ── 네이버웍스 Works Flow 런처 스타일 */}
+      {/* ── New Document — 데스크탑은 전체 페이지뷰, 모바일은 모달 ── */}
       <Dialog
         open={showNewDialog}
         onClose={() => { setShowNewDialog(false); resetNewForm() }}
         title={newDocType ? `새 결재 신청 — ${DOC_TYPE_CONFIG[newDocType]?.label}` : '결재 양식 선택'}
-        className="max-w-[calc(100vw-2rem)] sm:max-w-3xl"
+        className={isDesktop ? 'max-w-[calc(100vw-2rem)] lg:max-w-5xl xl:max-w-6xl' : 'max-w-[calc(100vw-2rem)] sm:max-w-3xl'}
       >
-        <div className="space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className={isDesktop ? 'space-y-4 max-h-[85vh] overflow-y-auto' : 'space-y-4 max-h-[75vh] overflow-y-auto'}>
           {/* Step 1: 런처 — 카테고리별 타일 그리드 */}
           {!newDocType && (
             <div className="space-y-5">

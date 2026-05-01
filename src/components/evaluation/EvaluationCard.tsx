@@ -62,24 +62,40 @@ export function EvaluationCard({
   // 팀별로 캐시 분리 — 같은 항목이라도 팀에 따라 예시 톤·기준이 다름
   const cacheTeamKey = (teamKey && teamKey.trim().length > 0) ? teamKey.trim() : 'default'
 
-  // 마운트 시 캐시된 예시 로드 → 없으면 자동 생성
+  // 마운트 시 캐시 로드 (팀별 → 'default' 폴백) → 모두 없으면 자동 생성
   useEffect(() => {
     if (!isGoalPhase || !itemId || isFullReadOnly) return
     let cancelled = false
     ;(async () => {
-      const { data: cached } = await supabase
+      // 1차: 팀별 캐시
+      const { data: teamCached } = await supabase
         .from('evaluation_item_examples')
         .select('examples')
         .eq('item_id', itemId)
         .eq('team_key', cacheTeamKey)
         .maybeSingle()
       if (cancelled) return
-      const cachedList = ((cached?.examples as string[] | null) || []).filter((s) => typeof s === 'string')
-      if (cachedList.length > 0) {
-        setAiExamples(cachedList)
+      const teamList = ((teamCached?.examples as string[] | null) || []).filter((s) => typeof s === 'string')
+      if (teamList.length > 0) {
+        setAiExamples(teamList)
         return
       }
-      // 캐시 없음 → AI 호출 후 저장 (같은 팀 멤버들에게 즉시 공유)
+      // 2차: default 캐시 (관리자가 사전 생성한 베이스라인)
+      if (cacheTeamKey !== 'default') {
+        const { data: defCached } = await supabase
+          .from('evaluation_item_examples')
+          .select('examples')
+          .eq('item_id', itemId)
+          .eq('team_key', 'default')
+          .maybeSingle()
+        if (cancelled) return
+        const defList = ((defCached?.examples as string[] | null) || []).filter((s) => typeof s === 'string')
+        if (defList.length > 0) {
+          setAiExamples(defList)
+          return
+        }
+      }
+      // 3차: 둘 다 없음 → 즉석 생성 후 팀별 캐시 저장
       await generateAndCache()
     })()
     return () => { cancelled = true }

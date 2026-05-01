@@ -18,7 +18,9 @@ import {
   ChevronDown,
   ToggleLeft,
   ToggleRight,
+  Sparkles,
 } from 'lucide-react'
+import { generateAIContentSafe } from '@/lib/ai-client'
 
 interface ItemFormData {
   name: string
@@ -235,11 +237,141 @@ export default function TabItems() {
     }).length
   }
 
+  // ─── AI 예시 일괄 사전 생성 (관리자 전용 도구) ─────────────────────
+  const [aiBulkOpen, setAiBulkOpen] = useState(false)
+  const [aiBulkRunning, setAiBulkRunning] = useState(false)
+  const [aiBulkProgress, setAiBulkProgress] = useState({ done: 0, total: 0 })
+  const [aiBulkLog, setAiBulkLog] = useState<string[]>([])
+
+  async function bulkGenerateExamples(force = false) {
+    setAiBulkRunning(true)
+    setAiBulkLog([])
+    const targetItems = items.filter((it) => it.is_active)
+    setAiBulkProgress({ done: 0, total: targetItems.length })
+
+    let done = 0
+    for (const it of targetItems) {
+      try {
+        if (!force) {
+          const { data: existing } = await supabase
+            .from('evaluation_item_examples')
+            .select('id')
+            .eq('item_id', it.id)
+            .eq('team_key', 'default')
+            .maybeSingle()
+          if (existing) {
+            setAiBulkLog((p) => [...p, `⏭ 스킵: ${it.name} (이미 있음)`])
+            done++
+            setAiBulkProgress({ done, total: targetItems.length })
+            continue
+          }
+        }
+        const evalType = (it as { evaluation_type?: string }).evaluation_type || null
+        const typeGuide = evalType === 'quantitative'
+          ? '[정량평가] 반드시 구체적인 숫자/수치 기준 포함 (건수, 비율, 시간 등). 측정 단위 명확.'
+          : evalType === 'qualitative'
+          ? '[정성평가] 정성 목표지만 객관적으로 판단 가능한 행동·산출물 기준. 모호한 형용사 금지.'
+          : '[혼합] 가능하면 수치 기준, 어려운 부분은 행동 기준.'
+
+        const prompt = `당신은 조직 성과관리 코치입니다. 자기평가 단계에서 직원이 작성할 수 있는 분기 목표 예시 3가지를 한국어로 제안하세요.
+
+[평가 항목]
+- 이름: ${it.name}
+- 설명: ${it.description || '(설명 없음)'}
+- 만점: ${it.max_score}점
+
+${typeGuide}
+
+[공통 규칙]
+- 60자 이내, 행동 중심, 제안형
+- 직원이 골라 부연 설명을 덧붙일 시작점
+
+[출력]
+각 줄을 "- " 으로 시작하는 마크다운 목록만 출력. 안내·서론·결론 금지.`
+
+        const res = await generateAIContentSafe('goal_examples', prompt, { maxAttempts: 2 })
+        if (!res.success || !res.content.trim()) {
+          setAiBulkLog((p) => [...p, `❌ 실패: ${it.name} (${res.error || 'AI 응답 없음'})`])
+        } else {
+          const lines = res.content
+            .split('\n')
+            .map((l) => l.replace(/^[\s\-•·*0-9.]+/, '').trim())
+            .filter((l) => l.length > 0 && l.length < 200)
+            .slice(0, 3)
+          if (lines.length === 0) {
+            setAiBulkLog((p) => [...p, `❌ 실패: ${it.name} (해석 불가)`])
+          } else {
+            // upsert
+            const { data: existing } = await supabase
+              .from('evaluation_item_examples')
+              .select('id')
+              .eq('item_id', it.id)
+              .eq('team_key', 'default')
+              .maybeSingle()
+            if (existing) {
+              await supabase.from('evaluation_item_examples')
+                .update({ examples: lines, generated_at: new Date().toISOString() })
+                .eq('id', (existing as { id: string }).id)
+            } else {
+              await supabase.from('evaluation_item_examples').insert({
+                item_id: it.id, team_key: 'default', examples: lines,
+              })
+            }
+            setAiBulkLog((p) => [...p, `✅ 완료: ${it.name}`])
+          }
+        }
+      } catch (e: any) {
+        setAiBulkLog((p) => [...p, `❌ 에러: ${it.name} (${e?.message || 'unknown'})`])
+      }
+      done++
+      setAiBulkProgress({ done, total: targetItems.length })
+    }
+    setAiBulkRunning(false)
+    toast(`사전 생성 완료 (${done}/${targetItems.length})`, 'success')
+  }
+
   if (loading) return <PageSpinner />
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-gray-500">업적평가 / 역량평가 항목을 관리합니다. 직무별 탭으로 항목을 구분하여 확인할 수 있습니다.</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <p className="text-sm text-gray-500">업적평가 / 역량평가 항목을 관리합니다. 직무별 탭으로 항목을 구분하여 확인할 수 있습니다.</p>
+        <button
+          type="button"
+          onClick={() => setAiBulkOpen(!aiBulkOpen)}
+          className="inline-flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 border border-brand-200 rounded-full px-3 py-1.5 bg-brand-50/40"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          AI 예시 사전 생성
+        </button>
+      </div>
+
+      {aiBulkOpen && (
+        <div className="rounded-xl border border-brand-200 bg-brand-50/30 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-bold text-brand-800 mb-1">AI 예시 목표 일괄 사전 생성</p>
+            <p className="text-xs text-gray-600">활성 평가 항목 전체에 대해 'default' 팀 키로 예시 목표를 미리 생성합니다. 직원이 자기평가 진입 시 바로 노출됩니다 (팀별 캐시 없으면 default 사용).</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button onClick={() => bulkGenerateExamples(false)} disabled={aiBulkRunning} size="sm">
+              {aiBulkRunning ? '생성 중…' : '없는 것만 생성'}
+            </Button>
+            <Button onClick={() => bulkGenerateExamples(true)} disabled={aiBulkRunning} size="sm" variant="outline">
+              전체 강제 재생성
+            </Button>
+            {aiBulkProgress.total > 0 && (
+              <span className="text-xs text-gray-600">진행: {aiBulkProgress.done}/{aiBulkProgress.total}</span>
+            )}
+          </div>
+          {aiBulkLog.length > 0 && (
+            <div className="max-h-48 overflow-y-auto bg-white rounded border border-gray-200 p-2 text-[11px] font-mono space-y-0.5">
+              {aiBulkLog.slice(-50).map((l, i) => (
+                <div key={i} className="text-gray-700">{l}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 직무별 탭 */}
       {jobTypes.length > 0 && (
