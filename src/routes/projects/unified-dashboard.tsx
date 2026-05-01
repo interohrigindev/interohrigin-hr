@@ -16,6 +16,7 @@ import { Select } from '@/components/ui/Select'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { RichEditor } from '@/components/ui/RichEditor'
+import AllocationChart from '@/components/projects/AllocationChart'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -1487,45 +1488,16 @@ export default function UnifiedDashboard() {
         )}
       </div>
 
-      {/* ─── 참여인원별 기여도 (작업 처리량 기준) ──────────────────── */}
-      {assigneeWorkload.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Users className="h-4 w-4 text-brand-500" /> 참여인원별 기여도
-              <span className="text-[11px] font-normal text-gray-400">(현재 활성 프로젝트·작업 기준)</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {(() => {
-              const total = assigneeWorkload.reduce((s, [, d]) => s + d.projects + d.tasks, 0) || 1
-              return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {assigneeWorkload.map(([id, data]) => {
-                    const load = data.projects + data.tasks
-                    const pct = Math.round((load / total) * 100)
-                    return (
-                      <div key={id} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
-                        <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0">
-                          {data.name?.[0] || '?'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-xs font-medium text-gray-800 truncate">{data.name}</span>
-                            <span className="text-[10px] text-brand-600 font-bold shrink-0">{pct}%</span>
-                          </div>
-                          <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-brand-500 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })()}
-          </CardContent>
-        </Card>
+      {/* ─── 참여인원별 기여도 (도넛 차트 + 완료율) ──────────────────── */}
+      {activeTasks.length > 0 && (
+        <AllocationChart
+          tasks={activeTasks.map((t) => ({
+            assignee_id: t.assignee_id,
+            assignee_name: getEmpName(t.assignee_id),
+            status: t.status,
+          }))}
+          employees={allEmployees}
+        />
       )}
 
       {/* ─── Bottom Widgets ──────────────────────────────────────── */}
