@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Textarea } from '@/components/ui/Textarea'
 import { SCORE_LABELS } from '@/lib/constants'
 import type { EvalPhase } from '@/hooks/useSelfEvaluation'
-import { CheckCircle, Sparkles } from 'lucide-react'
+import { CheckCircle, Sparkles, Shuffle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export interface EvaluationCardData {
@@ -32,16 +32,6 @@ interface EvaluationCardProps {
   evalType?: 'quantitative' | 'qualitative' | 'mixed' | null
 }
 
-// 풀에서 N개 랜덤 추출 (Fisher-Yates shuffle)
-function pickRandom<T>(arr: T[], n: number): T[] {
-  const copy = [...arr]
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[copy[i], copy[j]] = [copy[j], copy[i]]
-  }
-  return copy.slice(0, n)
-}
-
 const DISPLAY_COUNT = 3
 
 export function EvaluationCard({
@@ -62,10 +52,33 @@ export function EvaluationCard({
   const isEvalPhase = effectivePhase === 'quarterly_eval'
   const isFullReadOnly = effectivePhase === 'readonly' || readOnly
 
-  // 캐시에서 가져온 풀(최대 30개) → 매 마운트마다 랜덤 3개
+  // 캐시에서 가져온 풀(최대 30개) — 메모리에 보관 후 랜덤 3개씩 표시
+  const [pool, setPool] = useState<string[]>([])
   const [shownExamples, setShownExamples] = useState<string[]>([])
-  const [poolSize, setPoolSize] = useState<number>(0)
+  const [shownIndices, setShownIndices] = useState<number[]>([])
   const cacheTeamKey = (teamKey && teamKey.trim().length > 0) ? teamKey.trim() : 'default'
+
+  function reshuffleFromPool(allItems: string[], prevIndices: number[]) {
+    if (allItems.length <= DISPLAY_COUNT) {
+      // 풀이 3개 이하면 그대로
+      setShownExamples(allItems)
+      setShownIndices(allItems.map((_, i) => i))
+      return
+    }
+    // 직전과 다른 조합이 나오도록 — 가능하면 이전 인덱스를 회피
+    const allIndices = allItems.map((_, i) => i)
+    const candidates = allIndices.filter((i) => !prevIndices.includes(i))
+    const usable = candidates.length >= DISPLAY_COUNT ? candidates : allIndices
+    // shuffle
+    const shuffled = [...usable]
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+    const picked = shuffled.slice(0, DISPLAY_COUNT)
+    setShownIndices(picked)
+    setShownExamples(picked.map((i) => allItems[i]))
+  }
 
   // 마운트 시 캐시 풀 로드 (팀별 → 'default' 폴백). 즉석 생성 안 함.
   useEffect(() => {
@@ -80,9 +93,9 @@ export function EvaluationCard({
         .eq('team_key', cacheTeamKey)
         .maybeSingle()
       if (cancelled) return
-      let pool = ((teamCached?.examples as string[] | null) || []).filter((s) => typeof s === 'string')
+      let loadedPool = ((teamCached?.examples as string[] | null) || []).filter((s) => typeof s === 'string')
       // 2차: default 폴백
-      if (pool.length === 0 && cacheTeamKey !== 'default') {
+      if (loadedPool.length === 0 && cacheTeamKey !== 'default') {
         const { data: defCached } = await supabase
           .from('evaluation_item_examples')
           .select('examples')
@@ -90,10 +103,10 @@ export function EvaluationCard({
           .eq('team_key', 'default')
           .maybeSingle()
         if (cancelled) return
-        pool = ((defCached?.examples as string[] | null) || []).filter((s) => typeof s === 'string')
+        loadedPool = ((defCached?.examples as string[] | null) || []).filter((s) => typeof s === 'string')
       }
-      setPoolSize(pool.length)
-      setShownExamples(pickRandom(pool, DISPLAY_COUNT))
+      setPool(loadedPool)
+      reshuffleFromPool(loadedPool, [])
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -165,16 +178,29 @@ export function EvaluationCard({
             disabled={isFullReadOnly || isEvalPhase}
           />
 
-          {/* AI 예시 목표 — 사전 생성된 풀에서 랜덤 3개 (재생성 버튼 없음) */}
+          {/* AI 예시 목표 — 사전 생성된 풀에서 랜덤 3개 (직원 재생성 X, 다른 예시 보기 O) */}
           {isGoalPhase && !isFullReadOnly && shownExamples.length > 0 && (
             <div className="mt-2 rounded-lg border border-brand-200 bg-brand-50/40 p-3">
-              <p className="text-xs font-semibold text-brand-700 inline-flex items-center gap-1 mb-2">
-                <Sparkles className="h-3 w-3" />
-                AI 예시 — 클릭해서 적용 후 자신의 생각·구체 목표를 덧붙여주세요
-                {poolSize > DISPLAY_COUNT && (
-                  <span className="text-[10px] text-gray-400 ml-1">(풀 {poolSize}개 중 랜덤 {DISPLAY_COUNT}개 · 새로고침 시 변경)</span>
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <p className="text-xs font-semibold text-brand-700 inline-flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" />
+                  AI 예시 — 클릭해서 적용 후 자신의 생각·구체 목표를 덧붙여주세요
+                  {pool.length > DISPLAY_COUNT && (
+                    <span className="text-[10px] text-gray-400 ml-1">(풀 {pool.length}개 중 랜덤 {DISPLAY_COUNT}개)</span>
+                  )}
+                </p>
+                {pool.length > DISPLAY_COUNT && (
+                  <button
+                    type="button"
+                    onClick={() => reshuffleFromPool(pool, shownIndices)}
+                    className="text-[11px] text-brand-600 hover:text-brand-700 inline-flex items-center gap-1 border border-brand-200 rounded-full px-2 py-0.5 bg-white hover:bg-brand-50"
+                    title="같은 풀에서 다른 예시 보기 (AI 호출 없음)"
+                  >
+                    <Shuffle className="h-3 w-3" />
+                    다른 예시 보기
+                  </button>
                 )}
-              </p>
+              </div>
               <div className="space-y-1.5">
                 {shownExamples.map((s, i) => (
                   <button
