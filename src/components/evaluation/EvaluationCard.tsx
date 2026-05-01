@@ -59,17 +59,33 @@ export function EvaluationCard({
   const cacheTeamKey = (teamKey && teamKey.trim().length > 0) ? teamKey.trim() : 'default'
 
   function reshuffleFromPool(allItems: string[], prevIndices: number[]) {
-    if (allItems.length <= DISPLAY_COUNT) {
-      // 풀이 3개 이하면 그대로
-      setShownExamples(allItems)
-      setShownIndices(allItems.map((_, i) => i))
+    if (allItems.length === 0) {
+      setShownExamples([])
+      setShownIndices([])
       return
     }
-    // 직전과 다른 조합이 나오도록 — 가능하면 이전 인덱스를 회피
     const allIndices = allItems.map((_, i) => i)
+
+    // 풀이 표시 개수 이하: 인덱스 순서만 셔플 (내용은 동일하나 표시 순서 바뀜)
+    if (allItems.length <= DISPLAY_COUNT) {
+      const shuffled = [...allIndices]
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      }
+      // 직전과 동일한 순서면 한 번 더 시도
+      const sameAsPrev = shuffled.length === prevIndices.length && shuffled.every((v, i) => v === prevIndices[i])
+      if (sameAsPrev && shuffled.length > 1) {
+        ;[shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]]
+      }
+      setShownIndices(shuffled)
+      setShownExamples(shuffled.map((i) => allItems[i]))
+      return
+    }
+
+    // 풀이 충분: 가능하면 이전 인덱스 회피하여 새 조합
     const candidates = allIndices.filter((i) => !prevIndices.includes(i))
     const usable = candidates.length >= DISPLAY_COUNT ? candidates : allIndices
-    // shuffle
     const shuffled = [...usable]
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
