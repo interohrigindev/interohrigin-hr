@@ -16,7 +16,6 @@ import { Select } from '@/components/ui/Select'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { RichEditor } from '@/components/ui/RichEditor'
-import AllocationChart from '@/components/projects/AllocationChart'
 import { useProjectBoard } from '@/hooks/useProjectBoard'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -1487,18 +1486,6 @@ export default function UnifiedDashboard() {
           })
         )}
       </div>
-
-      {/* ─── 참여인원별 기여도 (도넛 차트 + 완료율) ──────────────────── */}
-      {activeTasks.length > 0 && (
-        <AllocationChart
-          tasks={activeTasks.map((t) => ({
-            assignee_id: t.assignee_id,
-            assignee_name: getEmpName(t.assignee_id),
-            status: t.status,
-          }))}
-          employees={allEmployees}
-        />
-      )}
 
       {/* ─── Bottom Widgets ──────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
