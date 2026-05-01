@@ -329,12 +329,16 @@ export default function SelfEvaluation() {
                 <EvaluationCard
                   key={item.id}
                   index={runningIndex}
+                  itemId={item.id}
                   name={item.name}
                   description={item.description}
                   maxScore={item.max_score}
                   data={formData[item.id] ?? { personal_goal: '', achievement_method: '', self_comment: '', score: null }}
                   onChange={(data) => updateItem(item.id, data)}
                   phase={currentPhase}
+                  teamKey={departmentName}
+                  jobTitle={(profile as { position?: string | null })?.position || null}
+                  evalType={item.evaluation_type}
                 />
               )
             })}
