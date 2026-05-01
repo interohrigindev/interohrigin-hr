@@ -602,7 +602,7 @@ ${prevSummary}
                                 className={[
                                   'py-2.5 px-3 text-center transition-colors',
                                   isDuePast ? 'bg-brand-50 ring-2 ring-inset ring-brand-400 font-semibold' :
-                                    isActive ? 'bg-amber-50 ring-2 ring-inset ring-amber-400 font-semibold' : '',
+                                    isActive ? 'animate-amber-blink font-semibold' : '',
                                   canClick ? 'cursor-pointer hover:bg-brand-50' : '',
                                 ].filter(Boolean).join(' ')}
                                 onClick={canClick ? () => {

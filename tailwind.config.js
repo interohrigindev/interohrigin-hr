@@ -12,11 +12,17 @@ export default {
       animation: {
         'fade-in': 'fadeIn 0.2s ease-out',
         'slide-up': 'slideUp 0.25s ease-out',
+        'amber-blink': 'amberBlink 1.6s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
         slideUp: { '0%': { transform: 'translateY(8px)', opacity: '0' }, '100%': { transform: 'translateY(0)', opacity: '1' } },
         bounceDot: { '0%, 80%, 100%': { transform: 'scale(0)' }, '40%': { transform: 'scale(1)' } },
+        // 노란 셀 깜박임: 배경/링이 진하게 → 옅게 → 진하게
+        amberBlink: {
+          '0%, 100%': { backgroundColor: 'rgb(254, 243, 199)', boxShadow: 'inset 0 0 0 2px rgb(251, 191, 36)' },
+          '50%':      { backgroundColor: 'rgb(255, 251, 235)', boxShadow: 'inset 0 0 0 2px rgba(251, 191, 36, 0.35)' },
+        },
       },
       colors: {
         brand: {
