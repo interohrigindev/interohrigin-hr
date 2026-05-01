@@ -185,11 +185,9 @@ export function EvaluationCard({
                 <p className="text-xs font-semibold text-brand-700 inline-flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
                   AI 예시 — 클릭해서 적용 후 자신의 생각·구체 목표를 덧붙여주세요
-                  {pool.length > DISPLAY_COUNT && (
-                    <span className="text-[10px] text-gray-400 ml-1">(풀 {pool.length}개 중 랜덤 {DISPLAY_COUNT}개)</span>
-                  )}
+                  <span className="text-[10px] text-gray-400 ml-1">(풀 {pool.length}개)</span>
                 </p>
-                {pool.length > DISPLAY_COUNT && (
+                {pool.length > 1 && (
                   <button
                     type="button"
                     onClick={() => reshuffleFromPool(pool, shownIndices)}
