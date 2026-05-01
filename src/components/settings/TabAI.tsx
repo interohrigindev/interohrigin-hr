@@ -44,6 +44,7 @@ const RECOMMENDED_PROVIDER: Record<string, 'gemini' | 'openai' | 'claude' | 'dee
   employee_profile_ai: 'gemini',
   ojt_mission: 'gemini',
   probation_eval: 'gemini',
+  goal_examples: 'gemini',
   work_chat: 'claude',
   daily_report: 'gemini',
   exit_analysis: 'gemini',
