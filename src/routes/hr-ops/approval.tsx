@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   FileCheck, Clock, CheckCircle, XCircle,
   Plus, Search, ChevronRight, User,
@@ -157,17 +158,35 @@ export default function ApprovalManagementPage() {
   // P0 지출결의서/일반 결재 첨부파일
   const [newAttachments, setNewAttachments] = useState<{ url: string; filename: string; type: string; size: number }[]>([])
   const [uploadingAtt, setUploadingAtt] = useState(false)
-  // 웹/모바일 분리 — 데스크탑(lg+)은 전체 페이지뷰, 모바일은 모달
-  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false
-  )
+  // URL ?new=1 이면 신청 페이지뷰 모드 (모달 대신 전체 페이지)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const isNewPageView = searchParams.get('new') === '1'
+
+  // URL 의 new 파라미터가 변경되면 다이얼로그 상태 동기화
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const mq = window.matchMedia('(min-width: 1024px)')
-    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
+    if (isNewPageView) {
+      setShowNewDialog(true)
+      // type 파라미터로 사전 선택
+      const type = searchParams.get('type')
+      if (type && type !== newDocType) {
+        setNewDocType(type)
+      }
+    } else {
+      setShowNewDialog(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNewPageView])
+
+  function openNewDocPage(docType?: string) {
+    const params: Record<string, string> = { new: '1' }
+    if (docType) params.type = docType
+    setSearchParams(params)
+  }
+
+  function closeNewDocPage() {
+    resetNewForm()
+    setSearchParams({})
+  }
 
   /* ── Role-based employee lists ── */
 
@@ -864,8 +883,7 @@ export default function ApprovalManagementPage() {
 
     toast('결재 신청이 완료되었습니다', 'success')
     setSaving(false)
-    setShowNewDialog(false)
-    resetNewForm()
+    closeNewDocPage()
     fetchData()
   }
 
@@ -1002,14 +1020,13 @@ export default function ApprovalManagementPage() {
                         key={key}
                         type="button"
                         onClick={() => {
-                          setNewDocType(key)
                           setNewApprovers({})
                           const tpl = templates.find((t) => t.doc_type === key)
                           if (tpl && ceo) {
                             const ceoStep = tpl.steps.find((s) => s.role === 'ceo')
                             if (ceoStep) setNewApprovers((prev) => ({ ...prev, ceo: ceo.id }))
                           }
-                          setShowNewDialog(true)
+                          openNewDocPage(key)
                         }}
                         className="group flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border border-gray-200 bg-gray-50/50 hover:border-brand-400 hover:bg-brand-50 hover:shadow-sm transition-all text-center"
                       >
@@ -1510,16 +1527,30 @@ export default function ApprovalManagementPage() {
         </div>
       </Dialog>
 
-      {/* ── New Document — 데스크탑은 거의 전체 화면(페이지뷰), 모바일은 모달 ── */}
-      <Dialog
-        open={showNewDialog}
-        onClose={() => { setShowNewDialog(false); resetNewForm() }}
-        title={newDocType ? `새 결재 신청 — ${DOC_TYPE_CONFIG[newDocType]?.label}` : '결재 양식 선택'}
-        className={isDesktop
-          ? 'max-w-[calc(100vw-2rem)] lg:!max-w-none lg:!w-[calc(100vw-3rem)] lg:!h-[calc(100vh-3rem)] lg:!rounded-md'
-          : 'max-w-[calc(100vw-2rem)] sm:max-w-3xl'}
-      >
-        <div className={isDesktop ? 'space-y-4 h-[calc(100vh-9rem)] overflow-y-auto pr-2' : 'space-y-4 max-h-[75vh] overflow-y-auto'}>
+      {/* ── New Document — 전체 페이지뷰 (모달 X) ── */}
+      {showNewDialog && (
+      <div className="fixed inset-0 z-30 bg-gray-50 overflow-y-auto">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <div className="sticky top-0 bg-gray-50 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 border-b border-gray-200 z-10 flex items-center justify-between mb-4 sm:mb-6">
+            <div className="flex items-center gap-2">
+              {newDocType && (
+                <button
+                  type="button"
+                  onClick={() => setNewDocType('')}
+                  className="text-sm text-gray-500 hover:text-brand-600 inline-flex items-center gap-1"
+                  title="양식 선택으로 돌아가기"
+                >
+                  ← 양식 선택
+                </button>
+              )}
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900">
+                {newDocType ? `새 결재 신청 — ${DOC_TYPE_CONFIG[newDocType]?.label}` : '결재 양식 선택'}
+              </h1>
+            </div>
+            <Button variant="ghost" onClick={closeNewDocPage}>닫기</Button>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+            <div className="space-y-4">
           {/* Step 1: 런처 — 카테고리별 타일 그리드 */}
           {!newDocType && (
             <div className="space-y-5">
@@ -1912,15 +1943,18 @@ export default function ApprovalManagementPage() {
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => { setShowNewDialog(false); resetNewForm() }}>취소</Button>
+                <Button variant="outline" onClick={closeNewDocPage}>취소</Button>
                 <Button onClick={handleCreateDocument} disabled={saving || !selectedTemplate}>
                   {saving ? '처리중...' : '신청'}
                 </Button>
               </div>
             </>
           )}
+            </div>
+          </div>
         </div>
-      </Dialog>
+      </div>
+      )}
     </div>
   )
 }
