@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Dialog } from '@/components/ui/Dialog'
 import { Textarea } from '@/components/ui/Textarea'
+import { RichEditor } from '@/components/ui/RichEditor'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
@@ -1341,10 +1342,11 @@ export default function ApprovalManagementPage() {
                   )
                 }
                 // 다른 양식은 기존 key-value 렌더링
+                const bodyHtml = (doc.content as Record<string, any>)?.body_html as string | undefined
                 return (
-                  <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
-                    <p className="text-xs font-medium text-gray-500 mb-2">신청 내용</p>
-                    {Object.entries(doc.content).map(([key, value]) => {
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                    <p className="text-xs font-medium text-gray-500 mb-1">신청 내용</p>
+                    {Object.entries(doc.content).filter(([k]) => k !== 'body_html').map(([key, value]) => {
                       const display = Array.isArray(value)
                         ? value.map((v) => typeof v === 'object' && v !== null
                             ? ((v as { title?: string; name?: string }).title || (v as { title?: string; name?: string }).name || JSON.stringify(v))
@@ -1359,6 +1361,15 @@ export default function ApprovalManagementPage() {
                         </div>
                       )
                     })}
+                    {bodyHtml && bodyHtml.trim().length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-200">
+                        <p className="text-xs font-medium text-gray-500 mb-1.5">상세 내역 및 품목</p>
+                        <div
+                          className="prose prose-sm max-w-none text-gray-800 [&_img]:rounded-md [&_img]:border [&_img]:border-gray-200 [&_img]:my-2"
+                          dangerouslySetInnerHTML={{ __html: bodyHtml }}
+                        />
+                      </div>
+                    )}
                   </div>
                 )
               })()}
@@ -1499,14 +1510,16 @@ export default function ApprovalManagementPage() {
         </div>
       </Dialog>
 
-      {/* ── New Document — 데스크탑은 전체 페이지뷰, 모바일은 모달 ── */}
+      {/* ── New Document — 데스크탑은 거의 전체 화면(페이지뷰), 모바일은 모달 ── */}
       <Dialog
         open={showNewDialog}
         onClose={() => { setShowNewDialog(false); resetNewForm() }}
         title={newDocType ? `새 결재 신청 — ${DOC_TYPE_CONFIG[newDocType]?.label}` : '결재 양식 선택'}
-        className={isDesktop ? 'max-w-[calc(100vw-2rem)] lg:max-w-5xl xl:max-w-6xl' : 'max-w-[calc(100vw-2rem)] sm:max-w-3xl'}
+        className={isDesktop
+          ? 'max-w-[calc(100vw-2rem)] lg:!max-w-none lg:!w-[calc(100vw-3rem)] lg:!h-[calc(100vh-3rem)] lg:!rounded-md'
+          : 'max-w-[calc(100vw-2rem)] sm:max-w-3xl'}
       >
-        <div className={isDesktop ? 'space-y-4 max-h-[85vh] overflow-y-auto' : 'space-y-4 max-h-[75vh] overflow-y-auto'}>
+        <div className={isDesktop ? 'space-y-4 h-[calc(100vh-9rem)] overflow-y-auto pr-2' : 'space-y-4 max-h-[75vh] overflow-y-auto'}>
           {/* Step 1: 런처 — 카테고리별 타일 그리드 */}
           {!newDocType && (
             <div className="space-y-5">
@@ -1670,17 +1683,21 @@ export default function ApprovalManagementPage() {
                         <Input label="계좌번호" value={newContent.account_number || ''} onChange={(e) => setNewContent((p) => ({ ...p, account_number: e.target.value }))} placeholder="계좌번호" />
                       </div>
                     </div>
-                    {/* ② 상세 내역 및 품목 */}
+                    {/* ② 상세 내역 및 품목 — 본문 RTE (게시판 본문처럼 글·이미지 인라인 삽입) */}
                     <div className="bg-white border border-brand-200 rounded-lg p-3 space-y-2">
                       <p className="text-xs font-bold text-brand-700">② 상세 내역 및 품목</p>
-                      <Textarea label="지출 내역" value={newContent.description || ''} onChange={(e) => setNewContent((p) => ({ ...p, description: e.target.value }))} placeholder="지출 내역 (품목/단가/수량 등)" rows={4} />
-                      <Textarea label="지출 목적" value={newContent.purpose || ''} onChange={(e) => setNewContent((p) => ({ ...p, purpose: e.target.value }))} placeholder="지출의 목적과 사유" rows={3} />
-                      <Textarea label="특이사항" value={newContent.special_notes || ''} onChange={(e) => setNewContent((p) => ({ ...p, special_notes: e.target.value }))} placeholder="추가 설명/특이사항 (선택)" rows={2} />
+                      <p className="text-[11px] text-gray-500">지출 내역·목적·특이사항을 자유롭게 작성하세요. 영수증/사진은 본문에 직접 이미지로 삽입할 수 있어 첨부파일을 따로 열어볼 필요가 없습니다.</p>
+                      <RichEditor
+                        value={newContent.body_html || ''}
+                        onChange={(html) => setNewContent((p) => ({ ...p, body_html: html }))}
+                        placeholder="예시:&#10;1. 지출 내역: 거래처 식사 (4명 × 2만원)&#10;2. 지출 목적: 신규 파트너십 협의&#10;3. 특이사항: VAT 별도&#10;&#10;도구바의 이미지 버튼으로 영수증 사진을 본문에 직접 삽입할 수 있습니다."
+                        minHeight="220px"
+                      />
                     </div>
-                    {/* ③ 증빙 자료 첨부 — 하단 공통 첨부영역에서 업로드 */}
+                    {/* ③ 증빙 자료 (선택 보조 첨부) */}
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                      <p className="text-xs font-bold text-amber-800">③ 증빙 자료 첨부</p>
-                      <p className="text-[11px] text-amber-700 mt-1">영수증, 카드 명세서, 거래 명세서 등을 아래 첨부파일 영역에서 업로드하세요. (필수)</p>
+                      <p className="text-xs font-bold text-amber-800">③ 증빙 자료 (보조)</p>
+                      <p className="text-[11px] text-amber-700 mt-1">위 본문에 이미지로 직접 삽입하는 것을 권장합니다. PDF/HWP 등 본문 삽입이 어려운 자료만 아래 첨부파일 영역에서 업로드하세요.</p>
                     </div>
                     {/* ④ 추가 전달 사항 */}
                     <div className="bg-white border border-brand-200 rounded-lg p-3">

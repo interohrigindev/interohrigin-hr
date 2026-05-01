@@ -273,7 +273,7 @@ export default function TabItems() {
           ? '[정성평가] 정성 목표지만 객관적으로 판단 가능한 행동·산출물 기준. 모호한 형용사 금지.'
           : '[혼합] 가능하면 수치 기준, 어려운 부분은 행동 기준.'
 
-        const prompt = `당신은 조직 성과관리 코치입니다. 자기평가 단계에서 직원이 작성할 수 있는 분기 목표 예시 3가지를 한국어로 제안하세요.
+        const prompt = `당신은 조직 성과관리 코치입니다. 자기평가 단계에서 직원이 작성할 수 있는 분기 목표 예시 **30가지**를 한국어로 다양하게 제안하세요.
 
 [평가 항목]
 - 이름: ${it.name}
@@ -283,11 +283,12 @@ export default function TabItems() {
 ${typeGuide}
 
 [공통 규칙]
-- 60자 이내, 행동 중심, 제안형
+- 각 예시는 60자 이내, 행동 중심, 제안형
+- 30개 모두 서로 다른 관점·접근·수치를 사용해 다양하게 (반복·유사 표현 금지)
 - 직원이 골라 부연 설명을 덧붙일 시작점
 
 [출력]
-각 줄을 "- " 으로 시작하는 마크다운 목록만 출력. 안내·서론·결론 금지.`
+정확히 30줄. 각 줄을 "- " 으로 시작하는 마크다운 목록만 출력. 안내·서론·결론·번호·인덱스 금지.`
 
         const res = await generateAIContentSafe('goal_examples', prompt, { maxAttempts: 2 })
         if (!res.success || !res.content.trim()) {
@@ -297,7 +298,7 @@ ${typeGuide}
             .split('\n')
             .map((l) => l.replace(/^[\s\-•·*0-9.]+/, '').trim())
             .filter((l) => l.length > 0 && l.length < 200)
-            .slice(0, 3)
+            .slice(0, 30) // 풀 30개 캐시
           if (lines.length === 0) {
             setAiBulkLog((p) => [...p, `❌ 실패: ${it.name} (해석 불가)`])
           } else {
@@ -349,8 +350,8 @@ ${typeGuide}
       {aiBulkOpen && (
         <div className="rounded-xl border border-brand-200 bg-brand-50/30 p-4 space-y-3">
           <div>
-            <p className="text-sm font-bold text-brand-800 mb-1">AI 예시 목표 일괄 사전 생성</p>
-            <p className="text-xs text-gray-600">활성 평가 항목 전체에 대해 'default' 팀 키로 예시 목표를 미리 생성합니다. 직원이 자기평가 진입 시 바로 노출됩니다 (팀별 캐시 없으면 default 사용).</p>
+            <p className="text-sm font-bold text-brand-800 mb-1">AI 예시 목표 일괄 사전 생성 (30개 풀)</p>
+            <p className="text-xs text-gray-600">활성 평가 항목별로 <strong>30개의 다양한 예시 목표</strong>를 사전 생성합니다. 직원 자기평가 화면에서는 30개 중 매번 랜덤 3개만 노출되어 토큰 사용 과부하를 방지합니다 (직원 재생성 불가).</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Button onClick={() => bulkGenerateExamples(false)} disabled={aiBulkRunning} size="sm">
