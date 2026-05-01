@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Sparkles, Loader2, AlertTriangle } from 'lucide-react'
+import { Plus, Sparkles, Loader2, AlertTriangle, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
 import { Button } from '@/components/ui/Button'
@@ -159,6 +159,26 @@ export default function ProbationManage() {
 
   function getTotalScore(scoreObj: Record<string, number>): number {
     return PROBATION_CRITERIA.reduce((sum, c) => sum + (scoreObj[c.key] || 0), 0)
+  }
+
+  // 평가 삭제 — admin/ceo/director/division_head 만 가능 (RLS 정책에 의해 강제됨)
+  async function deleteEvaluations(employeeId: string, stage: ProbationStage, employeeName: string, stageLabel: string) {
+    const canDelete = profile?.role && ['admin','ceo','director','division_head'].includes(profile.role)
+    if (!canDelete) { toast('삭제 권한이 없습니다 (관리자/대표/이사/본부장만 가능).', 'error'); return }
+
+    const targets = evaluations.filter((ev) => ev.employee_id === employeeId && ev.stage === stage)
+    if (targets.length === 0) { toast('삭제할 평가가 없습니다.', 'error'); return }
+    const evaluatorList = targets.map((t) => {
+      const evname = employees.find((e) => e.id === t.evaluator_id)?.name || '미상'
+      return `${EVALUATOR_LABELS[t.evaluator_role as ProbationEvaluatorRole] || t.evaluator_role} (${evname})`
+    }).join(', ')
+    if (!confirm(`${employeeName} - ${stageLabel} 평가 ${targets.length}건을 삭제합니다.\n\n작성자: ${evaluatorList}\n\n복구할 수 없습니다. 계속하시겠습니까?`)) return
+
+    const ids = targets.map((t) => t.id)
+    const { error } = await supabase.from('probation_evaluations').delete().in('id', ids)
+    if (error) { toast(`삭제 실패: ${error.message}`, 'error'); return }
+    toast(`${targets.length}건 삭제되었습니다.`, 'success')
+    fetchData()
   }
 
   async function generateAIAssessment() {
@@ -423,11 +443,27 @@ ${prevSummary}
                         return active ? active.stage : null
                       })()
 
+                      const canDeleteRole = profile?.role && ['admin','ceo','director','division_head'].includes(profile.role)
                       const getRoundCell = (stage: string, roundDate: Date | null) => {
                         const stageEvals = empEvals.filter((ev) => ev.stage === stage)
                         if (stageEvals.length > 0) {
                           const avg = stageEvals.reduce((sum, ev) => sum + getTotalScore(ev.scores as Record<string, number>), 0) / stageEvals.length
-                          return <span className="text-sm font-bold text-emerald-600">{avg.toFixed(0)}점 완료</span>
+                          const stageLabel = stage === 'round1' ? '1회차' : stage === 'round2' ? '2회차' : '3회차'
+                          return (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-sm font-bold text-emerald-600">{avg.toFixed(0)}점 완료</span>
+                              {canDeleteRole && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); deleteEvaluations(emp.id, stage as ProbationStage, emp.name, stageLabel) }}
+                                  className="text-gray-300 hover:text-red-500 transition-colors"
+                                  title={`${emp.name} ${stageLabel} 평가 삭제`}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              )}
+                            </span>
+                          )
                         }
                         if (!roundDate) return <span className="text-gray-400">-</span>
                         const diff = Math.ceil((roundDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
