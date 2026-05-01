@@ -133,9 +133,9 @@ export default function ProbationManage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   // ─── New evaluation ───────────────────────────────────────────
-  function openNewEval() {
-    setSelectedEmployeeId('')
-    setSelectedStage('round1')
+  function openNewEval(empId?: string, stage?: ProbationStage) {
+    setSelectedEmployeeId(empId || '')
+    setSelectedStage(stage || 'round1')
     setSelectedRole('leader')
     setScores(Object.fromEntries(PROBATION_CRITERIA.map((c) => [c.key, 15])))
     setComments('')
@@ -147,6 +147,10 @@ export default function ProbationManage() {
     setRecommendation('continue')
     setAiAssessment('')
     setEvalDialogOpen(true)
+    // 폼 영역으로 스크롤 (DOM 렌더 후)
+    setTimeout(() => {
+      document.getElementById('probation-eval-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 100)
   }
 
   function updateScore(key: string, value: number) {
@@ -298,7 +302,7 @@ ${prevSummary}
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">수습 단계별 평가</h1>
-        <Button className="shrink-0" onClick={openNewEval}><Plus className="h-4 w-4 mr-1" /> 새 평가</Button>
+        <Button className="shrink-0" onClick={() => openNewEval()}><Plus className="h-4 w-4 mr-1" /> 새 평가</Button>
       </div>
 
       {/* Info banner */}
@@ -356,14 +360,20 @@ ${prevSummary}
           return { allowed: true }
         }
 
-        // D-day 임박 순 정렬: 활성 회차 일자가 가까운 직원 우선
+        // 정렬: 다가오는 평가(D-) 작은 순 → 지난 평가(D+) 작은 순 → 모두 완료(맨 아래)
+        // diff = 활성 회차 일자 - 오늘 (음수=지남 / 양수=다가옴 / 모두 완료=null)
+        const sortKey = (emp: typeof probEmpsRaw[number]) => {
+          const r = getActiveRound(buildRounds(emp))
+          if (!r || !r.date) return { group: 3, value: 0 } // 모두 완료
+          const diff = Math.ceil((r.date.getTime() - today.getTime()) / 86400000)
+          if (diff >= 0) return { group: 1, value: diff }   // 다가옴 → 작은 D- 우선
+          return { group: 2, value: -diff }                  // 지남 → 작은 D+ (즉, 최근에 지난 것) 우선
+        }
         const probEmps = [...probEmpsRaw].sort((a, b) => {
-          const ra = getActiveRound(buildRounds(a))
-          const rb = getActiveRound(buildRounds(b))
-          const da = ra?.date ? ra.date.getTime() - today.getTime() : Number.MAX_SAFE_INTEGER
-          const db = rb?.date ? rb.date.getTime() - today.getTime() : Number.MAX_SAFE_INTEGER
-          // 음수(초과) 가 먼저 (절대값 작은 순), 양수는 작은 순
-          return Math.abs(da) - Math.abs(db)
+          const ka = sortKey(a)
+          const kb = sortKey(b)
+          if (ka.group !== kb.group) return ka.group - kb.group
+          return ka.value - kb.value
         })
 
         // 미사용 변수 경고 회피 (canEvaluate 는 handleSave 에서 직접 사용)
@@ -406,16 +416,11 @@ ${prevSummary}
                         new Date(hire.getTime() + 70 * 24 * 60 * 60 * 1000),
                       ] : [null, null, null]
 
-                      // 활성 회차 = 가장 작은 미완료 회차 + 시작일~7일 윈도우 내
+                      // 활성 회차 = 가장 작은 미완료 회차 (윈도우 무관 — 항상 강조)
                       const activeStage: ProbationStage | null = (() => {
                         const rounds = buildRounds(emp)
                         const active = getActiveRound(rounds)
-                        if (!active || !active.date) return null
-                        const start = active.date.getTime()
-                        const end = start + ACTIVE_WINDOW_DAYS * 86400 * 1000
-                        const now = today.getTime()
-                        if (now >= start && now <= end) return active.stage
-                        return null
+                        return active ? active.stage : null
                       })()
 
                       const getRoundCell = (stage: string, roundDate: Date | null) => {
@@ -486,9 +491,27 @@ ${prevSummary}
                             {emp.annual_salary ? `${(emp.annual_salary / 10000).toFixed(0)}만원` : '-'}
                           </td>
                           <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(hire)}</td>
-                          <td className={`py-2.5 px-3 text-center ${activeStage === 'round1' ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''}`}>{getRoundCell('round1', roundDates[0])}</td>
-                          <td className={`py-2.5 px-3 text-center ${activeStage === 'round2' ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''}`}>{getRoundCell('round2', roundDates[1])}</td>
-                          <td className={`py-2.5 px-3 text-center ${activeStage === 'round3' ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''}`}>{getRoundCell('round3', roundDates[2])}</td>
+                          {(['round1','round2','round3'] as const).map((stg, sIdx) => {
+                            const isActive = activeStage === stg
+                            const stageEvals = empEvals.filter((ev) => ev.stage === stg)
+                            const isCompleted = stageEvals.length > 0
+                            // 클릭 가능 조건: 미완료 + 입사일 존재
+                            const canClick = !isCompleted && !!hire
+                            return (
+                              <td
+                                key={stg}
+                                className={[
+                                  'py-2.5 px-3 text-center transition-colors',
+                                  isActive ? 'bg-amber-50 ring-2 ring-inset ring-amber-400 font-semibold' : '',
+                                  canClick ? 'cursor-pointer hover:bg-brand-50' : '',
+                                ].filter(Boolean).join(' ')}
+                                onClick={canClick ? () => openNewEval(emp.id, stg) : undefined}
+                                title={canClick ? `${emp.name} - ${stg === 'round1' ? '1회차' : stg === 'round2' ? '2회차' : '3회차'} 평가 작성` : undefined}
+                              >
+                                {getRoundCell(stg, roundDates[sIdx])}
+                              </td>
+                            )
+                          })}
                           <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(endDate)}</td>
                         </tr>
                       )
@@ -503,7 +526,7 @@ ${prevSummary}
 
       {/* ─── 인라인 평가 폼 ───────────────────────────────────────── */}
       {evalDialogOpen && (
-        <Card>
+        <Card id="probation-eval-form">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>수습 평가 작성</CardTitle>
