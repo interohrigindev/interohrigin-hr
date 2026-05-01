@@ -292,15 +292,16 @@ export default function PeerReviewPage() {
                           return (
                             <div className="bg-gray-50 rounded p-2.5">
                               <p className="text-[11px] font-semibold text-gray-600 mb-1.5">항목별 평균 (10점 만점)</p>
-                              <div className="grid grid-cols-2 gap-1.5">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1">
                                 {PEER_REVIEW_CRITERIA.map((c) => {
                                   const a = itemAggr[c.key]
                                   if (!a) return null
                                   const avg = a.sum / a.count
                                   return (
-                                    <div key={c.key} className="flex items-center justify-between text-xs">
-                                      <span className="text-gray-600">{c.label}</span>
-                                      <span className="font-medium text-brand-600">{avg.toFixed(1)}/10</span>
+                                    <div key={c.key} className="flex items-baseline gap-1.5 text-xs">
+                                      <span className="text-gray-600 truncate">{c.label}</span>
+                                      <span className="font-semibold text-brand-600 shrink-0">{avg.toFixed(1)}</span>
+                                      <span className="text-[10px] text-gray-400 shrink-0">/10</span>
                                     </div>
                                   )
                                 })}
