@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, BookOpen, Sparkles, Loader2, Users, CheckCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, BookOpen, Sparkles, Loader2, Users, CheckCircle, Eye } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -643,6 +643,14 @@ correct_answer는 0부터 시작하는 정답 인덱스입니다.
                     {p.name}
                   </CardTitle>
                   <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => window.open(`/my/ojt/${p.id}?preview=1`, '_blank')}
+                      title="학습자 화면 미리보기"
+                    >
+                      <Eye className="h-4 w-4 text-brand-500" />
+                    </Button>
                     <Button variant="ghost" size="sm" onClick={() => openEnrollDialog(p.id)} title="수강생 관리">
                       <Users className="h-4 w-4" />
                     </Button>

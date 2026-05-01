@@ -110,6 +110,12 @@ const standaloneItems: NavItem[] = [
     label: '게시판',
     icon: <FileText className="h-5 w-5" />,
   },
+  // OJT 학습자(enrollment 보유 직원)에게만 노출 — Sidebar 내부 필터에서 처리
+  {
+    to: '/my/ojt',
+    label: '내 OJT',
+    icon: <GraduationCap className="h-5 w-5" />,
+  },
   // D2-1: '나의 인수인계' → 프로젝트 그룹 하위로 이동
 ]
 
@@ -230,6 +236,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [messengerUnread, setMessengerUnread] = useState(0)
   const [allowedMenus, setAllowedMenus] = useState<string[] | null>(null) // null = 로딩중 또는 권한 미설정 (전체 허용)
+  const [hasOjtEnrollment, setHasOjtEnrollment] = useState(false)
 
   // Fetch menu permissions
   useEffect(() => {
@@ -250,6 +257,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     }
 
     fetchMenuPermissions()
+  }, [profile?.id])
+
+  // OJT enrollment 보유 여부 — "내 OJT" 사이드바 노출 조건
+  useEffect(() => {
+    if (!profile?.id) return
+    ;(async () => {
+      const { count } = await supabase
+        .from('ojt_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('employee_id', profile.id)
+      setHasOjtEnrollment((count || 0) > 0)
+    })()
   }, [profile?.id])
 
   // Fetch unread count for messenger badge
@@ -315,7 +334,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }))
   }
 
-  const visibleStandaloneItems = standaloneItems.filter(isItemVisible)
+  const visibleStandaloneItems = standaloneItems.filter((item) => {
+    // "내 OJT" 는 enrollment 보유 직원에게만 노출
+    if (typeof item.to === 'string' && item.to === '/my/ojt' && !hasOjtEnrollment) return false
+    return isItemVisible(item)
+  })
   const visibleGroups = navGroups.filter(isGroupVisible)
   const visibleBottomItems = bottomItems.filter(isItemVisible)
 

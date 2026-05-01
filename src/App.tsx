@@ -42,6 +42,8 @@ import RecruitmentSettings from '@/routes/recruitment/settings'
 import OJTPrograms from '@/routes/ojt/programs'
 import MentorManage from '@/routes/ojt/mentor'
 import OJTWeeklyReports from '@/routes/ojt/weekly-reports'
+import MyOJT from '@/routes/ojt/my-ojt'
+import MyOJTDetail from '@/routes/ojt/my-ojt-detail'
 import EvaluationHub from '@/routes/evaluation-hub'
 import ProbationManage from '@/routes/ojt/probation'
 import ProbationResults from '@/routes/ojt/probation-results'
@@ -217,6 +219,9 @@ function App() {
               <Route path="admin/ojt/mentor" element={<AdminRoute><MentorManage /></AdminRoute>} />
               <Route path="admin/ojt/weekly-reports" element={<AdminRoute><OJTWeeklyReports /></AdminRoute>} />
               <Route path="ojt/weekly" element={<OJTWeeklyReports />} />
+              {/* 학습자 화면 (관리자 미리보기 ?preview=1 도 동일 라우트) */}
+              <Route path="my/ojt" element={<MyOJT />} />
+              <Route path="my/ojt/:programId" element={<MyOJTDetail />} />
               <Route path="evaluation" element={<EvaluationHub />} />
               {/* C4: 일반 직원용 — 동일 컴포넌트, 페이지 내부에서 역할별 분기 */}
               <Route path="my/mentorship" element={<MentorManage />} />

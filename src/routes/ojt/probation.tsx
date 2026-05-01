@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Sparkles, Loader2, AlertTriangle, Trash2 } from 'lucide-react'
+import { Plus, Sparkles, Loader2, AlertTriangle, Trash2, Lock, RotateCcw, Pencil } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
 import { Button } from '@/components/ui/Button'
@@ -96,19 +96,25 @@ export default function ProbationManage() {
 
   // employee_teams: 복수 소속 팀 매핑
   const [employeeTeams, setEmployeeTeams] = useState<{ employee_id: string; department_id: string }[]>([])
+  // 회차 마감 처리 (관리자 skip)
+  const [closures, setClosures] = useState<{ employee_id: string; stage: string; reason: string | null; closed_at: string }[]>([])
+  // 클릭한 셀에 대해 평가/마감 선택 다이얼로그
+  const [cellAction, setCellAction] = useState<{ empId: string; empName: string; stage: ProbationStage; stageLabel: string; isOverdue: boolean } | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [evalRes, empRes, deptRes, hrRes, teamsRes] = await Promise.all([
+    const [evalRes, empRes, deptRes, hrRes, teamsRes, closuresRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position').eq('is_active', true).order('name'),
       supabase.from('departments').select('id, name'),
       supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
       supabase.from('employee_teams').select('employee_id, department_id'),
+      supabase.from('probation_round_closures').select('employee_id, stage, reason, closed_at'),
     ])
 
     if (deptRes.data) setDepartments(deptRes.data)
     if (teamsRes.data) setEmployeeTeams(teamsRes.data)
+    if (closuresRes.data) setClosures(closuresRes.data as any)
 
     if (empRes.data) {
       // HR 상세 정보 병합
@@ -178,6 +184,31 @@ export default function ProbationManage() {
     const { error } = await supabase.from('probation_evaluations').delete().in('id', ids)
     if (error) { toast(`삭제 실패: ${error.message}`, 'error'); return }
     toast(`${targets.length}건 삭제되었습니다.`, 'success')
+    fetchData()
+  }
+
+  // 회차 마감 처리 — 평가 시기 초과로 작성되지 않은 회차를 skip 처리
+  async function closeRound(employeeId: string, stage: ProbationStage, reason?: string) {
+    if (!profile?.id) return
+    const { error } = await supabase.from('probation_round_closures').insert({
+      employee_id: employeeId,
+      stage,
+      reason: reason || null,
+      closed_by: profile.id,
+    })
+    if (error) { toast(`마감 처리 실패: ${error.message}`, 'error'); return }
+    toast('회차가 마감 처리되었습니다.', 'success')
+    fetchData()
+  }
+
+  // 마감 취소
+  async function reopenClosure(employeeId: string, stage: ProbationStage, employeeName: string, stageLabel: string) {
+    const canDelete = profile?.role && ['admin','ceo','director','division_head'].includes(profile.role)
+    if (!canDelete) { toast('권한이 없습니다.', 'error'); return }
+    if (!confirm(`${employeeName} - ${stageLabel} 마감을 취소합니다. 다시 평가 가능 상태로 돌립니다. 계속하시겠습니까?`)) return
+    const { error } = await supabase.from('probation_round_closures').delete().eq('employee_id', employeeId).eq('stage', stage)
+    if (error) { toast(`취소 실패: ${error.message}`, 'error'); return }
+    toast('마감이 취소되었습니다.', 'success')
     fetchData()
   }
 
@@ -342,14 +373,15 @@ ${prevSummary}
         const ROUND_OFFSET_DAYS = [14, 42, 70] as const // 1·2·6주차→14일, 2회차→42일, 3회차→70일
         const ACTIVE_WINDOW_DAYS = 7 // 시작일부터 7일간만 활성
 
-        type RoundMeta = { stage: ProbationStage; date: Date | null; isCompleted: boolean }
+        type RoundMeta = { stage: ProbationStage; date: Date | null; isCompleted: boolean; isClosed: boolean }
         const buildRounds = (emp: typeof probEmpsRaw[number]): RoundMeta[] => {
           const hire = emp.hire_date ? new Date(emp.hire_date) : null
           return STAGES.map((stage, i) => {
             const date = hire ? new Date(hire.getTime() + ROUND_OFFSET_DAYS[i] * 86400 * 1000) : null
             const empEvals = evaluations.filter((ev) => ev.employee_id === emp.id && ev.stage === stage)
-            const isCompleted = empEvals.length > 0
-            return { stage, date, isCompleted }
+            const isClosed = closures.some((c) => c.employee_id === emp.id && c.stage === stage)
+            const isCompleted = empEvals.length > 0 || isClosed
+            return { stage, date, isCompleted, isClosed }
           })
         }
 
@@ -380,14 +412,19 @@ ${prevSummary}
           return { allowed: true }
         }
 
-        // 정렬: 다가오는 평가(D-) 작은 순 → 지난 평가(D+) 작은 순 → 모두 완료(맨 아래)
-        // diff = 활성 회차 일자 - 오늘 (음수=지남 / 양수=다가옴 / 모두 완료=null)
+        // 정렬: 직원의 모든 미완료 회차 중 "가장 가까운 다가올 평가(D-)" 기준
+        // ① 미완료 중 D- 최소 → 다가옴 그룹(작은 D- 우선)
+        // ② 미완료 모두 D+ → 지남 그룹(작은 D+ = 최근에 지난 것 우선)
+        // ③ 모든 회차 완료/마감 → 맨 아래
         const sortKey = (emp: typeof probEmpsRaw[number]) => {
-          const r = getActiveRound(buildRounds(emp))
-          if (!r || !r.date) return { group: 3, value: 0 } // 모두 완료
-          const diff = Math.ceil((r.date.getTime() - today.getTime()) / 86400000)
-          if (diff >= 0) return { group: 1, value: diff }   // 다가옴 → 작은 D- 우선
-          return { group: 2, value: -diff }                  // 지남 → 작은 D+ (즉, 최근에 지난 것) 우선
+          const rounds = buildRounds(emp)
+          const uncompleted = rounds.filter((r) => !r.isCompleted && r.date)
+          if (uncompleted.length === 0) return { group: 3, value: 0 }
+          const diffs = uncompleted.map((r) => Math.ceil((r.date!.getTime() - today.getTime()) / 86400000))
+          const upcoming = diffs.filter((d) => d >= 0)
+          if (upcoming.length > 0) return { group: 1, value: Math.min(...upcoming) }
+          // 미완료 모두 지남 → 가장 최근에 지난 것 (절대값 최소)
+          return { group: 2, value: Math.min(...diffs.map(Math.abs)) }
         }
         const probEmps = [...probEmpsRaw].sort((a, b) => {
           const ka = sortKey(a)
@@ -444,7 +481,26 @@ ${prevSummary}
                       })()
 
                       const canDeleteRole = profile?.role && ['admin','ceo','director','division_head'].includes(profile.role)
+                      const isClosedFor = (stage: string) => closures.some((c) => c.employee_id === emp.id && c.stage === stage)
                       const getRoundCell = (stage: string, roundDate: Date | null) => {
+                        if (isClosedFor(stage)) {
+                          const stageLabel = stage === 'round1' ? '1회차' : stage === 'round2' ? '2회차' : '3회차'
+                          return (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">관리자 마감</span>
+                              {canDeleteRole && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); reopenClosure(emp.id, stage as ProbationStage, emp.name, stageLabel) }}
+                                  className="text-gray-300 hover:text-amber-500"
+                                  title="마감 취소"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </button>
+                              )}
+                            </span>
+                          )
+                        }
                         const stageEvals = empEvals.filter((ev) => ev.stage === stage)
                         if (stageEvals.length > 0) {
                           const avg = stageEvals.reduce((sum, ev) => sum + getTotalScore(ev.scores as Record<string, number>), 0) / stageEvals.length
@@ -530,9 +586,14 @@ ${prevSummary}
                           {(['round1','round2','round3'] as const).map((stg, sIdx) => {
                             const isActive = activeStage === stg
                             const stageEvals = empEvals.filter((ev) => ev.stage === stg)
-                            const isCompleted = stageEvals.length > 0
-                            // 클릭 가능 조건: 미완료 + 입사일 존재
+                            const isClosed = isClosedFor(stg)
+                            const isCompleted = stageEvals.length > 0 || isClosed
+                            const stageLabel = stg === 'round1' ? '1회차' : stg === 'round2' ? '2회차' : '3회차'
+                            const rdate = roundDates[sIdx]
+                            const diff = rdate ? Math.ceil((rdate.getTime() - today.getTime()) / 86400000) : null
+                            const isOverdue = diff !== null && diff < 0
                             const canClick = !isCompleted && !!hire
+                            const isAdminLevel = profile?.role && ['admin','ceo','director','division_head'].includes(profile.role)
                             return (
                               <td
                                 key={stg}
@@ -541,10 +602,17 @@ ${prevSummary}
                                   isActive ? 'bg-amber-50 ring-2 ring-inset ring-amber-400 font-semibold' : '',
                                   canClick ? 'cursor-pointer hover:bg-brand-50' : '',
                                 ].filter(Boolean).join(' ')}
-                                onClick={canClick ? () => openNewEval(emp.id, stg) : undefined}
-                                title={canClick ? `${emp.name} - ${stg === 'round1' ? '1회차' : stg === 'round2' ? '2회차' : '3회차'} 평가 작성` : undefined}
+                                onClick={canClick ? () => {
+                                  // 초과 + 관리자 → 작성/마감 선택 다이얼로그
+                                  if (isOverdue && isAdminLevel) {
+                                    setCellAction({ empId: emp.id, empName: emp.name, stage: stg, stageLabel, isOverdue: true })
+                                  } else {
+                                    openNewEval(emp.id, stg)
+                                  }
+                                } : undefined}
+                                title={canClick ? `${emp.name} - ${stageLabel} ${isOverdue ? '(초과)' : ''}` : undefined}
                               >
-                                {getRoundCell(stg, roundDates[sIdx])}
+                                {getRoundCell(stg, rdate)}
                               </td>
                             )
                           })}
@@ -754,6 +822,42 @@ ${prevSummary}
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* ─── 초과 회차 액션 다이얼로그 (관리자: 평가 작성 / 마감 처리) ─── */}
+      {cellAction && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setCellAction(null)}
+        >
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+              <div>
+                <h3 className="text-base font-bold text-gray-900">{cellAction.empName} — {cellAction.stageLabel} 초과</h3>
+                <p className="text-sm text-gray-600 mt-1">평가 시기를 초과한 회차입니다. 평가를 작성하거나 마감 처리할 수 있습니다.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2 pt-2">
+              <Button onClick={() => { openNewEval(cellAction.empId, cellAction.stage); setCellAction(null) }}>
+                <Pencil className="h-4 w-4 mr-1.5" /> 평가 작성
+              </Button>
+              <Button
+                variant="outline"
+                className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                onClick={async () => {
+                  const reason = prompt('마감 사유를 입력해주세요 (선택)') || ''
+                  if (!confirm(`${cellAction.empName} ${cellAction.stageLabel} 평가를 평가 없이 마감 처리합니다. 계속하시겠습니까?`)) return
+                  await closeRound(cellAction.empId, cellAction.stage, reason)
+                  setCellAction(null)
+                }}
+              >
+                <Lock className="h-4 w-4 mr-1.5" /> 마감 처리 (평가 없이 skip)
+              </Button>
+              <Button variant="ghost" onClick={() => setCellAction(null)}>닫기</Button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
