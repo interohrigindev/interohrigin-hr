@@ -323,25 +323,27 @@ export default function SelfEvaluation() {
               </Badge>
             </div>
 
-            {group.items.map((item) => {
-              runningIndex++
-              return (
-                <EvaluationCard
-                  key={item.id}
-                  index={runningIndex}
-                  itemId={item.id}
-                  name={item.name}
-                  description={item.description}
-                  maxScore={item.max_score}
-                  data={formData[item.id] ?? { personal_goal: '', achievement_method: '', self_comment: '', score: null }}
-                  onChange={(data) => updateItem(item.id, data)}
-                  phase={currentPhase}
-                  teamKey={departmentName}
-                  jobTitle={(profile as { position?: string | null })?.position || null}
-                  evalType={item.evaluation_type}
-                />
-              )
-            })}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {group.items.map((item) => {
+                runningIndex++
+                return (
+                  <EvaluationCard
+                    key={item.id}
+                    index={runningIndex}
+                    itemId={item.id}
+                    name={item.name}
+                    description={item.description}
+                    maxScore={item.max_score}
+                    data={formData[item.id] ?? { personal_goal: '', achievement_method: '', self_comment: '', score: null }}
+                    onChange={(data) => updateItem(item.id, data)}
+                    phase={currentPhase}
+                    teamKey={departmentName}
+                    jobTitle={(profile as { position?: string | null })?.position || null}
+                    evalType={item.evaluation_type}
+                  />
+                )
+              })}
+            </div>
           </div>
         )
       })}
