@@ -54,6 +54,7 @@ export type CandidateStatus =
   | 'decided'
   | 'hired'
   | 'rejected'
+  | 'no_show'                // 지원 불참 (면접 무단 불참 등)
 
 export interface Candidate {
   id: string

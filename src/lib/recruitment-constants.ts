@@ -36,6 +36,7 @@ export const CANDIDATE_STATUS_LABELS: Record<CandidateStatus, string> = {
   decided: '결정 완료',
   hired: '합격',
   rejected: '불합격',
+  no_show: '지원 불참',
 }
 
 export const CANDIDATE_STATUS_COLORS: Record<CandidateStatus, string> = {
@@ -52,6 +53,7 @@ export const CANDIDATE_STATUS_COLORS: Record<CandidateStatus, string> = {
   decided: 'bg-cyan-100 text-cyan-700',
   hired: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+  no_show: 'bg-gray-200 text-gray-600',
 }
 
 // ─── 공고 상태 라벨 ─────────────────────────────────────────────

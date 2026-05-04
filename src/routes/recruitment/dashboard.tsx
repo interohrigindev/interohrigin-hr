@@ -168,12 +168,12 @@ export default function RecruitmentDashboard() {
     })
   }
 
-  // 불합격 필터
+  // 불합격/지원 불참 필터
   const filterCandidates = (list: typeof candidates) =>
-    showRejected ? list : list.filter((c) => c.status !== 'rejected')
+    showRejected ? list : list.filter((c) => c.status !== 'rejected' && c.status !== 'no_show')
 
-  // 불합격 제외 시 전체 숨겨진 수
-  const hiddenRejectedCount = candidates.filter((c) => c.status === 'rejected').length
+  // 불합격/지원 불참 제외 시 전체 숨겨진 수
+  const hiddenRejectedCount = candidates.filter((c) => c.status === 'rejected' || c.status === 'no_show').length
 
   return (
     <div className="space-y-6">

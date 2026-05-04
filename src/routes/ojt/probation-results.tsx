@@ -422,9 +422,10 @@ ${prevSummary}
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    // 퇴사자(is_active=false) 도 포함 — 평가 이력 보존을 위함
     const [evalRes, empRes, deptRes, hrRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position, is_active').order('name'),
       supabase.from('departments').select('id, name'),
       supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
     ])
@@ -567,13 +568,22 @@ ${evalsSummary}
         </Card>
       ) : (
         <div className="space-y-6">
-          {Array.from(groupedByEmployee.entries()).map(([empId, { name, evals }]) => {
+          {Array.from(groupedByEmployee.entries())
+            .sort(([aId], [bId]) => {
+              // 퇴사자(is_active=false)를 맨 아래로
+              const aActive = (employees.find((e) => e.id === aId) as { is_active?: boolean })?.is_active !== false
+              const bActive = (employees.find((e) => e.id === bId) as { is_active?: boolean })?.is_active !== false
+              if (aActive !== bActive) return aActive ? -1 : 1
+              return 0
+            })
+            .map(([empId, { name, evals }]) => {
             const latestEval = evals[evals.length - 1]
             const latestRec = latestEval?.continuation_recommendation as ContinuationRecommendation | null
             const stageGrouped = getEvalsGroupedByStage(evals)
             const isExpanded = expandedEmployees.has(empId)
             const allVisible = evals.every(ev => (ev as any).is_visible_to_employee)
             const empInfo = employees.find((e) => e.id === empId)
+            const isResigned = (empInfo as { is_active?: boolean })?.is_active === false
             const fmtKorDate = (d: string) => {
               const dt = new Date(d)
               return `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`
@@ -584,11 +594,16 @@ ${evalsSummary}
               : null
 
             return (
-              <Card key={empId}>
+              <Card key={empId} className={isResigned ? 'opacity-70' : ''}>
                 <CardHeader className="cursor-pointer" onClick={() => toggleExpand(empId)}>
                   <div className="flex items-start justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-3 flex-wrap min-w-0">
                       <CardTitle className="text-lg">{name}</CardTitle>
+                      {isResigned && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 border border-gray-300">
+                          퇴사자
+                        </span>
+                      )}
                       {hireStr && endStr && (
                         <span className="text-xs text-gray-500 whitespace-nowrap">
                           입사일: {hireStr} · 수습종료: {endStr}

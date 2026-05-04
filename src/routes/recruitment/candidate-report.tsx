@@ -497,6 +497,15 @@ ${fileInfo}
     setComprehensiveAnalyzing(false)
   }
 
+  async function handleNoShow() {
+    if (!id || !candidate) return
+    if (!confirm(`${candidate.name} 지원자를 '지원 불참'으로 처리합니다. (면접 무단 불참 등)\n\n이 작업은 되돌릴 수 있으나 평가 흐름에서 제외됩니다. 계속하시겠습니까?`)) return
+    const { error } = await supabase.from('candidates').update({ status: 'no_show' }).eq('id', id)
+    if (error) { toast('처리 실패: ' + error.message, 'error'); return }
+    setCandidate((p) => p ? { ...p, status: 'no_show' as any } : p)
+    toast('지원 불참으로 처리되었습니다.', 'success')
+  }
+
   async function handleDecision(decision: 'proceed' | 'reject') {
     if (!id || !candidate) return
 
@@ -1741,7 +1750,7 @@ ${surveyText || '응답 없음'}
                 const statusOrder = [
                   'applied', 'resume_reviewed', 'survey_sent', 'survey_done',
                   'interview_scheduled', 'video_done', 'face_to_face_scheduled',
-                  'face_to_face_done', 'processing', 'analyzed', 'decided', 'hired', 'rejected',
+                  'face_to_face_done', 'processing', 'analyzed', 'decided', 'hired', 'rejected', 'no_show',
                 ]
                 const currentIdx = statusOrder.indexOf(candidate.status)
                 const getStepState = (key: string) => {
@@ -1816,6 +1825,23 @@ ${surveyText || '응답 없음'}
                     <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
                   </Button>
                 </>
+              ) : /* Step 2.5: 1차 면접 예정 — 진행/불합격/지원 불참 */
+              candidate.status === 'interview_scheduled' ? (
+                <>
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-700 font-medium mb-1">
+                      <Calendar className="h-4 w-4 inline mr-1" />
+                      1차 화상면접 예정
+                    </p>
+                    <p className="text-xs text-amber-600">면접 진행 후 결과를 처리하거나, 지원자가 무단 불참한 경우 '지원 불참'으로 분류해주세요.</p>
+                  </div>
+                  <Button variant="outline" className="w-full border-gray-300 text-gray-600 hover:bg-gray-50" onClick={handleNoShow}>
+                    <XCircle className="h-4 w-4 mr-1" /> 지원 불참 (면접 무단 불참)
+                  </Button>
+                  <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
+                    <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
+                  </Button>
+                </>
               ) : /* Step 3: 1차 화상면접 완료 → 2차 대면면접 일정 잡기 */
               candidate.status === 'video_done' ? (
                 <>
@@ -1828,6 +1854,23 @@ ${surveyText || '응답 없음'}
                   </div>
                   <Button className="w-full" onClick={() => navigate('/admin/recruitment/schedules')}>
                     <MapPin className="h-4 w-4 mr-1" /> 2차 대면면접 일정 잡기
+                  </Button>
+                  <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
+                    <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
+                  </Button>
+                </>
+              ) : /* Step 3.5: 2차 대면면접 예정 — 진행/불합격/지원 불참 */
+              candidate.status === 'face_to_face_scheduled' ? (
+                <>
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                    <p className="text-sm text-purple-700 font-medium mb-1">
+                      <Calendar className="h-4 w-4 inline mr-1" />
+                      2차 대면면접 예정
+                    </p>
+                    <p className="text-xs text-purple-600">면접 진행 후 결과를 처리하거나, 지원자가 무단 불참한 경우 '지원 불참'으로 분류해주세요.</p>
+                  </div>
+                  <Button variant="outline" className="w-full border-gray-300 text-gray-600 hover:bg-gray-50" onClick={handleNoShow}>
+                    <XCircle className="h-4 w-4 mr-1" /> 지원 불참 (면접 무단 불참)
                   </Button>
                   <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
                     <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
@@ -1977,6 +2020,12 @@ ${surveyText || '응답 없음'}
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
                   <XCircle className="h-5 w-5 text-red-600 mx-auto mb-1" />
                   <p className="text-sm text-red-700 font-semibold">불합격</p>
+                </div>
+              ) : candidate.status === 'no_show' ? (
+                <div className="p-3 bg-gray-100 border border-gray-300 rounded-lg text-center">
+                  <XCircle className="h-5 w-5 text-gray-500 mx-auto mb-1" />
+                  <p className="text-sm text-gray-700 font-semibold">지원 불참</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">면접 무단 불참 등으로 평가가 종료되었습니다.</p>
                 </div>
               ) : (
                 <p className="text-sm text-gray-500">
