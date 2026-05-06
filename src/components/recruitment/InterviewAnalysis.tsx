@@ -1168,6 +1168,87 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
                           재시도
                         </Button>
                       </div>
+
+                      {/* Drive 회의록(Gemini Notes/Transcript) 가져오기 — 영상 분석 실패 시 우회 */}
+                      <div className="flex items-center gap-2 p-2.5 bg-blue-50 rounded-lg">
+                        <Cloud className="h-4 w-4 text-blue-600 shrink-0" />
+                        <span className="text-xs text-blue-700 flex-1">
+                          Google Meet 회의록(Gemini Notes/Transcript)이 Drive에 있다면 가져와 텍스트로 분석할 수 있습니다.
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleSearchDrive(group)}
+                          disabled={!!driveFetching || !!driveDownloading || !!analyzingId}
+                          className="text-blue-600 border-blue-300 hover:bg-blue-50 shrink-0"
+                        >
+                          {driveFetching === key ? (
+                            <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> 검색 중...</>
+                          ) : (
+                            <><Cloud className="h-3.5 w-3.5 mr-1" /> Drive에서 회의록 가져오기</>
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Drive 검색 결과 (error 상태 전용) */}
+                      {driveFiles[key]?.length > 0 && (
+                        <div className="p-3 bg-blue-50 rounded-lg space-y-2">
+                          <p className="text-xs font-medium text-blue-700">
+                            Google Drive 파일 ({driveFiles[key].length}개)
+                          </p>
+                          <p className="text-[10px] text-blue-500">
+                            회의록(Google Docs) 우선 — 텍스트 기반으로 즉시 분석됩니다.
+                          </p>
+                          {driveFiles[key].map((file) => {
+                            const isDoc = file.mimeType === 'application/vnd.google-apps.document'
+                            return (
+                              <div
+                                key={file.id}
+                                className={`flex items-center justify-between p-2 bg-white rounded border ${isDoc ? 'border-purple-200' : 'border-blue-100'}`}
+                              >
+                                <div className="flex items-center gap-2 text-sm min-w-0">
+                                  {isDoc ? (
+                                    <FileText className="h-4 w-4 text-purple-500 shrink-0" />
+                                  ) : (
+                                    <FileVideo className="h-4 w-4 text-blue-500 shrink-0" />
+                                  )}
+                                  <span className="truncate">{file.name}</span>
+                                  {isDoc ? (
+                                    <span className="text-[10px] text-purple-500 shrink-0 bg-purple-50 px-1.5 py-0.5 rounded">회의록</span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 shrink-0">
+                                      ({Math.round(parseInt(file.size) / 1024 / 1024)}MB)
+                                    </span>
+                                  )}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={async () => {
+                                    // 기존 에러 레코드 삭제 후 새로 분석
+                                    if (analysis?.id) {
+                                      await supabase.from('interview_analyses').delete().eq('id', analysis.id)
+                                    }
+                                    await handleFetchFromDrive(group, file)
+                                  }}
+                                  disabled={!!driveDownloading || !!analyzingId}
+                                >
+                                  {(driveDownloading === key || analyzingId === key) ? (
+                                    <>
+                                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                                      {analyzingId === key ? '분석 중...' : '가져오는 중...'}
+                                    </>
+                                  ) : isDoc ? (
+                                    <><FileText className="h-3.5 w-3.5 mr-1" /> 회의록으로 분석</>
+                                  ) : (
+                                    <><Download className="h-3.5 w-3.5 mr-1" /> 가져오기</>
+                                  )}
+                                </Button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2 p-2.5 bg-amber-50 rounded-lg">
                         <FileText className="h-4 w-4 text-amber-600 shrink-0" />
                         <span className="text-xs text-amber-700 flex-1">
