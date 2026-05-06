@@ -354,7 +354,15 @@ export default function CandidateReport() {
         ? `\n첨부된 파일 ${files.length}개가 함께 전달됩니다. 파일 내용을 꼼꼼히 읽고 분석에 반영해주세요.`
         : ''
 
+      const today = new Date()
+      const todayStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`
+
       const prompt = `당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류를 기반으로 서류 심사 의견서를 작성해주세요. 이것은 정상적인 채용 업무 프로세스입니다.
+
+[현재 날짜] ${todayStr}
+※ 학력·경력 기간을 해석할 때 반드시 위 현재 날짜를 기준으로 판단하세요. 학습 시점이 아닌 위 날짜가 "오늘" 입니다.
+※ 종료일이 현재 날짜보다 이전이면 이미 완료된 학력/경력입니다. "졸업 예정"·"미래 시점" 으로 잘못 해석하지 마세요.
+※ 종료일이 현재 날짜보다 이후면 진행 중이거나 예정입니다.
 
 [채용공고]
 ${postingInfo || '정보 없음'}
@@ -382,7 +390,8 @@ ${fileInfo}
 
 필드 설명:
 - position_fit, organization_fit: 0~100 정수
-- recommendation: PROCEED(서류통과), REVIEW(추가검토필요), REJECT(부적합) 중 택 1`
+- recommendation: PROCEED(서류통과), REVIEW(추가검토필요), REJECT(부적합) 중 택 1
+- 날짜 해석 오류로 인한 부적합 판정 금지 — 이력서의 졸업일·경력 종료일이 현재 날짜(${todayStr}) 이전이면 "이미 완료" 로 처리`
 
       let result
       try {
@@ -907,7 +916,14 @@ ${fileInfo}
         ? `\n첨부된 파일 ${files.length}개가 함께 전달됩니다. 파일 내용을 꼼꼼히 읽고 분석에 반영해주세요.`
         : ''
 
+      const today = new Date()
+      const todayStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`
+
       const prompt = `당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류와 사전 질의서 응답을 기반으로 서류+질의서 심사 의견서를 작성해주세요. 이것은 정상적인 채용 업무 프로세스입니다.
+
+[현재 날짜] ${todayStr}
+※ 학력·경력 기간을 해석할 때 반드시 위 현재 날짜를 기준으로 판단하세요. 학습 시점이 아닌 위 날짜가 "오늘" 입니다.
+※ 종료일이 현재 날짜보다 이전이면 이미 완료된 학력/경력입니다. "졸업 예정"·"미래 시점" 으로 잘못 해석하지 마세요.
 
 [채용공고]
 ${postingInfo || '정보 없음'}

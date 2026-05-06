@@ -48,7 +48,14 @@ ${(ia.key_answers || []).map((qa: any) => `  Q: ${qa.question}\n  A: ${qa.answer
       }).join('\n\n')
     : '면접 분석 미실시'
 
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`
+
   return `HR 전문가로서 이 지원자에 대한 종합 분석 리포트를 작성하세요.
+
+[현재 날짜] ${todayStr}
+※ 학력·경력의 종료일을 해석할 때 반드시 위 날짜를 "오늘" 로 보세요. 학습 시점 기준으로 미래/과거를 판단하지 마세요.
+※ 종료일 ≤ 현재 날짜 = 이미 완료 / 종료일 > 현재 날짜 = 진행 중·예정.
 
 ## 지원자 정보
 - 이름: ${data.candidateName}
