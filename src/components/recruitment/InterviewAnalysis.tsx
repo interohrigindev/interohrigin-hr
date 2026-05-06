@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { getAIConfigForFeature } from '@/lib/ai-client'
+import { getAIConfigForFeature, getAIConfigByProvider } from '@/lib/ai-client'
 import { formatDateTime } from '@/lib/utils'
 
 interface InterviewAnalysisProps {
@@ -299,8 +299,18 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
     setAnalyzingId(groupKey)
 
     try {
-      const aiConfig = await getAIConfigForFeature('interview_transcription')
-      if (!aiConfig) { toast('AI 설정이 필요합니다.', 'error'); setAnalyzingId(null); return }
+      // /api/transcribe 는 Gemini 전용이라 강제로 Gemini 설정 사용
+      // (feature 매핑이 Claude/OpenAI 여도 endpoint 호환 불가 → key 검증 실패)
+      let aiConfig = await getAIConfigByProvider('gemini')
+      if (!aiConfig) {
+        // Gemini 미설정이면 기능 매핑 fallback 시도 (구버전 호환)
+        aiConfig = await getAIConfigForFeature('interview_transcription')
+      }
+      if (!aiConfig || aiConfig.provider !== 'gemini') {
+        toast('면접 분석은 Gemini 설정이 필요합니다. 일반 설정 → AI 설정에서 Gemini 키를 활성화해주세요.', 'error')
+        setAnalyzingId(null)
+        return
+      }
 
       // 이전 에러 레코드 삭제
       if (group.analysis?.status === 'error') {
@@ -477,10 +487,13 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
     setAnalyzingId(groupKey)
 
     try {
-      const aiConfig = await getAIConfigForFeature('interview_transcription')
-
+      // /api/transcribe 는 Gemini 전용 — provider 강제 매칭
+      let aiConfig = await getAIConfigByProvider('gemini')
       if (!aiConfig) {
-        toast('AI 설정이 필요합니다. (설정 > AI 설정)', 'error')
+        aiConfig = await getAIConfigForFeature('interview_transcription')
+      }
+      if (!aiConfig || aiConfig.provider !== 'gemini') {
+        toast('면접 분석은 Gemini 설정이 필요합니다. 일반 설정 → AI 설정에서 Gemini 키를 활성화해주세요.', 'error')
         setAnalyzingId(null)
         return
       }

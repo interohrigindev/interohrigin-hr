@@ -11,6 +11,20 @@ export interface AIConfig {
   model: string
 }
 
+// ─── 특정 provider 의 활성 설정 조회 ──────────────────────────────
+// 일부 기능(/api/transcribe 등)은 Gemini 전용이라 provider 강제 매칭이 필요
+export async function getAIConfigByProvider(provider: AIConfig['provider']): Promise<AIConfig | null> {
+  const { data } = await supabase
+    .from('ai_settings')
+    .select('provider, api_key, model')
+    .eq('provider', provider)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle()
+  if (!data) return null
+  return { provider: data.provider, apiKey: data.api_key, model: data.model }
+}
+
 // ─── 기능별 AI 설정 조회 ──────────────────────────────────────────
 // ai_feature_settings에 매핑이 있으면 해당 provider 사용, 없으면 is_active=true 기본 설정 사용
 export async function getAIConfigForFeature(featureKey: string): Promise<AIConfig | null> {
