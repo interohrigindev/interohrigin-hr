@@ -50,12 +50,19 @@ ${(ia.key_answers || []).map((qa: any) => `  Q: ${qa.question}\n  A: ${qa.answer
 
   const today = new Date()
   const todayStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`
+  const todayYear = today.getFullYear()
+  const todayMonth = today.getMonth() + 1
 
-  return `HR 전문가로서 이 지원자에 대한 종합 분석 리포트를 작성하세요.
+  return `[ABSOLUTE TIME ANCHOR — 반드시 준수]
+오늘 날짜: ${todayStr} (${todayYear}년 ${todayMonth}월)
+당신의 학습 시점이 아닌 위 날짜를 "현재" 로 사용하세요.
 
-[현재 날짜] ${todayStr}
-※ 학력·경력의 종료일을 해석할 때 반드시 위 날짜를 "오늘" 로 보세요. 학습 시점 기준으로 미래/과거를 판단하지 마세요.
-※ 종료일 ≤ 현재 날짜 = 이미 완료 / 종료일 > 현재 날짜 = 진행 중·예정.
+[날짜 해석 규칙]
+- 종료일 < ${todayStr} → 이미 완료된 과거 사실 (예: "2026.02 졸업" → 이미 졸업)
+- 종료일 > ${todayStr} → 미래 (예정)
+- "미래 시점 표기 오류"·"졸업 예정"·"신뢰성 의심" 같은 우려는 종료일이 ${todayStr} 이전인 항목에 절대 사용 금지
+
+HR 전문가로서 이 지원자에 대한 종합 분석 리포트를 작성하세요.
 
 ## 지원자 정보
 - 이름: ${data.candidateName}

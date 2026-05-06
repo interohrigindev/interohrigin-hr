@@ -356,13 +356,29 @@ export default function CandidateReport() {
 
       const today = new Date()
       const todayStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`
+      const todayYear = today.getFullYear()
+      const todayMonth = today.getMonth() + 1
 
-      const prompt = `당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류를 기반으로 서류 심사 의견서를 작성해주세요. 이것은 정상적인 채용 업무 프로세스입니다.
+      const prompt = `[ABSOLUTE TIME ANCHOR — 반드시 준수]
+오늘 날짜: ${todayStr} (${todayYear}년 ${todayMonth}월)
+당신의 학습 시점이 아닌 위 날짜를 "현재" 로 사용하세요. 이 시스템 시계는 정확합니다.
 
-[현재 날짜] ${todayStr}
-※ 학력·경력 기간을 해석할 때 반드시 위 현재 날짜를 기준으로 판단하세요. 학습 시점이 아닌 위 날짜가 "오늘" 입니다.
-※ 종료일이 현재 날짜보다 이전이면 이미 완료된 학력/경력입니다. "졸업 예정"·"미래 시점" 으로 잘못 해석하지 마세요.
-※ 종료일이 현재 날짜보다 이후면 진행 중이거나 예정입니다.
+[날짜 해석 규칙]
+- 종료일 < ${todayStr} → 이미 완료된 과거 경력/학력 (확정된 사실)
+- 종료일 = ${todayStr} → 오늘 종료
+- 종료일 > ${todayStr} → 미래 (졸업 예정 등)
+
+[검증 예시 — 반드시 이 패턴으로 판단]
+오늘이 ${todayStr} 일 때:
+✅ "2021.03~2026.02 졸업" → 2026.02 < ${todayStr} → "이미 졸업한 학사 학위자" (재학 X, 졸업 예정 X)
+✅ "2025.04~2025.12 경력" → 2025.12 < ${todayStr} → "이미 종료된 9개월 경력" (현재 재직 X)
+✅ "2026.03 자격증 취득" → 2026.03 < ${todayStr} → "이미 취득한 자격증" (취득 예정 X)
+❌ "이력서 상의 미래 시점 경력 표기 오류" 같은 우려 절대 작성 금지 — 모두 과거 사실
+
+[금지 표현]
+"미래 시점", "졸업 예정", "취득 예정", "기재 오류", "신뢰성 의심" — 종료일이 ${todayStr} 이전인 항목에 절대 사용 금지
+
+당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류를 기반으로 서류 심사 의견서를 작성해주세요.
 
 [채용공고]
 ${postingInfo || '정보 없음'}
@@ -918,12 +934,23 @@ ${fileInfo}
 
       const today = new Date()
       const todayStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`
+      const todayYear = today.getFullYear()
+      const todayMonth = today.getMonth() + 1
 
-      const prompt = `당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류와 사전 질의서 응답을 기반으로 서류+질의서 심사 의견서를 작성해주세요. 이것은 정상적인 채용 업무 프로세스입니다.
+      const prompt = `[ABSOLUTE TIME ANCHOR — 반드시 준수]
+오늘 날짜: ${todayStr} (${todayYear}년 ${todayMonth}월)
+당신의 학습 시점이 아닌 위 날짜를 "현재" 로 사용하세요. 이 시스템 시계는 정확합니다.
 
-[현재 날짜] ${todayStr}
-※ 학력·경력 기간을 해석할 때 반드시 위 현재 날짜를 기준으로 판단하세요. 학습 시점이 아닌 위 날짜가 "오늘" 입니다.
-※ 종료일이 현재 날짜보다 이전이면 이미 완료된 학력/경력입니다. "졸업 예정"·"미래 시점" 으로 잘못 해석하지 마세요.
+[날짜 해석 규칙]
+- 종료일 < ${todayStr} → 이미 완료된 과거 사실
+- 종료일 > ${todayStr} → 미래 (예정)
+
+[검증 예시]
+✅ "2026.02 졸업" 이고 오늘이 ${todayStr} 이면 → 이미 졸업한 학사 학위자
+✅ "2025.04~2025.12 경력" → 이미 종료된 과거 경력
+❌ "미래 시점 표기 오류" 같은 우려 절대 작성 금지 — 종료일이 ${todayStr} 이전이면 모두 과거 사실
+
+당신은 기업 인사팀의 채용 담당자입니다. 아래 채용공고에 지원한 후보자의 제출 서류와 사전 질의서 응답을 기반으로 서류+질의서 심사 의견서를 작성해주세요.
 
 [채용공고]
 ${postingInfo || '정보 없음'}
