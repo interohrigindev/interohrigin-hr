@@ -183,7 +183,10 @@ function classifyError(msg: string): { keyError: boolean; quotaError: boolean } 
     lower.includes('invalid api key') ||
     lower.includes('api key not valid') ||
     lower.includes('api_key') ||
+    lower.includes('x-api-key') ||
+    lower.includes('authentication') ||
     lower.includes('unauthoriz') ||
+    lower.includes('permission_denied') ||
     lower.includes('401') ||
     lower.includes('403')
   const quotaError =

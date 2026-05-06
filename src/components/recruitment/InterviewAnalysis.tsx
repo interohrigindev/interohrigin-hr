@@ -357,31 +357,52 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         .select().single()
       if (createErr) throw createErr
 
-      // /api/transcribe 호출 (텍스트 모드 — multi-provider)
-      const res = await fetch('/api/transcribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          meetingNotesText: meetingText,
-          apiKey: aiConfig.apiKey,
-          model: aiConfig.model,
-          provider: aiConfig.provider,
-          candidateName,
-          interviewType: group.type,
-          context,
-        }),
-      })
+      // /api/transcribe 호출 (텍스트 모드, multi-provider) + 키 오류 시 다른 활성 provider 로 자동 폴백
+      const attempts: Array<{ provider: string; apiKey: string; model: string }> = [
+        { provider: aiConfig.provider, apiKey: aiConfig.apiKey, model: aiConfig.model },
+      ]
+      const { data: alts } = await supabase
+        .from('ai_settings')
+        .select('provider, api_key, model')
+        .eq('is_active', true)
+        .neq('provider', 'deepgram')
+        .neq('provider', aiConfig.provider)
+        .order('updated_at', { ascending: false })
+      if (alts) for (const a of alts) attempts.push({ provider: a.provider, apiKey: a.api_key, model: a.model })
 
-      let result: any
-      try { result = JSON.parse(await res.text()) } catch {
-        await supabase.from('interview_analyses').update({ status: 'error', error_message: '서버 응답 파싱 실패' }).eq('id', analysisRecord.id)
-        throw new Error('서버 응답 파싱 실패')
+      let result: any = null
+      let lastError = '분석 실패'
+      for (const cfg of attempts) {
+        const res = await fetch('/api/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            meetingNotesText: meetingText,
+            apiKey: cfg.apiKey,
+            model: cfg.model,
+            provider: cfg.provider,
+            candidateName,
+            interviewType: group.type,
+            context,
+          }),
+        })
+        let attempt: any
+        try { attempt = JSON.parse(await res.text()) } catch { attempt = { error: '서버 응답 파싱 실패' } }
+        if (res.ok && attempt.success) { result = attempt; break }
+        const errLow = String(attempt.error || '').toLowerCase()
+        const isKeyOrQuotaErr =
+          errLow.includes('api key') || errLow.includes('x-api-key') ||
+          errLow.includes('not valid') || errLow.includes('authentication') ||
+          errLow.includes('unauthoriz') || errLow.includes('quota') ||
+          errLow.includes('rate limit') || errLow.includes('401') || errLow.includes('403') ||
+          errLow.includes('429')
+        lastError = attempt.error || `HTTP ${res.status}`
+        if (!isKeyOrQuotaErr) break
       }
 
-      if (!res.ok || !result.success) {
-        const errMsg = result.error || '분석 실패'
-        await supabase.from('interview_analyses').update({ status: 'error', error_message: errMsg }).eq('id', analysisRecord.id)
-        throw new Error(errMsg)
+      if (!result?.success) {
+        await supabase.from('interview_analyses').update({ status: 'error', error_message: lastError }).eq('id', analysisRecord.id)
+        throw new Error(lastError)
       }
 
       const a = result.analysis
