@@ -281,12 +281,15 @@ ${prevSummary}
       const idx = STAGES.indexOf(selectedStage)
       const hire = targetEmp.hire_date ? new Date(targetEmp.hire_date) : null
 
-      // 이전 회차 미완료 체크
+      // 이전 회차 미완료 체크 — 관리자 마감(closure) 도 완료로 간주
       for (let i = 0; i < idx; i++) {
         const prevDone = evaluations.some(
           (ev) => ev.employee_id === selectedEmployeeId && ev.stage === STAGES[i]
         )
-        if (!prevDone) {
+        const prevClosed = closures.some(
+          (c) => c.employee_id === selectedEmployeeId && c.stage === STAGES[i]
+        )
+        if (!prevDone && !prevClosed) {
           if (!allowForceByAdmin) {
             toast(`${STAGE_LABELS[STAGES[i]]} 평가가 먼저 완료되어야 합니다.`, 'error')
             return
