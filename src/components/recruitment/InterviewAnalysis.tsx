@@ -21,6 +21,7 @@ import { Dialog } from '@/components/ui/Dialog'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { getAIConfigForFeature, getAIConfigByProvider } from '@/lib/ai-client'
+// getAIConfigByProvider 는 영상/음성 분석 (Gemini 전용) 에서만 강제 사용
 import { formatDateTime } from '@/lib/utils'
 
 interface InterviewAnalysisProps {
@@ -299,18 +300,9 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
     setAnalyzingId(groupKey)
 
     try {
-      // /api/transcribe 는 Gemini 전용이라 강제로 Gemini 설정 사용
-      // (feature 매핑이 Claude/OpenAI 여도 endpoint 호환 불가 → key 검증 실패)
-      let aiConfig = await getAIConfigByProvider('gemini')
-      if (!aiConfig) {
-        // Gemini 미설정이면 기능 매핑 fallback 시도 (구버전 호환)
-        aiConfig = await getAIConfigForFeature('interview_transcription')
-      }
-      if (!aiConfig || aiConfig.provider !== 'gemini') {
-        toast('면접 분석은 Gemini 설정이 필요합니다. 일반 설정 → AI 설정에서 Gemini 키를 활성화해주세요.', 'error')
-        setAnalyzingId(null)
-        return
-      }
+      // 텍스트 기반 회의록 분석 — 설정된 provider(Claude/OpenAI/Gemini) 그대로 사용
+      const aiConfig = await getAIConfigForFeature('interview_transcription')
+      if (!aiConfig) { toast('AI 설정이 필요합니다.', 'error'); setAnalyzingId(null); return }
 
       // 이전 에러 레코드 삭제
       if (group.analysis?.status === 'error') {
@@ -365,7 +357,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
         .select().single()
       if (createErr) throw createErr
 
-      // /api/transcribe 호출 (텍스트 모드)
+      // /api/transcribe 호출 (텍스트 모드 — multi-provider)
       const res = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -373,6 +365,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
           meetingNotesText: meetingText,
           apiKey: aiConfig.apiKey,
           model: aiConfig.model,
+          provider: aiConfig.provider,
           candidateName,
           interviewType: group.type,
           context,
@@ -487,13 +480,14 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
     setAnalyzingId(groupKey)
 
     try {
-      // /api/transcribe 는 Gemini 전용 — provider 강제 매칭
+      // 영상/음성 멀티모달 분석은 Gemini 전용 (Claude/OpenAI 는 영상 직접 처리 불가)
+      // 회의록 텍스트 모드는 multi-provider 지원하지만, 이 경로는 녹화 파일 처리
       let aiConfig = await getAIConfigByProvider('gemini')
       if (!aiConfig) {
         aiConfig = await getAIConfigForFeature('interview_transcription')
       }
       if (!aiConfig || aiConfig.provider !== 'gemini') {
-        toast('면접 분석은 Gemini 설정이 필요합니다. 일반 설정 → AI 설정에서 Gemini 키를 활성화해주세요.', 'error')
+        toast('녹화 영상 분석은 Gemini 설정이 필요합니다. (회의록 텍스트는 Claude/OpenAI 도 가능)', 'error')
         setAnalyzingId(null)
         return
       }

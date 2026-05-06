@@ -20,10 +20,11 @@ interface CandidateContext {
 }
 
 interface TranscribeRequestBody {
-  recordingUrl?: string       // Supabase Storage signed URL (영상 분석 시)
-  meetingNotesText?: string   // Gemini 회의록 텍스트 (텍스트 기반 분석 시)
-  apiKey: string             // Gemini API key
-  model?: string             // Gemini model (default: gemini-2.5-flash)
+  recordingUrl?: string       // Supabase Storage signed URL (영상 분석 시 — Gemini 전용)
+  meetingNotesText?: string   // 회의록 텍스트 (텍스트 기반 분석 — multi-provider 지원)
+  apiKey: string             // Provider API key
+  model?: string             // Provider model
+  provider?: 'gemini' | 'claude' | 'openai'  // 텍스트 분석 모드에서 사용 (기본: gemini)
   candidateName: string
   interviewType: 'video' | 'face_to_face'
   context?: CandidateContext // 지원자 전체 컨텍스트
@@ -89,7 +90,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
   try {
     const body: TranscribeRequestBody = await request.json()
     const { recordingUrl, meetingNotesText, apiKey, candidateName, interviewType, context } = body
-    const model = body.model || 'gemini-2.5-flash'
+    const provider = body.provider || 'gemini'
+    const model = body.model || (provider === 'claude' ? 'claude-haiku-4-5-20251001' : provider === 'openai' ? 'gpt-4o' : 'gemini-2.5-flash')
 
     if (!apiKey) {
       return jsonResponse({ error: 'apiKey 필수' }, 400)
@@ -99,7 +101,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
       return jsonResponse({ error: 'recordingUrl 또는 meetingNotesText 필수' }, 400)
     }
 
-    // ─── 텍스트 기반 분석 (Gemini 회의록) ───────────────────────
+    // ─── 텍스트 기반 분석 (회의록) — multi-provider 지원 ───────────
     if (meetingNotesText) {
       const typeLabel = interviewType === 'video' ? '화상면접' : '대면면접'
       let candidateContext = `지원자: ${candidateName}\n면접 유형: ${typeLabel}`
@@ -112,32 +114,85 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
         if (context.previousAnalysis) candidateContext += `\n이전 면접 분석:\n${context.previousAnalysis}`
       }
 
-      const textPrompt = `${candidateContext}\n\n위 지원자 정보를 참고하여, 아래 Google Meet Gemini 회의록 내용을 기반으로 면접을 분석하세요.\n회의록에 기록된 질의응답을 최대한 활용하여 평가해주세요.\n\n[Google Meet 회의록]\n${meetingNotesText}\n\n${ANALYSIS_PROMPT}`
+      const textPrompt = `${candidateContext}\n\n위 지원자 정보를 참고하여, 아래 회의록 내용을 기반으로 면접을 분석하세요.\n회의록에 기록된 질의응답을 최대한 활용하여 평가해주세요.\n\n[회의록]\n${meetingNotesText}\n\n${ANALYSIS_PROMPT}`
 
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-      const geminiRes = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: textPrompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 16384, responseMimeType: 'application/json' },
-        }),
-      })
-
-      if (!geminiRes.ok) {
-        const errData = await geminiRes.json().catch(() => ({})) as any
-        return jsonResponse({ error: `Gemini API 오류: ${errData?.error?.message || geminiRes.status}` }, geminiRes.status)
+      let rawText = ''
+      try {
+        if (provider === 'claude') {
+          // ─ Anthropic Messages API ─
+          const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model,
+              max_tokens: 8192,
+              temperature: 0.3,
+              messages: [{ role: 'user', content: textPrompt + '\n\n반드시 JSON 객체만 출력하세요. 마크다운/코드블록/설명 금지.' }],
+            }),
+          })
+          if (!claudeRes.ok) {
+            const errData = await claudeRes.json().catch(() => ({})) as any
+            return jsonResponse({ error: `Claude API 오류: ${errData?.error?.message || claudeRes.status}` }, claudeRes.status)
+          }
+          const claudeData = await claudeRes.json() as any
+          rawText = claudeData?.content?.[0]?.text ?? ''
+        } else if (provider === 'openai') {
+          // ─ OpenAI Chat Completions (JSON mode) ─
+          const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: 'system', content: '당신은 면접 분석 전문가입니다. 반드시 JSON 객체만 출력하세요.' },
+                { role: 'user', content: textPrompt },
+              ],
+              temperature: 0.3,
+              response_format: { type: 'json_object' },
+              max_tokens: 8192,
+            }),
+          })
+          if (!openaiRes.ok) {
+            const errData = await openaiRes.json().catch(() => ({})) as any
+            return jsonResponse({ error: `OpenAI API 오류: ${errData?.error?.message || openaiRes.status}` }, openaiRes.status)
+          }
+          const openaiData = await openaiRes.json() as any
+          rawText = openaiData?.choices?.[0]?.message?.content ?? ''
+        } else {
+          // ─ Gemini (default) ─
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+          const geminiRes = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: textPrompt }] }],
+              generationConfig: { temperature: 0.3, maxOutputTokens: 16384, responseMimeType: 'application/json' },
+            }),
+          })
+          if (!geminiRes.ok) {
+            const errData = await geminiRes.json().catch(() => ({})) as any
+            return jsonResponse({ error: `Gemini API 오류: ${errData?.error?.message || geminiRes.status}` }, geminiRes.status)
+          }
+          const geminiData = await geminiRes.json() as any
+          const finishReason = geminiData.candidates?.[0]?.finishReason
+          if (finishReason === 'SAFETY' || finishReason === 'RECITATION') {
+            return jsonResponse({ error: `Gemini 안전 필터에 의해 차단되었습니다 (${finishReason})` }, 400)
+          }
+          rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+        }
+      } catch (e: any) {
+        return jsonResponse({ error: `${provider} 호출 실패: ${e?.message || 'unknown'}` }, 500)
       }
 
-      const geminiData = await geminiRes.json() as any
-      const finishReason = geminiData.candidates?.[0]?.finishReason
-      if (finishReason === 'SAFETY' || finishReason === 'RECITATION') {
-        return jsonResponse({ error: `Gemini 안전 필터에 의해 차단되었습니다 (${finishReason})` }, 400)
-      }
-
-      const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
       if (!rawText.trim()) {
-        return jsonResponse({ error: 'Gemini가 빈 응답을 반환했습니다.' }, 500)
+        return jsonResponse({ error: `${provider} 가 빈 응답을 반환했습니다.` }, 500)
       }
 
       let parsed: unknown
@@ -152,7 +207,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
         }
       }
 
-      return jsonResponse({ success: true, analysis: parsed, source: 'meeting_notes' })
+      return jsonResponse({ success: true, analysis: parsed, source: 'meeting_notes', provider })
     }
 
     // ─── 영상/음성 기반 분석 (기존 로직) ────────────────────────
