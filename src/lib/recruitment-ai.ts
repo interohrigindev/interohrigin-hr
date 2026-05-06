@@ -207,13 +207,17 @@ export async function runComprehensiveAnalysis(candidateId: string) {
 
   if (error) throw new Error(error.message)
 
-  // 지원자 상태 업데이트
+  // 지원자 상태 업데이트 — 이미 결정/합격/불합격 단계인 경우 회귀 금지
+  const POST_ANALYZED = ['decided', 'hired', 'rejected']
+  const updatePayload: Record<string, any> = {
+    talent_match_score: parsed.talent_match?.match_percentage || null,
+  }
+  if (!POST_ANALYZED.includes(candidate.status)) {
+    updatePayload.status = 'analyzed'
+  }
   await supabase
     .from('candidates')
-    .update({
-      status: 'analyzed',
-      talent_match_score: parsed.talent_match?.match_percentage || null,
-    })
+    .update(updatePayload)
     .eq('id', candidateId)
 
   return { report, parsed }

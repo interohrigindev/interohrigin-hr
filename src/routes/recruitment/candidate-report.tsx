@@ -491,14 +491,18 @@ ${fileInfo}
 
       if (saveErr) throw new Error(saveErr.message)
 
-      // 지원자 상태 업데이트
-      await supabase
-        .from('candidates')
-        .update({ status: 'resume_reviewed' })
-        .eq('id', id)
+      // 지원자 상태 업데이트 — 이미 다음 단계(질의서/면접 등)로 진행된 경우 회귀 금지
+      const PRE_RESUME_STATES = ['applied']
+      const shouldAdvanceStatus = PRE_RESUME_STATES.includes(candidate?.status || '')
+      if (shouldAdvanceStatus) {
+        await supabase
+          .from('candidates')
+          .update({ status: 'resume_reviewed' })
+          .eq('id', id)
+        setCandidate((prev) => prev ? { ...prev, status: 'resume_reviewed' } : prev)
+      }
 
       setAnalysis(savedAnalysis as ResumeAnalysis)
-      setCandidate((prev) => prev ? { ...prev, status: 'resume_reviewed' } : prev)
       toast('AI 분석이 완료되었습니다.', 'success')
     } catch (err: any) {
       toast('AI 분석 실패: ' + err.message, 'error')
@@ -513,7 +517,11 @@ ${fileInfo}
     try {
       const { report: newReport } = await runComprehensiveAnalysis(id)
       setReport(newReport as RecruitmentReport)
-      setCandidate((prev) => prev ? { ...prev, status: 'analyzed' } : prev)
+      // 이미 결정/합격/불합격 단계로 진행된 경우 status 회귀 금지
+      const POST_ANALYZED = ['decided', 'hired', 'rejected']
+      if (!POST_ANALYZED.includes(candidate?.status || '')) {
+        setCandidate((prev) => prev ? { ...prev, status: 'analyzed' } : prev)
+      }
       toast('종합 분석이 완료되었습니다.', 'success')
       setActiveTab('comprehensive')
     } catch (err: any) {
