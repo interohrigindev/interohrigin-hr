@@ -272,8 +272,9 @@ ${prevSummary}
   async function handleSaveEval() {
     if (!selectedEmployeeId) { toast('직원을 선택하세요.', 'error'); return }
 
-    // P0-A: 회차 잠금 / 7일 자동 마감 검증 (관리자는 강제 가능)
-    const allowForceByAdmin = profile?.role === 'admin'
+    // P0-A: 회차 잠금 / 7일 자동 마감 검증
+    // 강제 가능: admin / ceo / director / division_head (실제 평가자는 임원도 포함됨)
+    const allowForceByAdmin = !!(profile?.role && ['admin','ceo','director','division_head'].includes(profile.role))
     const targetEmp = employees.find((e) => e.id === selectedEmployeeId)
     if (targetEmp) {
       const ROUND_OFFSET = [14, 42, 70] as const
@@ -281,12 +282,19 @@ ${prevSummary}
       const idx = STAGES.indexOf(selectedStage)
       const hire = targetEmp.hire_date ? new Date(targetEmp.hire_date) : null
 
+      // 캐시된 closures 가 stale 일 수 있어 — DB 에서 최신 상태 재조회
+      const { data: freshClosuresRaw } = await supabase
+        .from('probation_round_closures')
+        .select('employee_id, stage')
+        .eq('employee_id', selectedEmployeeId)
+      const freshClosures: { employee_id: string; stage: string }[] = freshClosuresRaw || []
+
       // 이전 회차 미완료 체크 — 관리자 마감(closure) 도 완료로 간주
       for (let i = 0; i < idx; i++) {
         const prevDone = evaluations.some(
           (ev) => ev.employee_id === selectedEmployeeId && ev.stage === STAGES[i]
         )
-        const prevClosed = closures.some(
+        const prevClosed = freshClosures.some(
           (c) => c.employee_id === selectedEmployeeId && c.stage === STAGES[i]
         )
         if (!prevDone && !prevClosed) {
