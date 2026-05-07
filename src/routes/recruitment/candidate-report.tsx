@@ -2157,6 +2157,33 @@ ${surveyText || '응답 없음'}
                   현재 상태: {CANDIDATE_STATUS_LABELS[candidate.status as CandidateStatus]}
                 </p>
               )}
+
+              {/* 사전질의서 발송 이력 */}
+              {(() => {
+                const history = (candidate.survey_send_history || []) as { sent_at: string }[]
+                if (history.length === 0) return null
+                const last = history[history.length - 1]
+                return (
+                  <div className="mt-3 text-xs text-gray-600 bg-gray-50 rounded-lg p-2.5 space-y-1">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span>
+                        사전질의서 발송 <span className="font-semibold text-brand-700">{history.length}회</span>
+                      </span>
+                      <span className="text-gray-500">최근 {formatDate(last.sent_at, 'yyyy.MM.dd HH:mm')}</span>
+                    </div>
+                    {history.length > 1 && (
+                      <details className="cursor-pointer">
+                        <summary className="text-[11px] text-gray-500 hover:text-gray-700">발송 이력 전체 보기</summary>
+                        <ul className="mt-1.5 pl-3 space-y-0.5 text-[11px] text-gray-500">
+                          {[...history].reverse().map((h, i) => (
+                            <li key={i}>{history.length - i}회차 — {formatDate(h.sent_at, 'yyyy.MM.dd HH:mm')}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                )
+              })()}
             </CardContent>
           </Card>
 
