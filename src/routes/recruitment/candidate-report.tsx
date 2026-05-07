@@ -572,16 +572,27 @@ ${fileInfo}
     }
 
     const newStatus = decision === 'proceed' ? 'survey_sent' : 'rejected'
+    const sentAt = new Date().toISOString()
+    const updatedHistory = decision === 'proceed'
+      ? [...((candidate?.survey_send_history as { sent_at: string }[] | undefined) || []), { sent_at: sentAt }]
+      : ((candidate?.survey_send_history as { sent_at: string }[] | undefined) || [])
+    const updatePayload: Record<string, unknown> = { status: newStatus }
+    if (decision === 'proceed') updatePayload.survey_send_history = updatedHistory
+
     const { error } = await supabase
       .from('candidates')
-      .update({ status: newStatus })
+      .update(updatePayload)
       .eq('id', id)
 
     if (error) {
       toast('상태 변경 실패', 'error')
     } else {
       toast(decision === 'proceed' ? '사전 질의서 이메일이 발송되었습니다.' : '불합격 처리되었습니다.', 'success')
-      setCandidate((prev) => prev ? { ...prev, status: newStatus as CandidateStatus } : prev)
+      setCandidate((prev) => prev ? {
+        ...prev,
+        status: newStatus as CandidateStatus,
+        ...(decision === 'proceed' ? { survey_send_history: updatedHistory } : {}),
+      } : prev)
     }
   }
 
@@ -750,13 +761,23 @@ ${fileInfo}
         return
       }
 
-      // 상태를 survey_sent로 리셋 + pre_survey_data 초기화
+      // 상태를 survey_sent로 리셋 + pre_survey_data 초기화 + 발송 이력 push
+      const sentAt = new Date().toISOString()
+      const updatedHistory = [
+        ...((candidate.survey_send_history as { sent_at: string }[] | undefined) || []),
+        { sent_at: sentAt },
+      ]
       await supabase
         .from('candidates')
-        .update({ status: 'survey_sent', pre_survey_data: null })
+        .update({ status: 'survey_sent', pre_survey_data: null, survey_send_history: updatedHistory })
         .eq('id', candidate.id)
 
-      setCandidate((prev) => prev ? { ...prev, status: 'survey_sent' as CandidateStatus, pre_survey_data: null } : prev)
+      setCandidate((prev) => prev ? {
+        ...prev,
+        status: 'survey_sent' as CandidateStatus,
+        pre_survey_data: null,
+        survey_send_history: updatedHistory,
+      } : prev)
       toast('사전질의서가 재발송되었습니다.', 'success')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '네트워크 오류'
@@ -1391,12 +1412,37 @@ ${surveyText || '응답 없음'}
                         </div>
                       )}
 
-                      {/* 완료 시간 */}
-                      {surveyData.completed_at && (
-                        <p className="text-xs text-gray-400 text-right">
-                          응답 완료: {formatDate(surveyData.completed_at, 'yyyy.MM.dd HH:mm')}
-                        </p>
-                      )}
+                      {/* 발송/응답 일시 */}
+                      {(() => {
+                        const history = (candidate.survey_send_history || []) as { sent_at: string }[]
+                        if (history.length === 0 && !surveyData.completed_at) return null
+                        const last = history[history.length - 1]
+                        return (
+                          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2.5 space-y-1">
+                            {history.length > 0 && last && (
+                              <div className="flex items-center justify-between">
+                                <span>
+                                  발송 <span className="font-semibold text-brand-700">{history.length}회</span>
+                                  <span className="text-gray-400"> · 최근 {formatDate(last.sent_at, 'yyyy.MM.dd HH:mm')}</span>
+                                </span>
+                                {history.length > 1 && (
+                                  <details className="cursor-pointer">
+                                    <summary className="text-[11px] text-gray-400 hover:text-gray-600">이력 보기</summary>
+                                    <ul className="mt-1.5 pl-3 space-y-0.5 text-[11px] text-gray-500 text-left">
+                                      {[...history].reverse().map((h, i) => (
+                                        <li key={i}>{history.length - i}회차 — {formatDate(h.sent_at, 'yyyy.MM.dd HH:mm')}</li>
+                                      ))}
+                                    </ul>
+                                  </details>
+                                )}
+                              </div>
+                            )}
+                            {surveyData.completed_at && (
+                              <p className="text-right text-gray-400">응답 완료: {formatDate(surveyData.completed_at, 'yyyy.MM.dd HH:mm')}</p>
+                            )}
+                          </div>
+                        )
+                      })()}
 
                       {/* 사전질의서 AI 인사이트 */}
                       {candidate.pre_survey_analysis && (candidate.pre_survey_analysis as any).survey_insights && (
@@ -1429,6 +1475,34 @@ ${surveyText || '응답 없음'}
                   <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
                   <p className="text-sm text-amber-700">사전 질의서가 발송되었습니다. 지원자의 응답을 기다리고 있습니다.</p>
                 </div>
+
+                {/* 발송 이력 */}
+                {(() => {
+                  const history = (candidate.survey_send_history || []) as { sent_at: string }[]
+                  if (history.length === 0) return null
+                  const last = history[history.length - 1]
+                  return (
+                    <div className="text-xs text-gray-600 bg-gray-50 rounded-lg p-2.5 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">발송 횟수: <span className="text-brand-700">{history.length}회</span></span>
+                        <span className="text-gray-500">최근 발송: {formatDate(last.sent_at, 'yyyy.MM.dd HH:mm')}</span>
+                      </div>
+                      {history.length > 1 && (
+                        <details className="cursor-pointer">
+                          <summary className="text-[11px] text-gray-500 hover:text-gray-700">발송 이력 전체 보기</summary>
+                          <ul className="mt-1.5 pl-3 space-y-0.5 text-[11px] text-gray-500">
+                            {[...history].reverse().map((h, i) => (
+                              <li key={i}>
+                                {history.length - i}회차 — {formatDate(h.sent_at, 'yyyy.MM.dd HH:mm')}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  )
+                })()}
+
                 <Button size="sm" variant="outline" onClick={handleResendSurvey} disabled={resendingSurvey}>
                   {resendingSurvey ? (
                     <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 발송 중...</>

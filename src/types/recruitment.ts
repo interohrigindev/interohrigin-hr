@@ -72,6 +72,7 @@ export interface Candidate {
   invite_token: string
   pre_survey_data: Record<string, unknown> | null
   pre_survey_analysis: Record<string, unknown> | null
+  survey_send_history: { sent_at: string }[] | null
   talent_match_score: number | null
   similar_employees: Record<string, unknown>[] | null
   processing_step: string | null
