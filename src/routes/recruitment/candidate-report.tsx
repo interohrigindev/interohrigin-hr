@@ -1933,6 +1933,23 @@ ${surveyText || '응답 없음'}
                     <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
                   </Button>
                 </>
+              ) : /* Step 1.5: 사전 질의서 발송 → 응답 대기 — 응답 미수신/연락두절 시 처리 */
+              candidate.status === 'survey_sent' ? (
+                <>
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-700 font-medium mb-1">
+                      <ClipboardList className="h-4 w-4 inline mr-1" />
+                      사전 질의서 응답 대기 중
+                    </p>
+                    <p className="text-xs text-amber-600">응답이 도착하면 다음 단계로 자동 진행됩니다. 연락두절/응답 미수신 시 아래 버튼으로 종결 처리할 수 있습니다.</p>
+                  </div>
+                  <Button variant="outline" className="w-full border-gray-300 text-gray-600 hover:bg-gray-50" onClick={handleNoShow}>
+                    <XCircle className="h-4 w-4 mr-1" /> 지원 불참 (응답 없음/연락두절)
+                  </Button>
+                  <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
+                    <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
+                  </Button>
+                </>
               ) : /* Step 2: 질의서 완료 → 1차 화상면접 일정 잡기 */
               candidate.status === 'survey_done' ? (
                 <>
