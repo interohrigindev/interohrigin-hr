@@ -265,6 +265,7 @@ function App() {
               <Route path="admin/leave" element={<LeaveManagement />} />
               <Route path="admin/attendance" element={<AttendanceManagement />} />
               <Route path="admin/approval" element={<ApprovalManagement />} />
+              <Route path="admin/approval/:docId" element={<ApprovalManagement />} />
               <Route path="admin/certificates" element={<CertificateManagement />} />
               <Route path="admin/organization" element={<OrganizationChart />} />
               <Route path="admin/payroll" element={<AdminRoute><PayrollManagement /></AdminRoute>} />

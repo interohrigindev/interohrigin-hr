@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useParams, useNavigate } from 'react-router-dom'
 import {
   FileCheck, Clock, CheckCircle, XCircle,
   Plus, Search, ChevronRight, User,
-  Send, Paperclip, Download,
+  Send, Paperclip, Download, ArrowLeft,
 } from 'lucide-react'
 import jsPDF from 'jspdf'
 import { registerKoreanFonts } from '@/lib/pdf-fonts'
@@ -124,6 +124,9 @@ export default function ApprovalManagementPage() {
   const { toast } = useToast()
   const { profile } = useAuth()
   const isAdmin = profile?.role ? ADMIN_ROLES.includes(profile.role) : false
+  // URL param 으로 detail 페이지 모드 진입 (모달 → 페이지)
+  const { docId: urlDocId } = useParams<{ docId?: string }>()
+  const navigate = useNavigate()
 
   const [documents, setDocuments] = useState<ApprovalDocument[]>([])
   const [stepsMap, setStepsMap] = useState<Record<string, ApprovalStep[]>>({})
@@ -139,6 +142,8 @@ export default function ApprovalManagementPage() {
   const [selectedDoc, setSelectedDoc] = useState<ApprovalDocument | null>(null)
   const [actionComment, setActionComment] = useState('')
   const [processing, setProcessing] = useState(false)
+  // 페이지 모드 (URL /admin/approval/:docId 로 진입) — selectedDoc 가 있으면 풀페이지 렌더
+  const isDetailPage = !!urlDocId
 
   // 결재 위임
   const [showDelegationDialog, setShowDelegationDialog] = useState(false)
@@ -187,6 +192,47 @@ export default function ApprovalManagementPage() {
     resetNewForm()
     setSearchParams({})
   }
+
+  // 0512: URL /admin/approval/:docId 로 진입 시 해당 문서를 selectedDoc 로 동기화
+  useEffect(() => {
+    if (!urlDocId) {
+      // 페이지 모드에서 빠져나오면 selectedDoc 정리
+      if (selectedDoc) {
+        setSelectedDoc(null)
+        setActionComment('')
+      }
+      return
+    }
+    // documents 리스트에 있으면 매칭
+    const found = documents.find((d) => d.id === urlDocId)
+    if (found) {
+      setSelectedDoc(found)
+      return
+    }
+    // 리스트에 없으면 단건 fetch (다른 탭/검색 컨텍스트의 문서도 직접 URL 진입 지원)
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from('approval_documents')
+        .select('*')
+        .eq('id', urlDocId)
+        .maybeSingle()
+      if (!cancelled && data) {
+        setSelectedDoc(data as ApprovalDocument)
+        // steps 도 함께
+        const { data: steps } = await supabase
+          .from('approval_steps')
+          .select('*')
+          .eq('document_id', urlDocId)
+          .order('step_order')
+        if (!cancelled && steps) {
+          setStepsMap((prev) => ({ ...prev, [urlDocId]: steps as ApprovalStep[] }))
+        }
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlDocId, documents])
 
   /* ── Role-based employee lists ── */
 
@@ -685,6 +731,8 @@ export default function ApprovalManagementPage() {
     setProcessing(false)
     setActionComment('')
     setSelectedDoc(null)
+    // 페이지 모드라면 list 로 이동
+    if (isDetailPage) navigate('/admin/approval')
     fetchData()
   }
 
@@ -710,6 +758,7 @@ export default function ApprovalManagementPage() {
     setProcessing(false)
     toast('재상신 완료. 결재가 다시 시작됩니다.', 'success')
     setSelectedDoc(null)
+    if (isDetailPage) navigate('/admin/approval')
     fetchData()
   }
 
@@ -952,6 +1001,333 @@ export default function ApprovalManagementPage() {
 
   if (loading) return <PageSpinner />
 
+  // 0512: 페이지 모드 — URL /admin/approval/:docId 로 진입 시 풀페이지 detail 렌더
+  if (isDetailPage) {
+    if (!selectedDoc) {
+      return (
+        <div className="space-y-6">
+          <Button variant="outline" size="sm" onClick={() => navigate('/admin/approval')}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> 결재함으로
+          </Button>
+          <Card><CardContent className="py-12 text-center text-sm text-gray-400">결재 문서를 불러오는 중...</CardContent></Card>
+        </div>
+      )
+    }
+
+    const doc = selectedDoc
+    const cfg = STATUS_CONFIG[doc.status] || STATUS_CONFIG.submitted
+    const steps = stepsMap[doc.id] || []
+    const currentStepData = steps.find((s) => s.step_order === doc.current_step)
+    const isMyTurn =
+      currentStepData?.approver_id === profile?.id &&
+      currentStepData?.action === 'pending' &&
+      (doc.status === 'submitted' || doc.status === 'in_review')
+
+    return (
+      <div className="space-y-5 max-w-4xl mx-auto">
+        {/* 페이지 헤더 + 돌아가기 */}
+        <div className="flex items-center justify-between gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate('/admin/approval')}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> 결재함으로
+          </Button>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-bold text-gray-900">결재 상세</h1>
+            <Badge variant={cfg.badge}>{cfg.label}</Badge>
+          </div>
+        </div>
+
+        {/* Detail Body — Dialog 와 동일한 내용 */}
+        <Card>
+          <CardContent className="p-6 space-y-5">
+            {/* Title + Meta */}
+            <div>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span>{getDocTypeIcon(doc.doc_type)}</span>
+                <h2 className="text-base font-bold text-gray-900">{doc.title}</h2>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-gray-500 mt-1 flex-wrap">
+                {doc.doc_number && (
+                  <span className="font-mono text-gray-400">{doc.doc_number}</span>
+                )}
+                <span>신청자: {getEmpName(doc.requester_id)}</span>
+                {doc.department && <span>부서: {doc.department}</span>}
+                <span>유형: {getDocTypeLabel(doc.doc_type)}</span>
+                <span>신청일: {doc.submitted_at ? fmtDate(doc.submitted_at) : fmtDate(doc.created_at)}</span>
+                {doc.completed_at && <span>완료일: {fmtDate(doc.completed_at)}</span>}
+              </div>
+            </div>
+
+            {doc.status === 'approved' && (
+              <div className="flex justify-end">
+                <Button size="sm" variant="outline" onClick={() => handleDownloadPDF(doc)}>
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  PDF 다운로드
+                </Button>
+              </div>
+            )}
+
+            {doc.amount != null && (
+              <div className="bg-amber-50 rounded-lg p-3">
+                <p className="text-xs font-medium text-amber-600 mb-1">금액</p>
+                <p className="text-lg font-bold text-amber-700">{fmtAmount(doc.amount)}</p>
+              </div>
+            )}
+
+            {/* 내용 — Dialog 본문의 렌더 로직과 동일하게 doc_type 별 분기 */}
+            {doc.content && Object.keys(doc.content).length > 0 && (() => {
+              const c = doc.content as Record<string, unknown>
+              const isDailyReport = doc.doc_type === 'daily_report'
+                || (c && ('report_id' in c || 'report_date' in c)
+                    && (Array.isArray(c.completed) || Array.isArray(c.in_progress) || Array.isArray(c.planned)))
+              if (isDailyReport) {
+                const content = doc.content as {
+                  report_date?: string
+                  completed?: { title: string }[]
+                  in_progress?: { title: string }[]
+                  planned?: { title: string }[]
+                  work_memo?: string
+                  project_memos?: Record<string, string>
+                  satisfaction_score?: number
+                  satisfaction_comment?: string
+                  blockers?: string
+                }
+                return (
+                  <div className="space-y-3">
+                    <div className="bg-gradient-to-br from-brand-50 to-purple-50 border border-brand-200 rounded-lg p-3">
+                      <p className="text-sm font-semibold text-brand-800 flex items-center gap-1.5">
+                        📝 일일 업무보고 {content.report_date && <span className="text-brand-600">({content.report_date})</span>}
+                      </p>
+                    </div>
+
+                    {content.completed && content.completed.length > 0 && (
+                      <div className="border border-emerald-200 rounded-lg overflow-hidden">
+                        <div className="bg-emerald-50 px-3 py-2 border-b border-emerald-100">
+                          <p className="text-xs font-semibold text-emerald-800">✅ 완료 업무 ({content.completed.length}건)</p>
+                        </div>
+                        <ul className="px-3 py-2 space-y-1 bg-white">
+                          {content.completed.map((t, i) => (
+                            <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                              <span className="text-emerald-500 mt-0.5">✓</span>
+                              <span className="flex-1">{t.title}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {content.in_progress && content.in_progress.length > 0 && (
+                      <div className="border border-blue-200 rounded-lg overflow-hidden">
+                        <div className="bg-blue-50 px-3 py-2 border-b border-blue-100">
+                          <p className="text-xs font-semibold text-blue-800">🔄 진행중 업무 ({content.in_progress.length}건)</p>
+                        </div>
+                        <ul className="px-3 py-2 space-y-1 bg-white">
+                          {content.in_progress.map((t, i) => (
+                            <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                              <span className="text-blue-500 mt-0.5">▸</span>
+                              <span className="flex-1">{t.title}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {content.planned && content.planned.length > 0 && (
+                      <div className="border border-amber-200 rounded-lg overflow-hidden">
+                        <div className="bg-amber-50 px-3 py-2 border-b border-amber-100">
+                          <p className="text-xs font-semibold text-amber-800">📅 내일 계획 ({content.planned.length}건)</p>
+                        </div>
+                        <ul className="px-3 py-2 space-y-1 bg-white">
+                          {content.planned.map((t, i) => (
+                            <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                              <span className="text-amber-500 mt-0.5">☐</span>
+                              <span className="flex-1">{t.title}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* 프로젝트별 메모 */}
+                    {content.project_memos && Object.keys(content.project_memos).length > 0 && (
+                      <div className="border border-violet-200 rounded-lg overflow-hidden">
+                        <div className="bg-violet-50 px-3 py-2 border-b border-violet-100">
+                          <p className="text-xs font-semibold text-violet-800">📁 프로젝트별 메모</p>
+                        </div>
+                        <div className="px-3 py-2 bg-white space-y-2">
+                          {Object.entries(content.project_memos).map(([pid, html]) => (
+                            <div key={pid} className="text-sm">
+                              <div className="prose prose-sm max-w-none text-gray-800 [&_img]:rounded-md [&_img]:max-w-full"
+                                   dangerouslySetInnerHTML={{ __html: html as string }} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 종합 메모 */}
+                    {content.work_memo && (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="bg-gray-50 px-3 py-2 border-b border-gray-100">
+                          <p className="text-xs font-semibold text-gray-800">🧾 작업 현황 종합 메모</p>
+                        </div>
+                        <div className="px-3 py-2 bg-white">
+                          <div className="prose prose-sm max-w-none text-gray-800 [&_img]:rounded-md [&_img]:max-w-full"
+                               dangerouslySetInnerHTML={{ __html: content.work_memo }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 만족도 + 한줄총평 + 블로커 */}
+                    {(content.satisfaction_score != null || content.satisfaction_comment || content.blockers) && (
+                      <div className="border border-gray-200 rounded-lg p-3 bg-white space-y-1.5">
+                        {content.satisfaction_score != null && (
+                          <p className="text-sm"><span className="text-gray-500">만족도:</span> <span className="font-semibold text-brand-700">{content.satisfaction_score}/10</span></p>
+                        )}
+                        {content.satisfaction_comment && (
+                          <p className="text-sm"><span className="text-gray-500">한 줄 총평:</span> <span className="text-gray-900">{content.satisfaction_comment}</span></p>
+                        )}
+                        {content.blockers && (
+                          <p className="text-sm"><span className="text-gray-500">이슈/블로커:</span> <span className="text-red-700">{content.blockers}</span></p>
+                        )}
+                      </div>
+                    )}
+
+                    {(!content.completed || content.completed.length === 0) &&
+                     (!content.in_progress || content.in_progress.length === 0) &&
+                     (!content.planned || content.planned.length === 0) &&
+                     (!content.work_memo) &&
+                     (!content.project_memos || Object.keys(content.project_memos).length === 0) && (
+                      <p className="text-sm text-gray-400 text-center py-4">작성된 업무가 없습니다</p>
+                    )}
+                  </div>
+                )
+              }
+              const bodyHtml = (doc.content as Record<string, unknown>)?.body_html as string | undefined
+              return (
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                  <p className="text-xs font-medium text-gray-500 mb-1">신청 내용</p>
+                  {Object.entries(doc.content).filter(([k]) => k !== 'body_html').map(([key, value]) => {
+                    const display = Array.isArray(value)
+                      ? value.map((v) => typeof v === 'object' && v !== null
+                          ? ((v as { title?: string; name?: string }).title || (v as { title?: string; name?: string }).name || JSON.stringify(v))
+                          : String(v)).join(', ')
+                      : typeof value === 'object' && value !== null
+                        ? JSON.stringify(value)
+                        : String(value)
+                    return (
+                      <div key={key} className="flex text-sm">
+                        <span className="text-gray-500 w-28 shrink-0">{key}</span>
+                        <span className="text-gray-900 flex-1 break-all">{display}</span>
+                      </div>
+                    )
+                  })}
+                  {bodyHtml && bodyHtml.trim().length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-gray-200">
+                      <p className="text-xs font-medium text-gray-500 mb-1.5">상세 내역 및 품목</p>
+                      <div
+                        className="prose prose-sm max-w-none text-gray-800 [&_img]:rounded-md [&_img]:border [&_img]:border-gray-200 [&_img]:my-2"
+                        dangerouslySetInnerHTML={{ __html: bodyHtml }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* 첨부 */}
+            {doc.attachments && (doc.attachments as unknown[]).length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">첨부파일</p>
+                <ApprovalAttachments attachments={doc.attachments as unknown as { name: string; url: string; size?: number; type?: string }[]} />
+              </div>
+            )}
+
+            {/* 결재 타임라인 */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-3">
+                결재 흐름 ({doc.current_step}/{doc.total_steps}단계)
+              </p>
+              {renderStepPills(doc.id, doc)}
+
+              {steps.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {steps.map((step) => {
+                    const stepCfg =
+                      step.action === 'approved' ? { badge: 'success' as const, label: '승인' } :
+                      step.action === 'rejected' ? { badge: 'danger' as const, label: '반려' } :
+                      { badge: 'default' as const, label: '대기' }
+                    return (
+                      <div key={step.id} className="flex items-start gap-2 text-sm border-l-2 pl-2"
+                           style={{ borderColor: step.action === 'approved' ? '#10b981' : step.action === 'rejected' ? '#ef4444' : '#d1d5db' }}>
+                        <Badge variant={stepCfg.badge} className="text-[10px] mt-0.5 shrink-0">
+                          {step.step_order}. {stepCfg.label}
+                        </Badge>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="text-gray-700 font-medium">
+                              {getEmpName(step.approver_id)}
+                            </span>
+                            <span className="text-[10px] text-gray-400">
+                              ({ROLE_LABELS[step.approver_role] || step.approver_role})
+                            </span>
+                            {step.acted_at && (
+                              <span className="text-[10px] text-gray-400">· {fmtDate(step.acted_at)}</span>
+                            )}
+                          </div>
+                          {step.comment && (
+                            <div className="mt-1 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 italic">
+                              💬 {step.comment}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 결재 액션 */}
+            {isMyTurn && (
+              <div className="space-y-3 pt-3 mt-2 border-t-2 border-brand-200 bg-brand-50/30 -mx-6 px-6 py-4">
+                <p className="text-sm font-bold text-brand-800">💬 결재자 코멘트</p>
+                <Textarea
+                  label={doc.doc_type === 'daily_report' ? '업무보고 피드백 (권장)' : '의견 (선택)'}
+                  value={actionComment}
+                  onChange={(e) => setActionComment(e.target.value)}
+                  placeholder={doc.doc_type === 'daily_report'
+                    ? '업무 진행 사항에 대한 피드백, 추가 지시사항, 칭찬/격려 등을 입력하세요'
+                    : '승인/반려 의견을 입력하세요'}
+                  rows={doc.doc_type === 'daily_report' ? 4 : 2}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button variant="danger" size="sm" disabled={processing}
+                          onClick={() => handleApprovalAction(doc.id, 'rejected')}>
+                    <XCircle className="h-3.5 w-3.5 mr-1" /> 반려
+                  </Button>
+                  <Button size="sm" disabled={processing}
+                          onClick={() => handleApprovalAction(doc.id, 'approved')}>
+                    <CheckCircle className="h-3.5 w-3.5 mr-1" /> {processing ? '처리중...' : '승인'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* 반려된 문서 → 본인이 신청자면 재상신 */}
+            {doc.status === 'rejected' && doc.requester_id === profile?.id && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-700 mb-2">이 결재가 반려되었습니다. 내용을 확인 후 재상신할 수 있습니다.</p>
+                <Button size="sm" onClick={() => handleResubmit(doc.id)} disabled={processing}>
+                  {processing ? '처리중...' : '재상신'}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1172,7 +1548,7 @@ export default function ApprovalManagementPage() {
                   className={`border-l-4 ${cfg.border} cursor-pointer hover:shadow-md transition-shadow ${
                     isMyTurn ? 'ring-2 ring-blue-200 bg-blue-50/20' : ''
                   }`}
-                  onClick={() => setSelectedDoc(doc)}
+                  onClick={() => navigate(`/admin/approval/${doc.id}`)}
                 >
                   <CardContent className="py-3 px-4 flex flex-col h-full">
                     {/* 상단: 아이콘 + 제목 + 상태 */}
@@ -1217,9 +1593,9 @@ export default function ApprovalManagementPage() {
         )}
       </div>}
 
-      {/* ── Detail Dialog ── */}
+      {/* ── Detail Dialog (페이지 모드에서는 비활성) ── */}
       <Dialog
-        open={!!selectedDoc}
+        open={!!selectedDoc && !isDetailPage}
         onClose={() => { setSelectedDoc(null); setActionComment('') }}
         title="결재 상세"
         className="max-w-[calc(100vw-2rem)] sm:max-w-lg"
