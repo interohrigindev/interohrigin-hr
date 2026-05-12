@@ -23,9 +23,26 @@ import {
   FolderKanban,
   Clock,
   ShoppingBag,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { openIoMall } from '@/lib/iomall'
+import { DateWeatherWidget } from '@/components/DateWeatherWidget'
+
+// 0513: IO CS 고객관리 플랫폼 접근 — admin/director/division_head/ceo 는 항상 가능, 그 외엔 employees.iocs_access
+const IOCS_URL = 'https://iocs-eys.pages.dev'
+const IOCS_ALWAYS_ALLOWED_ROLES = ['admin', 'director', 'division_head', 'ceo']
+function openIoCs(profile: { role?: string | null; iocs_access?: boolean } | null) {
+  const allowed = !!profile && (
+    (profile.role && IOCS_ALWAYS_ALLOWED_ROLES.includes(profile.role)) ||
+    profile.iocs_access === true
+  )
+  if (!allowed) {
+    alert('IO CS 고객관리 플랫폼은 승인받은 사용자만 사용할 수 있습니다.\n관리자에게 접근 권한을 요청해주세요.')
+    return
+  }
+  window.open(IOCS_URL, '_blank', 'noopener,noreferrer')
+}
 
 interface BlockItem {
   title: string
@@ -95,6 +112,15 @@ const ADMIN_BLOCKS: BlockItem[] = [
     path: 'iomall',
     onClick: () => openIoMall('/'),
   },
+  // 0513: IO CS — onClick 은 컴포넌트 내부에서 profile 주입해 덮어씀
+  {
+    title: 'IO CS',
+    description: '고객관리 플랫폼 (승인된 사용자만 / 별도 탭)',
+    icon: MessageSquare,
+    color: 'text-sky-600',
+    bg: 'bg-sky-50 hover:bg-sky-100 border-sky-200',
+    path: 'iocs',
+  },
 ]
 
 const QUICK_LINKS: { label: string; icon: React.ElementType; path: string }[] = [
@@ -116,17 +142,15 @@ export default function Home() {
 
   return (
     <div className="space-y-6">
-      {/* 인사말 + 날짜 */}
-      <div className="flex items-end justify-between">
+      {/* 인사말 + 날짜·날씨 위젯 */}
+      <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             안녕하세요, {profile?.name}님
           </h1>
           <p className="text-sm text-gray-500 mt-1">인터오리진 HR Platform에 오신 것을 환영합니다.</p>
         </div>
-        <p className="text-sm text-gray-400 hidden sm:block">
-          {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
-        </p>
+        <DateWeatherWidget />
       </div>
 
       {/* KPI 위젯 카드 */}
@@ -143,7 +167,11 @@ export default function Home() {
         {ADMIN_BLOCKS.map((block) => (
           <button
             key={block.path}
-            onClick={() => block.onClick ? block.onClick() : navigate(block.path)}
+            onClick={() => {
+              if (block.path === 'iocs') { openIoCs(profile as { role?: string | null; iocs_access?: boolean } | null); return }
+              if (block.onClick) block.onClick()
+              else navigate(block.path)
+            }}
             className={`flex items-start gap-4 rounded-2xl border p-5 text-left transition-all ${block.bg}`}
           >
             <div className={`rounded-xl p-3 bg-white shadow-sm ${block.color}`}>
@@ -239,15 +267,28 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
       path: 'iomall',
       onClick: () => openIoMall('/'),
     },
+    // 0513: IO CS — 승인된 사용자만 접근
+    {
+      title: 'IO CS',
+      description: '고객관리 플랫폼 (승인된 사용자만 / 별도 탭)',
+      icon: MessageSquare,
+      color: 'text-sky-600',
+      bg: 'bg-sky-50 hover:bg-sky-100 border-sky-200',
+      path: 'iocs',
+    },
   ]
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          안녕하세요, {profile?.name}님
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">오늘도 좋은 하루 되세요.</p>
+      {/* 인사말 + 날짜·날씨 위젯 */}
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            안녕하세요, {profile?.name}님
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">오늘도 좋은 하루 되세요.</p>
+        </div>
+        <DateWeatherWidget />
       </div>
 
       {/* 내 업무 현황 카드 */}
@@ -260,7 +301,11 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
         {blocks.map((block) => (
           <button
             key={block.path}
-            onClick={() => block.onClick ? block.onClick() : navigate(block.path)}
+            onClick={() => {
+              if (block.path === 'iocs') { openIoCs(profile as { role?: string | null; iocs_access?: boolean } | null); return }
+              if (block.onClick) block.onClick()
+              else navigate(block.path)
+            }}
             className={`flex items-start gap-4 rounded-2xl border p-5 text-left transition-all ${block.bg}`}
           >
             <div className={`rounded-xl p-3 bg-white shadow-sm ${block.color}`}>
