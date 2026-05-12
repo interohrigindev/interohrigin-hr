@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer, Link2, Copy, EyeOff, Pencil } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer, Link2, Copy, EyeOff, Pencil, Upload } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -68,6 +68,9 @@ export default function CandidateReport() {
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name: '', email: '', phone: '' })
   const [savingProfile, setSavingProfile] = useState(false)
+  // 포트폴리오 추가
+  const [portfolioUploading, setPortfolioUploading] = useState(false)
+  const [portfolioLinkForm, setPortfolioLinkForm] = useState({ url: '', label: '' })
   // 외부 공유 링크
   const [shareLinks, setShareLinks] = useState<{ id: string; token: string; expires_at: string | null; is_active: boolean; note: string | null; created_at: string; view_count: number; last_viewed_at: string | null }[]>([])
   const [shareDialogOpen, setShareDialogOpen] = useState(false)
@@ -775,6 +778,80 @@ ${fileInfo}
     }
   }
 
+  // ─── 포트폴리오 추가/삭제 ──────────────────────────────────
+  async function handleUploadPortfolioFiles(fileList: FileList) {
+    if (!candidate || !id) return
+    setPortfolioUploading(true)
+    try {
+      const existing = (candidate as unknown as { portfolio_files?: { path: string; filename: string; size: number }[] }).portfolio_files || []
+      const uploaded: { path: string; filename: string; size: number }[] = []
+      for (const file of Array.from(fileList)) {
+        if (file.size > 50 * 1024 * 1024) {
+          toast(`${file.name} — 50MB 초과로 건너뜀`, 'error')
+          continue
+        }
+        const safeName = file.name.replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ.\-]/g, '_')
+        const path = `portfolios/${id}/${Date.now()}_${safeName}`
+        const { error } = await supabase.storage.from('resumes').upload(path, file, { upsert: false })
+        if (error) {
+          toast(`${file.name} 업로드 실패: ${error.message}`, 'error')
+          continue
+        }
+        uploaded.push({ path, filename: file.name, size: file.size })
+        const { data: sUrl } = await supabase.storage.from('resumes').createSignedUrl(path, 3600)
+        if (sUrl?.signedUrl) setPortfolioSignedUrls((m) => ({ ...m, [path]: sUrl.signedUrl }))
+      }
+      if (uploaded.length === 0) { setPortfolioUploading(false); return }
+      const merged = [...existing, ...uploaded]
+      const { error: updErr } = await supabase
+        .from('candidates')
+        .update({ portfolio_files: merged })
+        .eq('id', id)
+      if (updErr) { toast('저장 실패: ' + updErr.message, 'error'); setPortfolioUploading(false); return }
+      setCandidate((p) => p ? ({ ...p, portfolio_files: merged } as unknown as typeof p) : p)
+      toast(`${uploaded.length}개 파일이 첨부되었습니다.`, 'success')
+    } catch (err: any) {
+      toast('업로드 오류: ' + err.message, 'error')
+    }
+    setPortfolioUploading(false)
+  }
+
+  async function handleDeletePortfolioFile(path: string) {
+    if (!candidate || !id) return
+    if (!confirm('해당 포트폴리오 파일을 삭제할까요?')) return
+    const existing = (candidate as unknown as { portfolio_files?: { path: string; filename: string; size: number }[] }).portfolio_files || []
+    const next = existing.filter((p) => p.path !== path)
+    await supabase.storage.from('resumes').remove([path])
+    const { error } = await supabase.from('candidates').update({ portfolio_files: next }).eq('id', id)
+    if (error) { toast('삭제 실패: ' + error.message, 'error'); return }
+    setCandidate((p) => p ? ({ ...p, portfolio_files: next } as unknown as typeof p) : p)
+    toast('파일이 삭제되었습니다.', 'success')
+  }
+
+  async function handleAddPortfolioLink() {
+    if (!candidate || !id) return
+    const url = portfolioLinkForm.url.trim()
+    if (!url || !/^https?:\/\//i.test(url)) { toast('http(s):// 로 시작하는 URL을 입력하세요.', 'error'); return }
+    const label = portfolioLinkForm.label.trim() || '포트폴리오'
+    const existing = (candidate as unknown as { portfolio_links?: { url: string; label: string }[] }).portfolio_links || []
+    const next = [...existing, { url, label }]
+    const { error } = await supabase.from('candidates').update({ portfolio_links: next }).eq('id', id)
+    if (error) { toast('저장 실패: ' + error.message, 'error'); return }
+    setCandidate((p) => p ? ({ ...p, portfolio_links: next } as unknown as typeof p) : p)
+    setPortfolioLinkForm({ url: '', label: '' })
+    toast('링크가 추가되었습니다.', 'success')
+  }
+
+  async function handleDeletePortfolioLink(idx: number) {
+    if (!candidate || !id) return
+    const existing = (candidate as unknown as { portfolio_links?: { url: string; label: string }[] }).portfolio_links || []
+    const next = existing.filter((_, i) => i !== idx)
+    const { error } = await supabase.from('candidates').update({ portfolio_links: next }).eq('id', id)
+    if (error) { toast('삭제 실패: ' + error.message, 'error'); return }
+    setCandidate((p) => p ? ({ ...p, portfolio_links: next } as unknown as typeof p) : p)
+    toast('링크가 삭제되었습니다.', 'success')
+  }
+
   // 사전질의서 재발송 (상태를 survey_sent로 리셋 + 이메일 재발송)
   async function handleResendSurvey() {
     if (!candidate) return
@@ -1316,16 +1393,68 @@ ${surveyText || '응답 없음'}
                 </div>
               )}
 
-              {/* 포트폴리오 — 파일 목록 + 외부 링크 */}
+              {/* 포트폴리오 — 파일 목록 + 외부 링크 + 추가 UI */}
               {(() => {
                 const pfFiles = (candidate as unknown as { portfolio_files?: { path: string; filename: string; size: number }[] }).portfolio_files || []
                 const pfLinks = (candidate as unknown as { portfolio_links?: { url: string; label: string }[] }).portfolio_links || []
-                if (pfFiles.length === 0 && pfLinks.length === 0) return null
                 return (
                   <div className="mt-2 pt-3 border-t border-gray-100 space-y-2">
-                    <p className="text-xs font-bold text-gray-600">
-                      📎 포트폴리오 ({pfFiles.length}개 파일 / {pfLinks.length}개 링크)
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-gray-600">
+                        📎 포트폴리오 ({pfFiles.length}개 파일 / {pfLinks.length}개 링크)
+                      </p>
+                      <label className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-lg cursor-pointer transition-colors">
+                        {portfolioUploading ? (
+                          <><Loader2 className="h-3 w-3 animate-spin" /> 업로드 중...</>
+                        ) : (
+                          <><Upload className="h-3 w-3" /> 파일 첨부</>
+                        )}
+                        <input
+                          type="file"
+                          multiple
+                          className="hidden"
+                          disabled={portfolioUploading}
+                          accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.ppt,.pptx,.zip,.psd,.ai,.fig,.sketch,.mp4,.mov"
+                          onChange={async (e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              await handleUploadPortfolioFiles(e.target.files)
+                              e.target.value = ''
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {/* 링크 추가 폼 (인라인) */}
+                    <div className="flex items-center gap-1.5 p-2 bg-blue-50/60 border border-dashed border-blue-200 rounded-lg">
+                      <input
+                        type="text"
+                        placeholder="라벨 (예: Behance)"
+                        value={portfolioLinkForm.label}
+                        onChange={(e) => setPortfolioLinkForm((f) => ({ ...f, label: e.target.value }))}
+                        className="w-32 px-2 py-1 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-300"
+                      />
+                      <input
+                        type="url"
+                        placeholder="https://..."
+                        value={portfolioLinkForm.url}
+                        onChange={(e) => setPortfolioLinkForm((f) => ({ ...f, url: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddPortfolioLink() } }}
+                        className="flex-1 min-w-0 px-2 py-1 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddPortfolioLink}
+                        className="px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-md shrink-0"
+                      >
+                        링크 추가
+                      </button>
+                    </div>
+
+                    {pfFiles.length === 0 && pfLinks.length === 0 && (
+                      <p className="text-[11px] text-gray-400 text-center py-2">아직 첨부된 포트폴리오가 없습니다.</p>
+                    )}
+
                     {pfFiles.map((pf, i) => {
                       const url = portfolioSignedUrls[pf.path]
                       return (
@@ -1335,11 +1464,21 @@ ${surveyText || '응답 없음'}
                             <span className="text-sm text-emerald-900 truncate">{pf.filename}</span>
                             <span className="text-[10px] text-emerald-600 shrink-0">({(pf.size / 1024 / 1024).toFixed(1)}MB)</span>
                           </div>
-                          {url ? (
-                            <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-700 hover:underline shrink-0">다운로드</a>
-                          ) : (
-                            <span className="text-xs text-gray-400 shrink-0">URL 생성 중...</span>
-                          )}
+                          <div className="flex items-center gap-2 shrink-0">
+                            {url ? (
+                              <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-emerald-700 hover:underline">다운로드</a>
+                            ) : (
+                              <span className="text-xs text-gray-400">URL 생성 중...</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePortfolioFile(pf.path)}
+                              className="p-1 rounded-md text-red-500 hover:bg-red-50"
+                              title="삭제"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
                       )
                     })}
@@ -1350,7 +1489,17 @@ ${surveyText || '응답 없음'}
                           <span className="text-sm text-blue-900 font-medium shrink-0">{l.label || '포트폴리오'}</span>
                           <span className="text-xs text-blue-700 truncate">{l.url}</span>
                         </div>
-                        <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-700 hover:underline shrink-0">열기</a>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-700 hover:underline">열기</a>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePortfolioLink(i)}
+                            className="p-1 rounded-md text-red-500 hover:bg-red-50"
+                            title="삭제"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
