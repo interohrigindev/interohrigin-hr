@@ -208,7 +208,8 @@ const navGroups: NavGroup[] = [
       { to: '/admin/certificates', label: '증명서 발급', icon: <Award className="h-4 w-4" /> },
       { to: '/admin/organization', label: '조직도', icon: <Users className="h-4 w-4" /> },
       // { to: '/admin/payroll', label: '급여 관리', icon: <Wallet className="h-4 w-4" />, minRole: 'director' as EmployeeRole }, // 임시 숨김
-      { to: '/admin/training', label: '교육 관리', icon: <BookOpen className="h-4 w-4" /> },
+      // 0512 미팅: 콘텐츠 미입력 — 콘텐츠 준비 완료까지 director 이상만 노출
+      { to: '/admin/training', label: '교육 관리', icon: <BookOpen className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
     ],
   },
   {
@@ -217,7 +218,8 @@ const navGroups: NavGroup[] = [
     icon: <LineChart className="h-5 w-5" />,
     items: [
       // D2-3: 정규직 평가 통합 허브 (자기평가/평가하기/내 평가 결과는 허브 내부에서 네비게이션)
-      { to: '/evaluation', label: '정규직 평가', icon: <Award className="h-4 w-4" />, end: true },
+      // 0512 미팅: 정규직 평가 정식 오픈 전까지 director 이상만 노출 (관리 + 진행 중 평가는 그대로 가능)
+      { to: '/evaluation', label: '정규직 평가', icon: <Award className="h-4 w-4" />, end: true, minRole: 'director' as EmployeeRole },
       { to: '/monthly-checkin', label: '월간 업무 점검', icon: <CalendarCheck className="h-4 w-4" /> },
       { to: '/peer-review', label: '동료 평가', icon: <UsersRound className="h-4 w-4" /> },
       { to: '/eval-dashboard', label: '평가 대시보드', icon: <BarChart3 className="h-4 w-4" />, minRole: 'director' as EmployeeRole },

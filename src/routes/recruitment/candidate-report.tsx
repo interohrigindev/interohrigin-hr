@@ -577,61 +577,58 @@ ${fileInfo}
     toast('지원 불참으로 처리되었습니다.', 'success')
   }
 
+  // 0512 미팅: 사전 질의서를 고정 단계에서 제거 — proceed = 면접 단계로 진행 (이메일 발송 X)
   async function handleDecision(decision: 'proceed' | 'reject') {
     if (!id || !candidate) return
-
-    if (decision === 'proceed') {
-      // 이메일 발송
-      const baseUrl = window.location.origin
-      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}?t=${Date.now()}`
-      const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl)
-
-      try {
-        const emailRes = await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: candidate.email,
-            subject,
-            html,
-          }),
-        })
-
-        if (!emailRes.ok) {
-          const errData = await emailRes.json().catch(() => ({}))
-          toast('이메일 발송 실패: ' + ((errData as Record<string, string>)?.error || '알 수 없는 오류'), 'error')
-          return
-        }
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : '네트워크 오류'
-        toast('이메일 발송 실패: ' + message, 'error')
-        return
-      }
-    }
-
-    const newStatus = decision === 'proceed' ? 'survey_sent' : 'rejected'
-    const sentAt = new Date().toISOString()
-    const updatedHistory = decision === 'proceed'
-      ? [...((candidate?.survey_send_history as { sent_at: string }[] | undefined) || []), { sent_at: sentAt }]
-      : ((candidate?.survey_send_history as { sent_at: string }[] | undefined) || [])
-    const updatePayload: Record<string, unknown> = { status: newStatus }
-    if (decision === 'proceed') updatePayload.survey_send_history = updatedHistory
-
+    const newStatus = decision === 'proceed' ? 'interview_scheduled' : 'rejected'
     const { error } = await supabase
       .from('candidates')
-      .update(updatePayload)
+      .update({ status: newStatus })
       .eq('id', id)
 
     if (error) {
       toast('상태 변경 실패', 'error')
     } else {
-      toast(decision === 'proceed' ? '사전 질의서 이메일이 발송되었습니다.' : '불합격 처리되었습니다.', 'success')
-      setCandidate((prev) => prev ? {
-        ...prev,
-        status: newStatus as CandidateStatus,
-        ...(decision === 'proceed' ? { survey_send_history: updatedHistory } : {}),
-      } : prev)
+      toast(decision === 'proceed' ? '1차 면접 단계로 진행했습니다.' : '불합격 처리되었습니다.', 'success')
+      setCandidate((prev) => prev ? { ...prev, status: newStatus as CandidateStatus } : prev)
     }
+  }
+
+  // 사전 질의서 별도 발송 — 현재 단계와 무관하게 언제든 발송 가능 (0512 미팅 별건 옵션)
+  async function handleSendSurvey() {
+    if (!id || !candidate) return
+    setResendingSurvey(true)
+    try {
+      const baseUrl = window.location.origin
+      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}?t=${Date.now()}`
+      const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl)
+      const emailRes = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: candidate.email, subject, html }),
+      })
+      if (!emailRes.ok) {
+        const errData = await emailRes.json().catch(() => ({}))
+        toast('이메일 발송 실패: ' + ((errData as Record<string, string>)?.error || '알 수 없는 오류'), 'error')
+        setResendingSurvey(false)
+        return
+      }
+      const sentAt = new Date().toISOString()
+      const updatedHistory = [
+        ...((candidate.survey_send_history as { sent_at: string }[] | undefined) || []),
+        { sent_at: sentAt },
+      ]
+      await supabase
+        .from('candidates')
+        .update({ survey_send_history: updatedHistory })
+        .eq('id', id)
+      setCandidate((p) => p ? { ...p, survey_send_history: updatedHistory } : p)
+      toast('사전 질의서가 발송되었습니다.', 'success')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '네트워크 오류'
+      toast('발송 실패: ' + message, 'error')
+    }
+    setResendingSurvey(false)
   }
 
   // 공고 제목 가져오기 (이메일 템플릿용)
@@ -2047,15 +2044,16 @@ ${surveyText || '응답 없음'}
             </CardHeader>
             <CardContent>
               {(() => {
+                // 0512 미팅: 사전 질의서를 고정 단계에서 제거 — 언제든 별도 발송 가능한 옵션으로 분리
                 const steps = [
                   { key: 'applied', label: '서류 접수' },
                   { key: 'resume_reviewed', label: 'AI 이력서 분석' },
-                  { key: 'survey', label: '사전 질의서' },
                   { key: 'interview_1', label: '1차 화상면접' },
                   { key: 'interview_2', label: '2차 대면면접' },
                   { key: 'analyzed', label: '최종 종합 분석' },
                   { key: 'decided', label: '최종 결정' },
                 ]
+                // statusOrder 의 'survey_sent'/'survey_done' 은 기존 데이터 호환용 — 단계 표시상으로는 1차 면접 직전과 동일 취급
                 const statusOrder = [
                   'applied', 'resume_reviewed', 'survey_sent', 'survey_done',
                   'interview_scheduled', 'video_done', 'face_to_face_scheduled',
@@ -2063,8 +2061,9 @@ ${surveyText || '응답 없음'}
                 ]
                 const currentIdx = statusOrder.indexOf(candidate.status)
                 const getStepState = (key: string) => {
+                  // 사전질의서가 사라지면서 interview_1/2 등의 threshold 가 statusOrder 인덱스와 그대로 매칭됨
                   const thresholds: Record<string, number> = {
-                    applied: 0, resume_reviewed: 1, survey: 2,
+                    applied: 0, resume_reviewed: 1,
                     interview_1: 4, interview_2: 6, analyzed: 9, decided: 10,
                   }
                   const threshold = thresholds[key] ?? 0
@@ -2107,17 +2106,24 @@ ${surveyText || '응답 없음'}
               <CardTitle>의사결정</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Step 1: 이력서 분석 완료 → 사전 질의서 발송 */}
+              {/* Step 1: 이력서 분석 완료 → 1차 면접 단계로 진행 (0512: 사전질의서는 옵션) */}
               {candidate.status === 'resume_reviewed' && analysis ? (
                 <>
                   <Button className="w-full" onClick={() => handleDecision('proceed')}>
-                    <CheckCircle className="h-4 w-4 mr-1" /> OK — 사전 질의서 발송
+                    <Video className="h-4 w-4 mr-1" /> 면접 단계로 진행
+                  </Button>
+                  <Button variant="outline" className="w-full" onClick={handleSendSurvey} disabled={resendingSurvey}>
+                    {resendingSurvey ? (
+                      <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 발송 중...</>
+                    ) : (
+                      <><ClipboardList className="h-4 w-4 mr-1" /> 사전 질의서 발송 (선택)</>
+                    )}
                   </Button>
                   <Button variant="danger" className="w-full" onClick={() => handleDecision('reject')}>
                     <XCircle className="h-4 w-4 mr-1" /> 불합격 처리
                   </Button>
                 </>
-              ) : /* Step 1.5: 사전 질의서 발송 → 응답 대기 — 응답 미수신/연락두절 시 처리 */
+              ) : /* Step 1.5: 사전 질의서 발송 → 응답 대기 — 응답 미수신/연락두절 시 처리 (기존 데이터 호환) */
               candidate.status === 'survey_sent' ? (
                 <>
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
