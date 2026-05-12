@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
+import { RichEditor } from '@/components/ui/RichEditor'
 import { Dialog } from '@/components/ui/Dialog'
 import { Spinner, PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
@@ -132,10 +133,14 @@ export default function DailyReportPage() {
   const [blockers, setBlockers] = useState('')
   // 0512: 작업 현황 아래 자유 입력 메모
   const [workMemo, setWorkMemo] = useState('')
+  // 0512: 프로젝트별 추가 메모 — { project_id: html }
+  const [projectMemos, setProjectMemos] = useState<Record<string, string>>({})
+  // 0512: 작업 현황 — 프로젝트에서 다시 불러오기 진행 표시
+  const [refreshingCompleted, setRefreshingCompleted] = useState(false)
 
   // 0512: AI 우선순위 / TaskSection / 진행 중 등 UI 임시 숨김. state·함수는 향후 복원 위해 보존.
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  void [Sparkles, TaskSection, aiLoading, importingProjects, addTask, updateTask, removeTask, importInProgressFromProjects, handleAISuggestion]
+  void [Sparkles, TaskSection, aiLoading, importingProjects, importInProgressFromProjects, handleAISuggestion]
 
   // 결재 전송 다이얼로그
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
@@ -268,12 +273,14 @@ export default function DailyReportPage() {
       setSatisfactionComment(r.satisfaction_comment || '')
       setBlockers(r.blockers || '')
       setWorkMemo(((r as unknown) as { work_memo?: string }).work_memo || '')
+      setProjectMemos(((r as unknown) as { project_memos?: Record<string, string> }).project_memos || {})
     } else {
       setReport(null)
       setSatisfaction(5)
       setSatisfactionComment('')
       setBlockers('')
       setWorkMemo('')
+      setProjectMemos({})
       setAiSuggestion(null)
 
       // ─── 금일 프로젝트 활동 자동 수집 ─────────────────
@@ -323,37 +330,45 @@ export default function DailyReportPage() {
         }
       }
 
-      // ─── 완료 섹션 자동 채우기 ─────────────────────────
+      // ─── 완료 섹션 자동 채우기 (프로젝트 메타데이터 보존) ─────────
       const autoCompleted: DailyReportTask[] = []
 
-      // 완료된 작업
+      // 완료된 작업 — 프로젝트와 무관한 일반 task. project_id 비움.
       for (const t of (todayDoneTasks || []) as Task[]) {
-        autoCompleted.push({ id: t.id, title: `[작업 완료] ${t.title}`, status: 'done' })
-      }
-
-      // 스테이지 상태 변경
-      for (const u of stageChanges as { id: string; content: string; project_id: string }[]) {
-        const projName = projectNames[u.project_id] || ''
         autoCompleted.push({
-          id: u.id,
-          title: `[${projName}] ${u.content}`,
+          id: t.id,
+          title: t.title,
           status: 'done',
+          project_id: null,
+          project_name: null,
         })
       }
 
-      // 일반 업데이트 (상태변경 아닌 것)
+      // 스테이지 상태 변경 — project_id 보존
+      for (const u of stageChanges as { id: string; content: string; project_id: string }[]) {
+        autoCompleted.push({
+          id: u.id,
+          title: u.content,
+          status: 'done',
+          project_id: u.project_id,
+          project_name: projectNames[u.project_id] || null,
+        })
+      }
+
+      // 일반 업데이트 (상태변경 아닌 것) — project_id 보존
       const regularUpdates = (todayUpdates || []).filter(
         (u: { status_changed_to: string | null }) => !u.status_changed_to
       )
       for (const u of regularUpdates as { id: string; content: string; project_id: string }[]) {
-        const projName = projectNames[u.project_id] || ''
         // HTML 태그 제거하여 텍스트만 추출
-        const plainText = u.content.replace(/<[^>]*>/g, '').trim().slice(0, 100)
+        const plainText = u.content.replace(/<[^>]*>/g, '').trim().slice(0, 200)
         if (plainText) {
           autoCompleted.push({
             id: u.id,
-            title: `[${projName}] ${plainText}`,
+            title: plainText,
             status: 'done',
+            project_id: u.project_id,
+            project_name: projectNames[u.project_id] || null,
           })
         }
       }
@@ -424,9 +439,102 @@ export default function DailyReportPage() {
 
   // Add task to section
   function addTask(
-    setter: React.Dispatch<React.SetStateAction<DailyReportTask[]>>
+    setter: React.Dispatch<React.SetStateAction<DailyReportTask[]>>,
+    projectId?: string | null,
+    projectName?: string | null,
   ) {
-    setter((prev) => [...prev, { id: crypto.randomUUID(), title: '', status: 'todo' }])
+    setter((prev) => [...prev, {
+      id: crypto.randomUUID(),
+      title: '',
+      status: 'todo',
+      project_id: projectId ?? null,
+      project_name: projectName ?? null,
+    }])
+  }
+
+  // 0512: 작업 현황 — 프로젝트에서 다시 불러오기 (수동 트리거)
+  async function refreshCompletedFromProjects() {
+    if (!employeeId) return
+    setRefreshingCompleted(true)
+    try {
+      const todayStart = `${selectedDate}T00:00:00`
+      const todayEnd = `${selectedDate}T23:59:59`
+
+      const { data: todayUpdates } = await supabase
+        .from('project_updates')
+        .select('*')
+        .eq('author_id', employeeId)
+        .gte('created_at', todayStart)
+        .lte('created_at', todayEnd)
+
+      const { data: todayDoneTasks } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('assignee_id', employeeId)
+        .eq('status', 'done')
+        .gte('completed_at', todayStart)
+        .lte('completed_at', todayEnd)
+
+      const stageChanges = (todayUpdates || []).filter(
+        (u: { status_changed_to: string | null }) => u.status_changed_to
+      ) as { id: string; content: string; project_id: string }[]
+
+      const projectIds = [...new Set((todayUpdates || []).map((u: { project_id: string }) => u.project_id))]
+      let projectNames: Record<string, string> = {}
+      if (projectIds.length > 0) {
+        const { data: projData } = await supabase
+          .from('project_boards')
+          .select('id, project_name')
+          .in('id', projectIds)
+        if (projData) {
+          projectNames = Object.fromEntries(
+            projData.map((p: { id: string; project_name: string }) => [p.id, p.project_name])
+          )
+        }
+      }
+
+      // 새 task 목록 빌드
+      const fresh: DailyReportTask[] = []
+      for (const t of (todayDoneTasks || []) as Task[]) {
+        fresh.push({ id: t.id, title: t.title, status: 'done', project_id: null, project_name: null })
+      }
+      for (const u of stageChanges) {
+        fresh.push({
+          id: u.id, title: u.content, status: 'done',
+          project_id: u.project_id, project_name: projectNames[u.project_id] || null,
+        })
+      }
+      const regular = (todayUpdates || []).filter(
+        (u: { status_changed_to: string | null }) => !u.status_changed_to
+      ) as { id: string; content: string; project_id: string }[]
+      for (const u of regular) {
+        const plain = u.content.replace(/<[^>]*>/g, '').trim().slice(0, 200)
+        if (!plain) continue
+        fresh.push({
+          id: u.id, title: plain, status: 'done',
+          project_id: u.project_id, project_name: projectNames[u.project_id] || null,
+        })
+      }
+
+      // 기존에 사용자가 직접 추가/편집한 항목 보존 (id 기준 dedupe)
+      const freshIds = new Set(fresh.map((t) => t.id))
+      const userAdded = completed.filter((t) => !freshIds.has(t.id))
+      // 기존 편집 내용 보존: 같은 id 인 경우 사용자 편집한 title 우선
+      const existingMap = new Map(completed.map((t) => [t.id, t]))
+      const merged = fresh.map((t) => {
+        const ex = existingMap.get(t.id)
+        if (ex && ex.title && ex.title !== t.title) {
+          return { ...t, title: ex.title, note: ex.note }
+        }
+        return ex ? { ...t, note: ex.note } : t
+      })
+      setCompleted([...merged, ...userAdded])
+      toast(`${fresh.length}개 항목 새로 불러왔습니다.`, 'success')
+    } catch (err: unknown) {
+      toast('불러오기 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
+    } finally {
+      setRefreshingCompleted(false)
+    }
   }
 
   // C6: 내가 담당한 프로젝트의 "진행중" 단계들을 일일보고 "진행 중 작업"으로 가져오기
@@ -646,6 +754,7 @@ ${completedText || '아직 없음'}
       satisfaction_comment: satisfactionComment.trim() || null,
       blockers: blockers.trim() || null,
       work_memo: workMemo.trim() || null,
+      project_memos: projectMemos,
     }
 
     if (report?.id) {
@@ -747,39 +856,176 @@ ${completedText || '아직 없음'}
       {/* 0512: AI 우선순위 제안 숨김 (state 는 유지) */}
       {/* 0512: 미완료 이월 작업 숨김 (블록 단순화) — state 는 유지하여 자동 이월 데이터 보존 */}
 
-      {/* 작업 현황 — 본인 프로젝트 자동 연동 + 자유 입력 */}
+      {/* 작업 현황 — 프로젝트별 그룹 + 편집 가능 + 그룹 메모 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">작업 현황</CardTitle>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-base">작업 현황</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={refreshCompletedFromProjects}
+              disabled={refreshingCompleted}
+              title="오늘 업데이트한 프로젝트 활동을 다시 불러옵니다 (편집한 내용은 보존)"
+            >
+              {refreshingCompleted ? '불러오는 중...' : '📁 프로젝트에서 다시 불러오기'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* 자동 연동: 본인이 속한 프로젝트의 작업/단계 (read-only) */}
-          {completed.length > 0 ? (
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-gray-500">📌 오늘 업데이트된 내 프로젝트 작업</p>
-              <ul className="space-y-1 bg-gray-50 rounded-lg p-3">
-                {completed.map((t) => (
-                  <li key={t.id} className="text-sm text-gray-700 flex items-start gap-2">
-                    <span className="text-emerald-500 shrink-0">✓</span>
-                    <span className="break-all">{t.title}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
-              오늘 업데이트한 프로젝트 작업이 없습니다. 프로젝트 보드에서 작업을 업데이트하면 자동 표시됩니다.
-            </p>
-          )}
+          {(() => {
+            // 프로젝트별 그룹핑 — project_id 기준
+            type Group = { projectId: string; projectName: string; tasks: { task: DailyReportTask; idx: number }[] }
+            const groupMap = new Map<string, Group>()
+            const otherTasks: { task: DailyReportTask; idx: number }[] = []
+            completed.forEach((t, idx) => {
+              if (t.project_id) {
+                const key = t.project_id
+                if (!groupMap.has(key)) {
+                  groupMap.set(key, {
+                    projectId: t.project_id,
+                    projectName: t.project_name || '프로젝트',
+                    tasks: [],
+                  })
+                }
+                groupMap.get(key)!.tasks.push({ task: t, idx })
+              } else {
+                otherTasks.push({ task: t, idx })
+              }
+            })
+            const groups = Array.from(groupMap.values())
 
-          {/* 자유 입력 영역 — 게시판형 메모 */}
-          <Textarea
-            label="작업 현황 추가 메모 (자유 입력)"
-            value={workMemo}
-            onChange={(e) => setWorkMemo(e.target.value)}
-            placeholder="자동 표시되지 않은 작업이나 세부 내용을 자유롭게 작성해주세요. 텍스트 / 표 / 이미지 링크 모두 가능합니다."
-            rows={6}
-          />
+            if (groups.length === 0 && otherTasks.length === 0) {
+              return (
+                <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-4 text-center">
+                  오늘 업데이트한 프로젝트 작업이 없습니다. 위 "📁 프로젝트에서 다시 불러오기"를 누르거나 프로젝트 보드에서 작업을 업데이트해주세요.
+                </p>
+              )
+            }
+
+            return (
+              <div className="space-y-4">
+                {/* 프로젝트별 그룹 */}
+                {groups.map((g) => (
+                  <div key={g.projectId} className="rounded-lg border border-gray-200 bg-white p-3 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-base shrink-0">📁</span>
+                        <h3 className="font-semibold text-gray-900 text-sm truncate">{g.projectName}</h3>
+                        <Badge variant="default" className="shrink-0">{g.tasks.length}</Badge>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => addTask(setCompleted, g.projectId, g.projectName)}
+                      >
+                        + 항목 추가
+                      </Button>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {g.tasks.map(({ task, idx }) => (
+                        <div key={task.id} className="flex gap-2 items-start">
+                          <span className="text-emerald-500 shrink-0 mt-2.5 text-sm">✓</span>
+                          <Input
+                            value={task.title}
+                            onChange={(e) => updateTask(setCompleted, idx, 'title', e.target.value)}
+                            placeholder="작업 내용"
+                            className="flex-1"
+                          />
+                          <button
+                            onClick={() => removeTask(setCompleted, idx)}
+                            className="text-red-400 hover:text-red-600 text-sm mt-2 shrink-0"
+                            title="삭제"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 프로젝트별 메모 — RichEditor */}
+                    <div className="pt-1">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        📝 {g.projectName} 메모
+                      </label>
+                      <RichEditor
+                        value={projectMemos[g.projectId] || ''}
+                        onChange={(html) => setProjectMemos((prev) => ({ ...prev, [g.projectId]: html }))}
+                        placeholder={`${g.projectName} 관련 추가 메모를 작성하세요 (이미지/링크/파일 첨부 가능).`}
+                        minHeight="120px"
+                      />
+                    </div>
+                  </div>
+                ))}
+
+                {/* 비프로젝트 항목 */}
+                {otherTasks.length > 0 && (
+                  <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">🗒️</span>
+                        <h3 className="font-semibold text-gray-900 text-sm">기타 작업</h3>
+                        <Badge variant="default">{otherTasks.length}</Badge>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => addTask(setCompleted, null, null)}
+                      >
+                        + 항목 추가
+                      </Button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {otherTasks.map(({ task, idx }) => (
+                        <div key={task.id} className="flex gap-2 items-start">
+                          <span className="text-emerald-500 shrink-0 mt-2.5 text-sm">✓</span>
+                          <Input
+                            value={task.title}
+                            onChange={(e) => updateTask(setCompleted, idx, 'title', e.target.value)}
+                            placeholder="작업 내용"
+                            className="flex-1"
+                          />
+                          <button
+                            onClick={() => removeTask(setCompleted, idx)}
+                            className="text-red-400 hover:text-red-600 text-sm mt-2 shrink-0"
+                            title="삭제"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 비프로젝트 항목이 없을 때도 추가할 수 있는 버튼 */}
+                {otherTasks.length === 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full justify-center"
+                    onClick={() => addTask(setCompleted, null, null)}
+                  >
+                    + 프로젝트 외 작업 추가
+                  </Button>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* 전체 자유 메모 — 프로젝트와 무관한 종합 메모 */}
+          <div className="pt-3 border-t border-gray-100">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              🧾 작업 현황 종합 메모 (자유 입력)
+            </label>
+            <RichEditor
+              value={workMemo}
+              onChange={setWorkMemo}
+              placeholder="오늘 하루의 작업에 대해 자유롭게 정리하세요. 이미지 · 링크 · 파일 첨부 모두 가능합니다."
+              minHeight="150px"
+            />
+          </div>
         </CardContent>
       </Card>
 

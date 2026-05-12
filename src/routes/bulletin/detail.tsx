@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import DOMPurify from 'dompurify'
 import {
   ArrowLeft, Edit2, Trash2, Pin, Star,
   Eye, Clock, MessageSquare, CornerDownRight,
@@ -215,10 +216,11 @@ export default function BulletinDetail() {
           {/* 구분선 */}
           <div className="my-5 border-t border-gray-200" />
 
-          {/* 본문 */}
-          <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap leading-relaxed">
-            {post.content}
-          </div>
+          {/* 본문 — RichEditor 가 만든 HTML 렌더링 (DOMPurify sanitize) */}
+          <div
+            className="prose prose-sm max-w-none text-gray-700 leading-relaxed [&_img]:rounded-lg [&_img]:max-w-full [&_a]:text-blue-600 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:text-gray-500 [&_pre]:bg-gray-100 [&_pre]:p-2 [&_pre]:rounded [&_pre]:text-xs"
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content || '') }}
+          />
 
           {/* 첨부파일 */}
           {post.attachments.length > 0 && (

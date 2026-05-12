@@ -183,14 +183,14 @@ export default function ProjectBoardPage() {
     const { percent, completed, total, delayed } = getProjectProgress(project)
     const color = delayed > 0 ? 'bg-red-500' : percent >= 70 ? 'bg-emerald-500' : percent >= 30 ? 'bg-blue-500' : 'bg-gray-300'
     return (
-      <div className="flex items-center gap-2">
-        <div className="w-24 h-5 bg-gray-100 rounded-sm overflow-hidden border border-gray-200 relative">
+      <div className="flex items-center gap-2 flex-nowrap">
+        <div className="w-20 h-5 bg-gray-100 rounded-sm overflow-hidden border border-gray-200 relative shrink-0">
           <div className={`h-full ${color} transition-all duration-500`} style={{ width: `${percent}%` }} />
           <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-gray-700">
             {percent}%
           </span>
         </div>
-        <span className="text-[10px] text-gray-400 whitespace-nowrap">{completed}/{total}</span>
+        <span className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">{completed}/{total}</span>
       </div>
     )
   }
@@ -308,15 +308,15 @@ export default function ProjectBoardPage() {
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50/50">
                       <th className="text-left py-2.5 px-3 font-medium text-gray-500 text-xs whitespace-nowrap w-8">#</th>
-                      <th className="text-left py-2.5 px-3 font-medium text-gray-500 text-xs min-w-[200px]">프로젝트명</th>
-                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap">상태</th>
-                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap">진행률</th>
+                      <th className="text-left py-2.5 px-3 font-medium text-gray-500 text-xs min-w-[260px]">프로젝트명</th>
+                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap w-[72px]">상태</th>
+                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap w-[140px]">진행률</th>
                       <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap">파이프라인</th>
-                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap">현재 단계</th>
-                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap">출시일</th>
-                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap">담당자</th>
-                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap">리더</th>
-                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap">참여자</th>
+                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap min-w-[200px]">현재 단계</th>
+                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap w-[90px]">출시일</th>
+                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap w-[110px]">담당자</th>
+                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap w-[110px]">리더</th>
+                      <th className="text-left py-2.5 px-2 font-medium text-gray-500 text-xs whitespace-nowrap w-[120px]">참여자</th>
                       {canDeleteProject() && <th className="py-2.5 px-1 w-8" />}
                     </tr>
                   </thead>
@@ -335,24 +335,24 @@ export default function ProjectBoardPage() {
                           </td>
                           {/* 프로젝트명 */}
                           <td className="py-2.5 px-3">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-nowrap min-w-0">
                               {groupBy !== 'brand' && (
-                                <Badge className={`text-[9px] ${BRAND_COLORS[project.brand]}`}>{project.brand}</Badge>
+                                <Badge className={`text-[9px] shrink-0 whitespace-nowrap ${BRAND_COLORS[project.brand]}`}>{project.brand}</Badge>
                               )}
                               <button
                                 onClick={() => navigate(`/admin/projects/${project.id}`)}
-                                className="text-left font-medium text-gray-900 hover:text-blue-600 transition-colors"
+                                className="text-left font-medium text-gray-900 hover:text-blue-600 transition-colors break-keep [word-break:keep-all]"
                               >
                                 {project.project_name}
                               </button>
                               {project.category && (
-                                <span className="text-[10px] text-gray-400">{project.category}</span>
+                                <span className="text-[10px] text-gray-400 whitespace-nowrap shrink-0">{project.category}</span>
                               )}
                             </div>
                           </td>
                           {/* 상태 */}
                           <td className="py-2.5 px-2">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${PROJECT_STATUS_COLORS[project.status]}`}>
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${PROJECT_STATUS_COLORS[project.status]}`}>
                               {PROJECT_STATUS_LABELS[project.status]}
                             </span>
                           </td>
@@ -367,16 +367,18 @@ export default function ProjectBoardPage() {
                           {/* 현재 단계 */}
                           <td className="py-2.5 px-2">
                             {currentStage ? (
-                              <div className="flex items-center gap-1">
-                                <StatusSelector stage={currentStage} projectId={project.id} />
-                                <span className="text-[10px] text-gray-500 whitespace-nowrap">{currentStage.stage_name}</span>
+                              <div className="flex items-center gap-1.5 flex-nowrap min-w-0">
+                                <div className="shrink-0">
+                                  <StatusSelector stage={currentStage} projectId={project.id} />
+                                </div>
+                                <span className="text-[10px] text-gray-500 break-keep [word-break:keep-all] line-clamp-1 min-w-0">{currentStage.stage_name}</span>
                                 {currentStage.deadline && (() => {
                                   const days = getDaysUntil(currentStage.deadline)
                                   if (days !== null && days < 0) {
-                                    return <span className="text-[9px] text-red-600 font-bold">D+{Math.abs(days)}</span>
+                                    return <span className="text-[9px] text-red-600 font-bold whitespace-nowrap shrink-0">D+{Math.abs(days)}</span>
                                   }
                                   if (days !== null && days <= 3) {
-                                    return <span className="text-[9px] text-amber-600">D-{days}</span>
+                                    return <span className="text-[9px] text-amber-600 whitespace-nowrap shrink-0">D-{days}</span>
                                   }
                                   return null
                                 })()}
@@ -388,8 +390,8 @@ export default function ProjectBoardPage() {
                           {/* 출시일 */}
                           <td className="py-2.5 px-2">
                             {project.launch_date ? (
-                              <span className="text-xs text-gray-600 whitespace-nowrap flex items-center gap-1">
-                                <Calendar className="h-3 w-3 text-gray-400" />
+                              <span className="text-xs text-gray-600 whitespace-nowrap inline-flex items-center gap-1 shrink-0">
+                                <Calendar className="h-3 w-3 text-gray-400 shrink-0" />
                                 {project.launch_date.slice(5)}
                               </span>
                             ) : (
@@ -399,39 +401,39 @@ export default function ProjectBoardPage() {
                           {/* 담당자 */}
                           <td className="py-2.5 px-2">
                             {project.manager_name ? (
-                              <div className="flex items-center gap-1">
-                                <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-[9px] font-bold text-blue-700">
+                              <div className="flex items-center gap-1.5 flex-nowrap min-w-0">
+                                <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-[9px] font-bold text-blue-700 shrink-0">
                                   {project.manager_name[0]}
                                 </div>
-                                <span className="text-xs text-gray-700">{project.manager_name}</span>
+                                <span className="text-xs text-gray-700 whitespace-nowrap truncate">{project.manager_name}</span>
                               </div>
                             ) : <span className="text-xs text-gray-300">-</span>}
                           </td>
                           {/* 리더 */}
                           <td className="py-2.5 px-2">
                             {project.leader_name ? (
-                              <div className="flex items-center gap-1">
-                                <div className="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center text-[9px] font-bold text-violet-700">
+                              <div className="flex items-center gap-1.5 flex-nowrap min-w-0">
+                                <div className="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center text-[9px] font-bold text-violet-700 shrink-0">
                                   {project.leader_name[0]}
                                 </div>
-                                <span className="text-xs text-gray-700">{project.leader_name}</span>
+                                <span className="text-xs text-gray-700 whitespace-nowrap truncate">{project.leader_name}</span>
                               </div>
                             ) : <span className="text-xs text-gray-300">-</span>}
                           </td>
                           {/* 참여자 */}
                           <td className="py-2.5 px-2">
-                            <div className="flex -space-x-1.5">
+                            <div className="flex -space-x-1.5 flex-nowrap">
                               {(project.assignee_names || []).slice(0, 4).map((name, i) => (
                                 <div
                                   key={i}
-                                  className="w-5 h-5 rounded-full bg-gray-100 border border-white flex items-center justify-center text-[8px] font-bold text-gray-600"
+                                  className="w-5 h-5 rounded-full bg-gray-100 border border-white flex items-center justify-center text-[8px] font-bold text-gray-600 shrink-0"
                                   title={name}
                                 >
                                   {name[0]}
                                 </div>
                               ))}
                               {(project.assignee_names || []).length > 4 && (
-                                <div className="w-5 h-5 rounded-full bg-gray-200 border border-white flex items-center justify-center text-[8px] font-bold text-gray-500">
+                                <div className="w-5 h-5 rounded-full bg-gray-200 border border-white flex items-center justify-center text-[8px] font-bold text-gray-500 shrink-0 whitespace-nowrap">
                                   +{project.assignee_names!.length - 4}
                                 </div>
                               )}

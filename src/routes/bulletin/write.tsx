@@ -4,7 +4,7 @@ import { ArrowLeft, Save, Pin, Star } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Textarea } from '@/components/ui/Textarea'
+import { RichEditor } from '@/components/ui/RichEditor'
 import { Select } from '@/components/ui/Select'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
@@ -146,15 +146,14 @@ export default function BulletinWrite() {
             />
           </div>
 
-          {/* 내용 */}
+          {/* 내용 — 리치 에디터 (텍스트/이미지/링크/파일/폰트 크기) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">내용</label>
-            <Textarea
+            <RichEditor
               value={form.content}
-              onChange={(e) => setForm(prev => ({ ...prev, content: e.target.value }))}
-              placeholder="내용을 작성하세요..."
-              rows={15}
-              className="min-h-[300px]"
+              onChange={(html) => setForm(prev => ({ ...prev, content: html }))}
+              placeholder="내용을 작성하세요. 이미지 / 링크 / 파일 / 폰트 크기 · 색상 모두 사용 가능합니다."
+              minHeight="320px"
             />
           </div>
 

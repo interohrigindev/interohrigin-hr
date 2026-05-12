@@ -2,9 +2,23 @@ import { useRef, useCallback, useEffect } from 'react'
 import {
   Bold, Italic, Underline, List, ListOrdered,
   Link2, Image, Paperclip, AtSign, Heading2,
-  Quote, Code, Minus,
+  Quote, Code, Minus, Type,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+
+const FONT_SIZE_OPTIONS: { label: string; px: string }[] = [
+  { label: '작게', px: '12px' },
+  { label: '보통', px: '14px' },
+  { label: '조금 크게', px: '16px' },
+  { label: '크게', px: '18px' },
+  { label: '아주 크게', px: '22px' },
+  { label: '제목급', px: '28px' },
+]
+
+const FONT_COLOR_OPTIONS = [
+  '#111827', '#6b7280', '#dc2626', '#ea580c',
+  '#ca8a04', '#16a34a', '#2563eb', '#7c3aed', '#db2777',
+]
 
 interface RichEditorProps {
   value: string
@@ -118,6 +132,39 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
     }
   }, [execCommand])
 
+  // 폰트 크기 적용 — selection 을 span 으로 감싸기 (execCommand fontSize 는 1~7 만 지원 → 직접 처리)
+  const applyFontSize = useCallback((px: string) => {
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      // 선택영역 없으면 다음 입력에 적용되도록 안내
+      editorRef.current?.focus()
+      execCommand('insertHTML', `<span style="font-size:${px}">​</span>`)
+      return
+    }
+    const range = sel.getRangeAt(0)
+    const span = document.createElement('span')
+    span.style.fontSize = px
+    try {
+      span.appendChild(range.extractContents())
+      range.insertNode(span)
+      // 커서를 span 끝으로
+      const newRange = document.createRange()
+      newRange.setStartAfter(span)
+      newRange.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(newRange)
+      notifyChange()
+    } catch {
+      // fallback
+      execCommand('insertHTML', `<span style="font-size:${px}">${sel.toString()}</span>`)
+    }
+  }, [execCommand, notifyChange])
+
+  // 폰트 색상
+  const applyFontColor = useCallback((color: string) => {
+    execCommand('foreColor', color)
+  }, [execCommand])
+
   // 드래그 앤 드롭
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
@@ -140,6 +187,40 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
     <div className="border border-gray-200 rounded-lg overflow-hidden focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-100">
       {/* 툴바 */}
       <div className="flex items-center gap-0.5 flex-wrap px-2 py-1.5 bg-gray-50 border-b border-gray-200">
+        {/* 폰트 크기 */}
+        <div className="relative inline-flex items-center">
+          <select
+            onChange={(e) => {
+              if (e.target.value) {
+                applyFontSize(e.target.value)
+                e.target.value = ''
+              }
+            }}
+            className="appearance-none pl-7 pr-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 cursor-pointer bg-white"
+            title="글자 크기"
+            defaultValue=""
+          >
+            <option value="" disabled>크기</option>
+            {FONT_SIZE_OPTIONS.map((opt) => (
+              <option key={opt.px} value={opt.px}>{opt.label}</option>
+            ))}
+          </select>
+          <Type className="absolute left-1.5 h-3.5 w-3.5 text-gray-500 pointer-events-none" />
+        </div>
+        {/* 폰트 색상 */}
+        <div className="relative inline-flex items-center ml-1">
+          <input
+            type="color"
+            onChange={(e) => applyFontColor(e.target.value)}
+            className="w-6 h-6 cursor-pointer border border-gray-200 rounded bg-white"
+            title="글자 색"
+            list="rich-editor-color-presets"
+          />
+          <datalist id="rich-editor-color-presets">
+            {FONT_COLOR_OPTIONS.map((c) => <option key={c} value={c} />)}
+          </datalist>
+        </div>
+        <div className="w-px h-5 bg-gray-200 mx-1" />
         <button type="button" onClick={() => execCommand('bold')} className={toolbarBtnClass} title="굵게">
           <Bold className="h-4 w-4" />
         </button>

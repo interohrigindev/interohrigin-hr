@@ -51,6 +51,9 @@ export interface DailyReportTask {
   title: string
   status: string
   note?: string
+  // 0512: 프로젝트별 그룹핑용 — 자동 import 시 채워짐. 수동 추가는 비어있을 수 있음.
+  project_id?: string | null
+  project_name?: string | null
 }
 
 export interface DailyReport {
