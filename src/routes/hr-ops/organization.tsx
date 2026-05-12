@@ -371,11 +371,40 @@ export default function OrganizationPage() {
                         </p>
                       </div>
                     ) : (
-                      members
+                      [...members]
                         .sort((a, b) => {
-                          // 리더/임원 우선 정렬
-                          const order: Record<string, number> = { ceo: 0, admin: 1, division_head: 2, director: 3, leader: 4, employee: 5 }
-                          return (order[a.role] ?? 5) - (order[b.role] ?? 5)
+                          // 0) 인터오리진 전체 보기에서는 시스템관리자(admin)를 맨 아래로
+                          const isFullView = !selectedDeptId
+                          if (isFullView) {
+                            const aAdmin = a.role === 'admin' ? 1 : 0
+                            const bAdmin = b.role === 'admin' ? 1 : 0
+                            if (aAdmin !== bAdmin) return aAdmin - bAdmin
+                          }
+
+                          // 1) 리더십(대표/임원/리더)은 상단 고정 — 역할 우선순위
+                          const LEADERSHIP: Record<string, number> = {
+                            ceo: 0,
+                            division_head: 1,
+                            director: 2,
+                            leader: 3,
+                          }
+                          const aL = LEADERSHIP[a.role]
+                          const bL = LEADERSHIP[b.role]
+                          if (aL !== undefined && bL !== undefined) return aL - bL
+                          if (aL !== undefined) return -1
+                          if (bL !== undefined) return 1
+
+                          // 2) 그 외(employee, hr_admin 등)는 사원번호 오름차순(=입사 순)
+                          const aNum = a.employee_number || ''
+                          const bNum = b.employee_number || ''
+                          if (aNum && bNum) return aNum.localeCompare(bNum, 'ko', { numeric: true })
+                          if (aNum) return -1
+                          if (bNum) return 1
+                          // 사원번호 없으면 입사일 fallback
+                          const aHire = a.hire_date || ''
+                          const bHire = b.hire_date || ''
+                          if (aHire || bHire) return aHire.localeCompare(bHire)
+                          return a.name.localeCompare(b.name, 'ko')
                         })
                         .map(emp => {
                           const badge = ROLE_BADGES[emp.role]
