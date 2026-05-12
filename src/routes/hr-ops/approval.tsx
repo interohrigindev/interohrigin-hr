@@ -3,7 +3,7 @@ import { useSearchParams, useParams, useNavigate } from 'react-router-dom'
 import {
   FileCheck, Clock, CheckCircle, XCircle,
   Plus, Search, ChevronRight, User,
-  Send, Paperclip, Download, ArrowLeft,
+  Send, Paperclip, Download, ArrowLeft, ChevronDown,
 } from 'lucide-react'
 import jsPDF from 'jspdf'
 import { registerKoreanFonts } from '@/lib/pdf-fonts'
@@ -144,6 +144,9 @@ export default function ApprovalManagementPage() {
   const [processing, setProcessing] = useState(false)
   // 페이지 모드 (URL /admin/approval/:docId 로 진입) — selectedDoc 가 있으면 풀페이지 렌더
   const isDetailPage = !!urlDocId
+  // 0512: 새 결재 신청 패널 접기/펼치기 + 카테고리 탭
+  const [newRequestExpanded, setNewRequestExpanded] = useState(false)
+  const [newRequestCategory, setNewRequestCategory] = useState<typeof DOC_TYPE_CATEGORIES[number]>('근태')
 
   // 결재 위임
   const [showDelegationDialog, setShowDelegationDialog] = useState(false)
@@ -1374,24 +1377,55 @@ export default function ApprovalManagementPage() {
         </Card>
       </div>
 
-      {/* ── 새 결재 신청 런처 (네이버웍스 스타일 타일 그리드) ── */}
+      {/* ── 새 결재 신청 — 컴팩트 접기/펼치기 + 카테고리 탭 ── */}
       {activeTab !== 'template_manage' && (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
-            <p className="text-sm font-bold text-gray-700">새 결재 신청</p>
-          </div>
-          <div className="p-4 space-y-4">
-            {DOC_TYPE_CATEGORIES.map((cat) => {
-              const items = Object.entries(DOC_TYPE_CONFIG).filter(([, cfg]) => cfg.category === cat)
-              if (items.length === 0) return null
-              return (
-                <div key={cat}>
-                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                    <span className="w-0.5 h-3 bg-brand-400 rounded-full inline-block" />
-                    {cat}
-                  </p>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
-                    {items.map(([key, cfg]) => (
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          {/* 헤더 — 항상 노출, 클릭 시 접기/펼치기 */}
+          <button
+            type="button"
+            onClick={() => setNewRequestExpanded((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
+          >
+            <div className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-brand-600" />
+              <span className="text-sm font-bold text-gray-700">새 결재 신청</span>
+              <span className="text-[11px] text-gray-400">{newRequestExpanded ? '클릭하여 닫기' : '클릭하여 펼치기'}</span>
+            </div>
+            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${newRequestExpanded ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* 본문 — expanded 일 때만 노출 */}
+          {newRequestExpanded && (
+            <div className="border-t border-gray-100">
+              {/* 카테고리 탭 */}
+              <div className="flex gap-1 px-3 pt-2.5 pb-0 border-b border-gray-100 overflow-x-auto">
+                {DOC_TYPE_CATEGORIES.map((cat) => {
+                  const count = Object.values(DOC_TYPE_CONFIG).filter((cfg) => cfg.category === cat).length
+                  if (count === 0) return null
+                  const isActive = newRequestCategory === cat
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setNewRequestCategory(cat)}
+                      className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+                        isActive
+                          ? 'border-brand-600 text-brand-700'
+                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {cat} <span className="text-[10px] text-gray-400">({count})</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* 선택된 카테고리의 결재 양식 그리드 */}
+              <div className="p-3">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-1.5">
+                  {Object.entries(DOC_TYPE_CONFIG)
+                    .filter(([, cfg]) => cfg.category === newRequestCategory)
+                    .map(([key, cfg]) => (
                       <button
                         key={key}
                         type="button"
@@ -1404,17 +1438,16 @@ export default function ApprovalManagementPage() {
                           }
                           openNewDocPage(key)
                         }}
-                        className="group flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border border-gray-200 bg-gray-50/50 hover:border-brand-400 hover:bg-brand-50 hover:shadow-sm transition-all text-center"
+                        className="group flex flex-col items-center gap-1 py-2 px-1.5 rounded-md border border-gray-200 bg-white hover:border-brand-400 hover:bg-brand-50 transition-all text-center"
                       >
-                        <span className="text-2xl transition-transform group-hover:scale-110 leading-none">{cfg.icon}</span>
-                        <p className="text-[11px] font-medium text-gray-600 group-hover:text-brand-700 leading-tight break-keep">{cfg.label}</p>
+                        <span className="text-lg leading-none">{cfg.icon}</span>
+                        <p className="text-[10px] font-medium text-gray-600 group-hover:text-brand-700 leading-tight break-keep">{cfg.label}</p>
                       </button>
                     ))}
-                  </div>
                 </div>
-              )
-            })}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
