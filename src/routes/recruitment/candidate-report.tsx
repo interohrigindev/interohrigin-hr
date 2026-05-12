@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer, Link2, Copy, EyeOff } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer, Link2, Copy, EyeOff, Pencil } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -64,6 +64,10 @@ export default function CandidateReport() {
   } | null>(null)
   const [duplicateCandidates, setDuplicateCandidates] = useState<{ id: string; name: string; status: string; created_at: string; job_posting_id: string | null }[]>([])
   const [jobTitle, setJobTitle] = useState<string | null>(null)
+  // 지원자 기본 정보 인라인 편집
+  const [editingProfile, setEditingProfile] = useState(false)
+  const [profileForm, setProfileForm] = useState({ name: '', email: '', phone: '' })
+  const [savingProfile, setSavingProfile] = useState(false)
   // 외부 공유 링크
   const [shareLinks, setShareLinks] = useState<{ id: string; token: string; expires_at: string | null; is_active: boolean; note: string | null; created_at: string; view_count: number; last_viewed_at: string | null }[]>([])
   const [shareDialogOpen, setShareDialogOpen] = useState(false)
@@ -528,6 +532,37 @@ ${fileInfo}
       toast('종합 분석 실패: ' + err.message, 'error')
     }
     setComprehensiveAnalyzing(false)
+  }
+
+  function openProfileEdit() {
+    if (!candidate) return
+    setProfileForm({
+      name: candidate.name || '',
+      email: candidate.email || '',
+      phone: candidate.phone || '',
+    })
+    setEditingProfile(true)
+  }
+
+  async function handleSaveProfile() {
+    if (!candidate || !id) return
+    const name = profileForm.name.trim()
+    const email = profileForm.email.trim()
+    const phone = profileForm.phone.trim()
+    if (!name) { toast('이름은 필수입니다.', 'error'); return }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast('올바른 이메일을 입력하세요.', 'error'); return
+    }
+    setSavingProfile(true)
+    const { error } = await supabase
+      .from('candidates')
+      .update({ name, email, phone: phone || null })
+      .eq('id', id)
+    setSavingProfile(false)
+    if (error) { toast('저장 실패: ' + error.message, 'error'); return }
+    setCandidate((p) => p ? { ...p, name, email, phone: phone || null } : p)
+    setEditingProfile(false)
+    toast('지원자 정보가 수정되었습니다. 사전질의서를 재발송하면 새 이메일로 전송됩니다.', 'success')
   }
 
   async function handleNoShow() {
@@ -2232,30 +2267,86 @@ ${surveyText || '응답 없음'}
 
           <Card>
             <CardHeader>
-              <CardTitle>지원자 정보</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>지원자 정보</CardTitle>
+                {!editingProfile ? (
+                  <Button size="sm" variant="outline" onClick={openProfileEdit}>
+                    <Pencil className="h-3 w-3 mr-1" /> 수정
+                  </Button>
+                ) : (
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" onClick={() => setEditingProfile(false)} disabled={savingProfile}>
+                      취소
+                    </Button>
+                    <Button size="sm" onClick={handleSaveProfile} disabled={savingProfile}>
+                      {savingProfile ? <Loader2 className="h-3 w-3 animate-spin" /> : '저장'}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">이름</span>
-                <span className="font-medium">{candidate.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">이메일</span>
-                <span className="font-medium">{candidate.email}</span>
-              </div>
-              {candidate.phone && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">전화번호</span>
-                  <span className="font-medium">{candidate.phone}</span>
-                </div>
+              {editingProfile ? (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-500">이름 *</label>
+                    <input
+                      type="text"
+                      value={profileForm.name}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+                      placeholder="홍길동"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-500">이메일 * <span className="text-amber-600">(사전질의서 발송 주소)</span></label>
+                    <input
+                      type="email"
+                      value={profileForm.email}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+                      placeholder="name@example.com"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-500">전화번호</label>
+                    <input
+                      type="tel"
+                      value={profileForm.phone}
+                      onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+                      placeholder="010-1234-5678"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 pt-1">
+                    수정 후 좌측 사전질의서 영역에서 <strong>재발송</strong>을 눌러야 새 이메일로 발송됩니다.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">이름</span>
+                    <span className="font-medium">{candidate.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">이메일</span>
+                    <span className="font-medium">{candidate.email}</span>
+                  </div>
+                  {candidate.phone && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">전화번호</span>
+                      <span className="font-medium">{candidate.phone}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">유입경로</span>
+                    <span className="font-medium">
+                      {SOURCE_CHANNEL_LABELS[candidate.source_channel as SourceChannel]}
+                      {candidate.source_detail && ` (${candidate.source_detail})`}
+                    </span>
+                  </div>
+                </>
               )}
-              <div className="flex justify-between">
-                <span className="text-gray-500">유입경로</span>
-                <span className="font-medium">
-                  {SOURCE_CHANNEL_LABELS[candidate.source_channel as SourceChannel]}
-                  {candidate.source_detail && ` (${candidate.source_detail})`}
-                </span>
-              </div>
             </CardContent>
           </Card>
         </div>
