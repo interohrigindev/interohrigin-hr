@@ -236,10 +236,11 @@ export default function DailyReportPage() {
     ;(async () => {
       setMyProjectsLoading(true)
       try {
+        // 0512: 진행중(active) 프로젝트만 — 완료/홀딩/취소 제외
         const { data } = await supabase
           .from('project_boards')
           .select('id, project_name, assignee_ids, manager_id, leader_id, executive_id, status')
-          .in('status', ['active', 'planning'])
+          .eq('status', 'active')
         if (cancelled) return
         const mine = (data || []).filter((p: {
           assignee_ids?: string[] | null
@@ -980,30 +981,24 @@ ${completedText || '아직 없음'}
               return HEADER_PALETTES[Math.abs(h) % HEADER_PALETTES.length]
             }
 
-            // 1) 내가 속한 모든 프로젝트(myProjects) + completed[] 안에 있는 프로젝트 ID 합집합
+            // 1) 진행중(active) 프로젝트만 노출 — myProjects 기반
             const idSet = new Set<string>()
             const nameMap = new Map<string, string>()
             myProjects.forEach((p) => { idSet.add(p.id); nameMap.set(p.id, p.project_name) })
-            completed.forEach((t) => {
-              if (t.project_id) {
-                idSet.add(t.project_id)
-                if (!nameMap.has(t.project_id) && t.project_name) nameMap.set(t.project_id, t.project_name)
-              }
-            })
 
-            // 2) 비프로젝트(project_id null) 항목 수집
+            // 2) 비프로젝트 + 비활성 프로젝트 task 는 "기타" 로 흡수
             const otherTasks: { task: DailyReportTask; idx: number }[] = []
-            completed.forEach((t, idx) => {
-              if (!t.project_id) otherTasks.push({ task: t, idx })
-            })
-
-            // 3) 프로젝트별 task 매핑
             const projectTasksMap = new Map<string, { task: DailyReportTask; idx: number }[]>()
             completed.forEach((t, idx) => {
-              if (!t.project_id) return
-              const arr = projectTasksMap.get(t.project_id) ?? []
-              arr.push({ task: t, idx })
-              projectTasksMap.set(t.project_id, arr)
+              if (t.project_id && idSet.has(t.project_id)) {
+                // 진행중 프로젝트 → 그룹
+                const arr = projectTasksMap.get(t.project_id) ?? []
+                arr.push({ task: t, idx })
+                projectTasksMap.set(t.project_id, arr)
+              } else {
+                // project_id 없음 OR 완료/홀딩/취소된 프로젝트 → 기타
+                otherTasks.push({ task: t, idx })
+              }
             })
 
             // 4) 그룹 리스트 — 활동 많은 순으로 정렬
