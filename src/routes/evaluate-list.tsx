@@ -135,11 +135,14 @@ export default function EvaluateList() {
 
   function getMyEvalStatus(targetStatus: string): 'done' | 'current' | 'waiting' {
     if (!myRole) return 'waiting'
-    const roleDoneStatus = `${myRole}_done`
+    // division_head 는 director 단계에서 평가하므로 'director_done' 으로 매핑
+    const roleForDone = myRole === 'division_head' ? 'director' : myRole
+    const roleDoneStatus = `${roleForDone}_done`
     const targetIdx = STATUS_ORDER.indexOf(targetStatus)
     const doneIdx = STATUS_ORDER.indexOf(roleDoneStatus)
     if (doneIdx === -1) return 'waiting'
-    if (targetIdx > doneIdx) return 'done'
+    // 내 단계가 끝났거나 (target.status >= my_done) 그 이후 단계로 진행됨
+    if (targetIdx >= doneIdx) return 'done'
     return 'current'
   }
 

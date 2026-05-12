@@ -96,6 +96,7 @@ export default function EvaluateDetail() {
   }
 
   // ─── Computed ─────────────────────────────────────────────
+  // 본인 단계가 끝났거나 (target.status >= my_done) 또는 그 이후 단계로 넘어간 경우 → 읽기 전용
   const isReadOnly = (() => {
     if (!evaluatorRole) return true
     const roleDoneStatus = `${evaluatorRole}_done`
@@ -103,7 +104,7 @@ export default function EvaluateDetail() {
       'pending', 'self_done', 'leader_done',
       'director_done', 'ceo_done', 'completed',
     ]
-    return statusOrder.indexOf(target.status) > statusOrder.indexOf(roleDoneStatus)
+    return statusOrder.indexOf(target.status) >= statusOrder.indexOf(roleDoneStatus)
   })()
 
   const groupedItems = categories
@@ -286,26 +287,34 @@ export default function EvaluateDetail() {
                       </div>
                     </div>
 
-                    {/* Score select */}
+                    {/* Score selector — 가로형 1~10 버튼 그리드 */}
                     <div>
-                      <select
-                        value={d.score ?? ''}
-                        onChange={(e) => updateScore(item.id, { score: e.target.value ? Number(e.target.value) : null })}
-                        disabled={isReadOnly}
-                        className={cn(
-                          'block w-full rounded-lg border px-3 py-2 text-sm shadow-sm transition-colors',
-                          'focus:outline-none focus:ring-2 focus:ring-offset-0',
-                          'border-gray-300 focus:border-brand-500 focus:ring-brand-200',
-                          isReadOnly && 'bg-gray-50 cursor-not-allowed opacity-60'
-                        )}
-                      >
-                        <option value="">점수 선택</option>
-                        {Array.from({ length: item.max_score }, (_, i) => i + 1).map((score) => (
-                          <option key={score} value={score}>
-                            {score}점 - {SCORE_LABELS[score] ?? ''}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from({ length: item.max_score }, (_, i) => i + 1).map((score) => {
+                          const selected = d.score === score
+                          return (
+                            <button
+                              key={score}
+                              type="button"
+                              disabled={isReadOnly}
+                              onClick={() => updateScore(item.id, { score })}
+                              title={`${score}점${SCORE_LABELS[score] ? ' — ' + SCORE_LABELS[score] : ''}`}
+                              className={cn(
+                                'h-9 min-w-9 px-2 rounded-lg text-sm font-medium border transition-colors',
+                                selected
+                                  ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-brand-50 hover:border-brand-300',
+                                isReadOnly && 'cursor-not-allowed opacity-50'
+                              )}
+                            >
+                              {score}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {d.score != null && SCORE_LABELS[d.score] && (
+                        <p className="text-[11px] text-gray-500 mt-1">{d.score}점 — {SCORE_LABELS[d.score]}</p>
+                      )}
                     </div>
 
                     {/* Comment */}
