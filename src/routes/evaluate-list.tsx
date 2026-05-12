@@ -44,6 +44,8 @@ export default function EvaluateList() {
   const [deptMap, setDeptMap] = useState<Record<string, string>>({})
   const [deptParentMap, setDeptParentMap] = useState<Record<string, string | null>>({})
   const [deptLoading, setDeptLoading] = useState(true)
+  // 0512: 본인이 평가 완료한 target id 집합 — 다수 임원 병렬 평가 지원
+  const [myEvaluatedTargetIds, setMyEvaluatedTargetIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     async function fetchDepts() {
@@ -60,6 +62,20 @@ export default function EvaluateList() {
     }
     fetchDepts()
   }, [])
+
+  useEffect(() => {
+    if (!profile?.id) return
+    ;(async () => {
+      const { data } = await supabase
+        .from('evaluator_scores')
+        .select('target_id')
+        .eq('evaluator_id', profile.id)
+        .eq('is_draft', false)
+      if (data) {
+        setMyEvaluatedTargetIds(new Set(data.map((r: { target_id: string }) => r.target_id)))
+      }
+    })()
+  }, [profile?.id])
 
   // 내 부서 및 하위 부서 ID 집합 (leader/director/division_head 스코프)
   function collectSubtreeIds(rootId: string | null | undefined): Set<string> {
@@ -133,16 +149,16 @@ export default function EvaluateList() {
     return targetIdx >= requiredIdx
   })
 
-  function getMyEvalStatus(targetStatus: string): 'done' | 'current' | 'waiting' {
+  function getMyEvalStatus(targetId: string, targetStatus: string): 'done' | 'current' | 'waiting' {
     if (!myRole) return 'waiting'
-    // division_head 는 director 단계에서 평가하므로 'director_done' 으로 매핑
+    // 1) 본인이 이미 평가 완료(evaluator_scores is_draft=false) 한 경우 → done
+    if (myEvaluatedTargetIds.has(targetId)) return 'done'
+    // 2) target 단계가 본인 단계 이후로 진행됐으면 → done (다른 평가자가 자동 진행했을 수 있음)
     const roleForDone = myRole === 'division_head' ? 'director' : myRole
     const roleDoneStatus = `${roleForDone}_done`
     const targetIdx = STATUS_ORDER.indexOf(targetStatus)
     const doneIdx = STATUS_ORDER.indexOf(roleDoneStatus)
-    if (doneIdx === -1) return 'waiting'
-    // 내 단계가 끝났거나 (target.status >= my_done) 그 이후 단계로 진행됨
-    if (targetIdx >= doneIdx) return 'done'
+    if (doneIdx !== -1 && targetIdx > doneIdx) return 'done'
     return 'current'
   }
 
@@ -184,7 +200,7 @@ export default function EvaluateList() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {filteredTargets.map((t) => {
-                    const evalStatus = getMyEvalStatus(t.status)
+                    const evalStatus = getMyEvalStatus(t.id, t.status)
                     return (
                       <tr key={t.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 font-medium text-gray-900">

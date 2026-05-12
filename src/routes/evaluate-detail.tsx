@@ -96,15 +96,17 @@ export default function EvaluateDetail() {
   }
 
   // ─── Computed ─────────────────────────────────────────────
-  // 본인 단계가 끝났거나 (target.status >= my_done) 또는 그 이후 단계로 넘어간 경우 → 읽기 전용
+  // 본인이 이미 평가 완료한 경우 (myScores 중 is_draft=false 1개 이상), 또는 단계가 본인 이후로 진행된 경우 → 읽기 전용
   const isReadOnly = (() => {
     if (!evaluatorRole) return true
+    const mineFinal = myScores.some((s) => !s.is_draft)
+    if (mineFinal) return true
     const roleDoneStatus = `${evaluatorRole}_done`
     const statusOrder = [
       'pending', 'self_done', 'leader_done',
       'director_done', 'ceo_done', 'completed',
     ]
-    return statusOrder.indexOf(target.status) >= statusOrder.indexOf(roleDoneStatus)
+    return statusOrder.indexOf(target.status) > statusOrder.indexOf(roleDoneStatus)
   })()
 
   const groupedItems = categories

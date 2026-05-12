@@ -143,15 +143,21 @@ export function useEvaluateDetail(employeeId: string | undefined) {
     // 2) self_evaluations + my evaluator_scores + my evaluator_comment + previous scores
     const selfQuery = supabase.from('self_evaluations').select('*').eq('target_id', tid)
 
+    // 0512: 다수 임원 병렬 평가 — myScores/myComment 는 본인(evaluator_id) 의 row 만 조회
     const myScoresQuery = evaluatorRole
-      ? supabase.from('evaluator_scores').select('*').eq('target_id', tid).eq('evaluator_role', evaluatorRole)
+      ? supabase.from('evaluator_scores').select('*').eq('target_id', tid).eq('evaluator_role', evaluatorRole).eq('evaluator_id', profile.id)
       : null
 
     const myCommentQuery = evaluatorRole
-      ? supabase.from('evaluator_comments').select('*').eq('target_id', tid).eq('evaluator_role', evaluatorRole).maybeSingle()
+      ? supabase.from('evaluator_comments').select('*').eq('target_id', tid).eq('evaluator_role', evaluatorRole).eq('evaluator_id', profile.id).maybeSingle()
       : null
 
-    const prevQuery = supabase.from('evaluator_scores').select('*').eq('target_id', tid).neq('evaluator_role', evaluatorRole ?? '')
+    // prevQuery: 이전 평가자(다른 role) + 같은 role 의 다른 임원 점수도 참고용으로 노출
+    const prevQuery = supabase
+      .from('evaluator_scores')
+      .select('*')
+      .eq('target_id', tid)
+      .neq('evaluator_id', profile.id)
 
     const [selfRes, myScoresRes, myCommentRes, prevRes] = await Promise.all([
       selfQuery,
@@ -191,7 +197,7 @@ export function useEvaluateDetail(employeeId: string | undefined) {
 
     const { error: scoreErr } = await supabase
       .from('evaluator_scores')
-      .upsert(scoreRows, { onConflict: 'target_id,item_id,evaluator_role' })
+      .upsert(scoreRows, { onConflict: 'target_id,item_id,evaluator_role,evaluator_id' })
 
     if (scoreErr) {
       setSaving(false)
@@ -210,7 +216,7 @@ export function useEvaluateDetail(employeeId: string | undefined) {
 
     const { error: commentErr } = await supabase
       .from('evaluator_comments')
-      .upsert(commentRow, { onConflict: 'target_id,evaluator_role' })
+      .upsert(commentRow, { onConflict: 'target_id,evaluator_role,evaluator_id' })
 
     if (commentErr) {
       setSaving(false)
@@ -244,7 +250,7 @@ export function useEvaluateDetail(employeeId: string | undefined) {
 
     const { error: scoreErr } = await supabase
       .from('evaluator_scores')
-      .upsert(scoreRows, { onConflict: 'target_id,item_id,evaluator_role' })
+      .upsert(scoreRows, { onConflict: 'target_id,item_id,evaluator_role,evaluator_id' })
 
     if (scoreErr) {
       setSubmitting(false)
@@ -263,7 +269,7 @@ export function useEvaluateDetail(employeeId: string | undefined) {
 
     const { error: commentErr } = await supabase
       .from('evaluator_comments')
-      .upsert(commentRow, { onConflict: 'target_id,evaluator_role' })
+      .upsert(commentRow, { onConflict: 'target_id,evaluator_role,evaluator_id' })
 
     if (commentErr) {
       setSubmitting(false)
