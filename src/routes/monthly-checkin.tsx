@@ -328,9 +328,15 @@ export default function MonthlyCheckinPage() {
   // Employee list for enrichment
   const [employees, setEmployees] = useState<EmployeeBasic[]>([])
   const [empLoaded, setEmpLoaded] = useState(false)
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
 
   // Expandable rows
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  // 0512: 임원/대표 뷰 — 부서/직원 인덱싱
+  const [searchName, setSearchName] = useState('')
+  const [filterDept, setFilterDept] = useState<string>('')
+  const [filterStatus, setFilterStatus] = useState<string>('') // '' | 'submitted' | 'leader_reviewed' | 'exec_reviewed' | 'ceo_reviewed'
 
   // Load employees for admin/leader view
   useMemo(() => {
@@ -340,6 +346,8 @@ export default function MonthlyCheckinPage() {
         if (data) setEmployees(data)
         setEmpLoaded(true)
       })
+    supabase.from('departments').select('id, name').order('name')
+      .then(({ data }) => { if (data) setDepartments(data) })
   }, [hasRole, empLoaded])
 
   const isEmployee = !hasRole('leader')
@@ -476,26 +484,122 @@ export default function MonthlyCheckinPage() {
       )}
 
       {/* Leader/Exec/CEO: View all team checkins for the quarter */}
-      {hasRole('leader') && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              팀원 월간 점검 목록 ({selectedYear}년 {selectedQuarter}분기)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {allCheckins.length === 0 ? (
-              <div className="text-center py-8">
-                <FileText className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                <p className="text-gray-400">이번 분기 제출된 점검이 없습니다.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {allCheckins.map((checkin) => {
-                  const isExpanded = expandedIds.has(checkin.id)
-                  const empName = getEmployeeName(checkin.employee_id)
+      {hasRole('leader') && (() => {
+        // 0512: 부서별 그룹핑 + 검색/필터 인덱싱
+        const filtered = allCheckins.filter((c) => {
+          const empName = getEmployeeName(c.employee_id)
+          const emp = employees.find((e) => e.id === c.employee_id)
+          if (searchName.trim() && !empName.toLowerCase().includes(searchName.trim().toLowerCase())) return false
+          if (filterDept && emp?.department_id !== filterDept) return false
+          if (filterStatus && c.status !== filterStatus) return false
+          return true
+        })
+        // 부서별 그룹화
+        const groups = new Map<string, typeof filtered>()
+        for (const c of filtered) {
+          const emp = employees.find((e) => e.id === c.employee_id)
+          const key = emp?.department_id || '_none'
+          if (!groups.has(key)) groups.set(key, [])
+          groups.get(key)!.push(c)
+        }
+        const deptName = (id: string) =>
+          id === '_none' ? '소속 미지정' : (departments.find((d) => d.id === id)?.name || '알 수 없음')
+        const sortedGroups = Array.from(groups.entries()).sort((a, b) => deptName(a[0]).localeCompare(deptName(b[0]), 'ko'))
 
-                  return (
+        return (
+          <Card>
+            <CardHeader>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <CardTitle className="text-base">
+                    팀원 월간 점검 목록 ({selectedYear}년 {selectedQuarter}분기)
+                  </CardTitle>
+                  <span className="text-xs text-gray-500">
+                    총 {filtered.length}건 / {sortedGroups.length}개 부서
+                  </span>
+                </div>
+                {/* 검색 + 부서 필터 + 상태 필터 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="text"
+                    placeholder="직원명 검색..."
+                    value={searchName}
+                    onChange={(e) => setSearchName(e.target.value)}
+                    className="flex-1 min-w-[160px] max-w-xs px-3 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-200"
+                  />
+                  <Select
+                    value={filterDept}
+                    onChange={(e) => setFilterDept(e.target.value)}
+                    options={[
+                      { value: '', label: '모든 부서' },
+                      ...departments.map((d) => ({ value: d.id, label: d.name })),
+                    ]}
+                  />
+                  <Select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    options={[
+                      { value: '', label: '모든 상태' },
+                      { value: 'submitted', label: '제출됨' },
+                      { value: 'leader_reviewed', label: '리더 검토' },
+                      { value: 'exec_reviewed', label: '임원 검토' },
+                      { value: 'ceo_reviewed', label: '대표 검토' },
+                    ]}
+                  />
+                  {(searchName || filterDept || filterStatus) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { setSearchName(''); setFilterDept(''); setFilterStatus('') }}
+                    >
+                      초기화
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {filtered.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                  <p className="text-gray-400">
+                    {allCheckins.length === 0 ? '이번 분기 제출된 점검이 없습니다.' : '조건에 맞는 점검이 없습니다.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {sortedGroups.map(([deptId, list]) => {
+                    // 부서 내 직원별 그룹핑
+                    const byEmp = new Map<string, typeof list>()
+                    for (const c of list) {
+                      if (!byEmp.has(c.employee_id)) byEmp.set(c.employee_id, [])
+                      byEmp.get(c.employee_id)!.push(c)
+                    }
+                    const sortedEmps = Array.from(byEmp.entries()).sort((a, b) =>
+                      getEmployeeName(a[0]).localeCompare(getEmployeeName(b[0]), 'ko'),
+                    )
+                    return (
+                      <div key={deptId} className="space-y-2">
+                        {/* 부서 헤더 */}
+                        <div className="flex items-center gap-2 pb-1 border-b-2 border-brand-200">
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold bg-brand-50 text-brand-700">
+                            {deptName(deptId)}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {sortedEmps.length}명 · {list.length}건
+                          </span>
+                        </div>
+                        {/* 직원별 그룹 */}
+                        {sortedEmps.map(([empId, empCheckins]) => (
+                          <div key={empId} className="space-y-1.5 pl-1">
+                            <p className="text-xs font-medium text-gray-600">
+                              ▸ {getEmployeeName(empId)} ({empCheckins.length}건)
+                            </p>
+                            {empCheckins.map((checkin) => {
+                              const isExpanded = expandedIds.has(checkin.id)
+                              const empName = getEmployeeName(checkin.employee_id)
+
+                              return (
                     <div key={checkin.id} className="border rounded-lg overflow-hidden">
                       <button
                         onClick={() => toggleExpand(checkin.id)}
@@ -575,13 +679,19 @@ export default function MonthlyCheckinPage() {
                         </div>
                       )}
                     </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                              )
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Feedback dialog */}
       <Dialog

@@ -239,6 +239,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const [messengerUnread, setMessengerUnread] = useState(0)
   const [allowedMenus, setAllowedMenus] = useState<string[] | null>(null) // null = 로딩중 또는 권한 미설정 (전체 허용)
   const [hasOjtEnrollment, setHasOjtEnrollment] = useState(false)
+  const [isResigning, setIsResigning] = useState(false)
 
   // Fetch menu permissions
   useEffect(() => {
@@ -270,6 +271,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         .select('id', { count: 'exact', head: true })
         .eq('employee_id', profile.id)
       setHasOjtEnrollment((count || 0) > 0)
+    })()
+  }, [profile?.id])
+
+  // 0512: 퇴사 예정자 플래그 — '나의 인수인계' 사이드바 노출 조건
+  useEffect(() => {
+    if (!profile?.id) return
+    ;(async () => {
+      const { data } = await supabase
+        .from('employees')
+        .select('is_resigning')
+        .eq('id', profile.id)
+        .maybeSingle()
+      setIsResigning(Boolean((data as { is_resigning?: boolean } | null)?.is_resigning))
     })()
   }, [profile?.id])
 
@@ -400,7 +414,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
             {isExpanded && (
               <div className="ml-4 flex flex-col gap-0.5">
-                {group.items.filter(isItemVisible).map((item) => {
+                {group.items.filter((it) => {
+                  // 0512: '나의 인수인계' 는 퇴사 예정자에게만 노출
+                  if (typeof it.to === 'string' && it.to === '/my/handover' && !isResigning) return false
+                  return isItemVisible(it)
+                }).map((item) => {
                   const path = resolvePath(item)
                   return (
                     <NavLink

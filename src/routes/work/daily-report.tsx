@@ -761,17 +761,8 @@ ${completedText || '아직 없음'}
         )}
       </Card>
 
-      {/* Carryover (yesterday's uncompleted) */}
-      <TaskSection
-        title="미완료 이월 작업"
-        tasks={carryover}
-        onAdd={() => addTask(setCarryover)}
-        onUpdate={(idx, field, value) => updateTask(setCarryover, idx, field, value)}
-        onRemove={(idx) => removeTask(setCarryover, idx)}
-        highlight
-      />
-
-      {/* Completed */}
+      {/* 0512: 미완료 이월 작업 숨김 (블록 단순화) — state 는 유지하여 자동 이월 데이터 보존 */}
+      {/* Completed (작업 현황) */}
       <TaskSection
         title="작업 현황"
         tasks={completed}
@@ -780,7 +771,7 @@ ${completedText || '아직 없음'}
         onRemove={(idx) => removeTask(setCompleted, idx)}
       />
 
-      {/* In Progress */}
+      {/* In Progress (진행 중 작업) */}
       <TaskSection
         title="진행 중 작업"
         tasks={inProgress}
@@ -791,55 +782,29 @@ ${completedText || '아직 없음'}
         importLoading={importingProjects}
       />
 
-      {/* Planned for Tomorrow */}
-      <TaskSection
-        title="내일 계획"
-        tasks={planned}
-        onAdd={() => addTask(setPlanned)}
-        onUpdate={(idx, field, value) => updateTask(setPlanned, idx, field, value)}
-        onRemove={(idx) => removeTask(setPlanned, idx)}
-      />
+      {/* 0512: 내일 계획 숨김 — state 는 유지하되 UI 미노출 */}
 
-      {/* Satisfaction + Blockers */}
+      {/* 오늘의 총평 — 만족도 + 한 줄 메모 (블로커/장애요인 통합, 메모 영역 확장) */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">만족도 및 코멘트</CardTitle>
+          <CardTitle className="text-base">오늘의 총평</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Satisfaction score */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              오늘 업무 만족도: <span className="text-brand-600 font-bold">{satisfaction}</span>
-            </label>
-            <div className="flex flex-wrap gap-1">
-              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setSatisfaction(n)}
-                  className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
-                    n <= satisfaction
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* 0512: 만족도 점수 숨김 — state 는 유지하되 UI 미노출 */}
 
-          <Input
-            label="한 줄 코멘트"
+          <Textarea
+            label="오늘의 한 줄 총평 (자유 메모)"
             value={satisfactionComment}
             onChange={(e) => setSatisfactionComment(e.target.value)}
-            placeholder="오늘 하루를 한 줄로 표현하면?"
+            placeholder="오늘 하루를 자유롭게 정리해주세요. 텍스트/요약/소감 모두 가능합니다."
+            rows={5}
           />
 
           <Textarea
-            label="블로커/장애요인"
+            label="이슈 / 블로커 (선택)"
             value={blockers}
             onChange={(e) => setBlockers(e.target.value)}
-            placeholder="업무 진행에 방해가 된 요인이 있으면 적어주세요."
+            placeholder="업무 진행에 방해가 된 요인이 있으면 적어주세요. (없으면 비워두세요)"
             rows={3}
           />
         </CardContent>
