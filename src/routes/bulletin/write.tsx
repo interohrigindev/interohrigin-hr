@@ -12,10 +12,9 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useBulletin, CATEGORY_MAP, type BulletinCategory } from '@/hooks/useBulletin'
 
-const CATEGORY_OPTIONS = Object.entries(CATEGORY_MAP).map(([key, val]) => ({
-  value: key,
-  label: val.label,
-}))
+// 0512: Q&A · 건의함은 일단 숨김 / 공지사항은 권한자만 작성 가능
+const NOTICE_WRITE_ROLES = ['admin', 'hr_admin', 'director', 'division_head', 'ceo']
+const HIDDEN_CATEGORIES: BulletinCategory[] = ['qa', 'suggestion']
 
 export default function BulletinWrite() {
   const navigate = useNavigate()
@@ -26,6 +25,13 @@ export default function BulletinWrite() {
   const { createPost, updatePost } = useBulletin()
 
   const isAdmin = hasRole('director')
+  const canWriteNotice = !!profile?.role && NOTICE_WRITE_ROLES.includes(profile.role)
+
+  // 권한별 카테고리 옵션 — 숨김 카테고리 제외, 공지사항은 권한자만
+  const categoryOptions = (Object.entries(CATEGORY_MAP) as [BulletinCategory, typeof CATEGORY_MAP[BulletinCategory]][])
+    .filter(([key]) => !HIDDEN_CATEGORIES.includes(key))
+    .filter(([key]) => key !== 'notice' || canWriteNotice)
+    .map(([key, val]) => ({ value: key, label: val.label }))
 
   const [loading, setLoading] = useState(!!editId)
   const [submitting, setSubmitting] = useState(false)
@@ -84,6 +90,14 @@ export default function BulletinWrite() {
       toast('내용을 입력해주세요', 'error')
       return
     }
+    if (form.category === 'notice' && !canWriteNotice) {
+      toast('공지사항 작성 권한이 없습니다', 'error')
+      return
+    }
+    if (HIDDEN_CATEGORIES.includes(form.category)) {
+      toast('현재 사용할 수 없는 카테고리입니다', 'error')
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -131,7 +145,7 @@ export default function BulletinWrite() {
             <Select
               value={form.category}
               onChange={(e) => setForm(prev => ({ ...prev, category: e.target.value as BulletinCategory }))}
-              options={CATEGORY_OPTIONS}
+              options={categoryOptions}
             />
           </div>
 

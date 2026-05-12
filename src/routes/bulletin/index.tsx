@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/hooks/useAuth'
 import { useBulletin, CATEGORY_MAP, type BulletinCategory } from '@/hooks/useBulletin'
 
 const CATEGORY_ICONS: Record<BulletinCategory, React.ReactNode> = {
@@ -20,24 +21,33 @@ const CATEGORY_ICONS: Record<BulletinCategory, React.ReactNode> = {
   suggestion: <Lightbulb className="h-4 w-4" />,
 }
 
+// 0512: Q&A · 건의함은 일단 숨김 (데이터는 유지, UI만 미노출)
 const TABS: { key: BulletinCategory | 'all'; label: string }[] = [
   { key: 'all', label: '전체' },
   { key: 'notice', label: '공지사항' },
   { key: 'general', label: '자유게시판' },
-  { key: 'qa', label: 'Q&A' },
-  { key: 'suggestion', label: '건의함' },
 ]
+
+// 공지사항 작성 권한: admin / hr_admin / director / division_head / ceo
+const NOTICE_WRITE_ROLES = ['admin', 'hr_admin', 'director', 'division_head', 'ceo']
 
 const PAGE_SIZE = 15
 
 export default function BulletinIndex() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const { posts, loading, category, setCategory, search, setSearch } = useBulletin()
   const [page, setPage] = useState(0)
 
+  const canWriteNotice = !!profile?.role && NOTICE_WRITE_ROLES.includes(profile.role)
+  void canWriteNotice  // index 에서는 사용 안하지만 같은 패턴 유지를 위해 산출
+
+  // Q&A · 건의함은 일단 숨김 (전체 탭에서도 제외)
+  const visiblePosts = posts.filter((p) => p.category !== 'qa' && p.category !== 'suggestion')
+
   // Pagination
-  const totalPages = Math.max(1, Math.ceil(posts.length / PAGE_SIZE))
-  const paginatedPosts = posts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(visiblePosts.length / PAGE_SIZE))
+  const paginatedPosts = visiblePosts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   // 카테고리 변경 시 페이지 리셋
   const handleCategoryChange = (cat: BulletinCategory | 'all') => {

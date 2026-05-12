@@ -135,12 +135,15 @@ export default function DailyReportPage() {
   const [workMemo, setWorkMemo] = useState('')
   // 0512: 프로젝트별 추가 메모 — { project_id: html }
   const [projectMemos, setProjectMemos] = useState<Record<string, string>>({})
-  // 0512: 작업 현황 — 프로젝트에서 다시 불러오기 진행 표시
+  // 0512: 내가 속한 프로젝트 목록 (오늘 이벤트 유무 무관, 항상 노출)
+  const [myProjects, setMyProjects] = useState<{ id: string; project_name: string; today_activity_count: number }[]>([])
+  const [myProjectsLoading, setMyProjectsLoading] = useState(true)
+  // 0512: 작업 현황 — 다시 불러오기 진행 표시
   const [refreshingCompleted, setRefreshingCompleted] = useState(false)
 
   // 0512: AI 우선순위 / TaskSection / 진행 중 등 UI 임시 숨김. state·함수는 향후 복원 위해 보존.
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  void [Sparkles, TaskSection, aiLoading, importingProjects, importInProgressFromProjects, handleAISuggestion]
+  void [Sparkles, TaskSection, aiLoading, importingProjects, addTask, updateTask, removeTask, importInProgressFromProjects, handleAISuggestion, refreshCompletedFromProjects]
 
   // 결재 전송 다이얼로그
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
@@ -226,6 +229,40 @@ export default function DailyReportPage() {
     fetchOJT()
   }, [])
 
+  // 0512: 내가 속한 모든 프로젝트 로드 — 이벤트 유무 무관, 항상 노출
+  useEffect(() => {
+    if (!employeeId) return
+    let cancelled = false
+    ;(async () => {
+      setMyProjectsLoading(true)
+      try {
+        const { data } = await supabase
+          .from('project_boards')
+          .select('id, project_name, assignee_ids, manager_id, leader_id, executive_id, status')
+          .in('status', ['active', 'planning'])
+        if (cancelled) return
+        const mine = (data || []).filter((p: {
+          assignee_ids?: string[] | null
+          manager_id?: string | null
+          leader_id?: string | null
+          executive_id?: string | null
+        }) =>
+          (p.assignee_ids || []).includes(employeeId) ||
+          p.manager_id === employeeId ||
+          p.leader_id === employeeId ||
+          p.executive_id === employeeId
+        )
+        // 오늘 활동 카운트는 별도 — 일단 0 으로
+        setMyProjects(mine.map((p: { id: string; project_name: string }) => ({
+          id: p.id, project_name: p.project_name, today_activity_count: 0,
+        })))
+      } finally {
+        if (!cancelled) setMyProjectsLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [employeeId])
+
   // 현재 보고서가 이미 결재 전송되었는지 체크
   useEffect(() => {
     if (!report?.id) { setAlreadySubmitted(false); return }
@@ -274,6 +311,8 @@ export default function DailyReportPage() {
       setBlockers(r.blockers || '')
       setWorkMemo(((r as unknown) as { work_memo?: string }).work_memo || '')
       setProjectMemos(((r as unknown) as { project_memos?: Record<string, string> }).project_memos || {})
+      // 기존 보고서가 있어도 오늘 활동을 머지해서 자동 노출 (편집한 내용은 보존)
+      autoMergeTodayActivity(r.tasks_completed || [])
     } else {
       setReport(null)
       setSatisfaction(5)
@@ -450,6 +489,59 @@ export default function DailyReportPage() {
       project_id: projectId ?? null,
       project_name: projectName ?? null,
     }])
+  }
+
+  // 0512: 오늘의 프로젝트 활동을 자동으로 머지 — 기존 보고서가 있어도 새 활동 자동 표출
+  async function autoMergeTodayActivity(existingCompleted: DailyReportTask[]) {
+    if (!employeeId) return
+    try {
+      const todayStart = `${selectedDate}T00:00:00`
+      const todayEnd = `${selectedDate}T23:59:59`
+      const { data: todayUpdates } = await supabase
+        .from('project_updates').select('*')
+        .eq('author_id', employeeId).gte('created_at', todayStart).lte('created_at', todayEnd)
+      const { data: todayDoneTasks } = await supabase
+        .from('tasks').select('*')
+        .eq('assignee_id', employeeId).eq('status', 'done')
+        .gte('completed_at', todayStart).lte('completed_at', todayEnd)
+      const stageChanges = (todayUpdates || []).filter(
+        (u: { status_changed_to: string | null }) => u.status_changed_to
+      ) as { id: string; content: string; project_id: string }[]
+      const projectIds = [...new Set((todayUpdates || []).map((u: { project_id: string }) => u.project_id))]
+      let projectNames: Record<string, string> = {}
+      if (projectIds.length > 0) {
+        const { data: projData } = await supabase
+          .from('project_boards').select('id, project_name').in('id', projectIds)
+        if (projData) projectNames = Object.fromEntries(projData.map((p: { id: string; project_name: string }) => [p.id, p.project_name]))
+      }
+      const fresh: DailyReportTask[] = []
+      for (const t of (todayDoneTasks || []) as Task[]) {
+        fresh.push({ id: t.id, title: t.title, status: 'done', project_id: null, project_name: null })
+      }
+      for (const u of stageChanges) {
+        fresh.push({ id: u.id, title: u.content, status: 'done', project_id: u.project_id, project_name: projectNames[u.project_id] || null })
+      }
+      const regular = (todayUpdates || []).filter(
+        (u: { status_changed_to: string | null }) => !u.status_changed_to
+      ) as { id: string; content: string; project_id: string }[]
+      for (const u of regular) {
+        const plain = u.content.replace(/<[^>]*>/g, '').trim().slice(0, 200)
+        if (!plain) continue
+        fresh.push({ id: u.id, title: plain, status: 'done', project_id: u.project_id, project_name: projectNames[u.project_id] || null })
+      }
+      // 기존 편집 보존 (id 일치 → 사용자 title 우선)
+      const freshIds = new Set(fresh.map((t) => t.id))
+      const userAdded = existingCompleted.filter((t) => !freshIds.has(t.id))
+      const existingMap = new Map(existingCompleted.map((t) => [t.id, t]))
+      const merged = fresh.map((t) => {
+        const ex = existingMap.get(t.id)
+        if (ex && ex.title && ex.title !== t.title) return { ...t, title: ex.title, note: ex.note }
+        return ex ? { ...t, note: ex.note } : t
+      })
+      setCompleted([...merged, ...userAdded])
+    } catch {
+      // 실패시 silently — 기존 데이터는 그대로
+    }
   }
 
   // 0512: 작업 현황 — 프로젝트에서 다시 불러오기 (수동 트리거)
@@ -856,7 +948,7 @@ ${completedText || '아직 없음'}
       {/* 0512: AI 우선순위 제안 숨김 (state 는 유지) */}
       {/* 0512: 미완료 이월 작업 숨김 (블록 단순화) — state 는 유지하여 자동 이월 데이터 보존 */}
 
-      {/* 작업 현황 — 프로젝트별 그룹 + 편집 가능 + 그룹 메모 */}
+      {/* 작업 현황 — 내가 속한 모든 프로젝트 자동 노출 + 색상 헤더 블럭 + 그룹 메모 */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -866,107 +958,150 @@ ${completedText || '아직 없음'}
               variant="outline"
               onClick={refreshCompletedFromProjects}
               disabled={refreshingCompleted}
-              title="오늘 업데이트한 프로젝트 활동을 다시 불러옵니다 (편집한 내용은 보존)"
+              title="오늘의 프로젝트 활동을 다시 불러옵니다 (편집/메모는 보존)"
             >
-              {refreshingCompleted ? '불러오는 중...' : '📁 프로젝트에서 다시 불러오기'}
+              {refreshingCompleted ? '불러오는 중...' : '🔄 새로고침'}
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {(() => {
-            // 프로젝트별 그룹핑 — project_id 기준
-            type Group = { projectId: string; projectName: string; tasks: { task: DailyReportTask; idx: number }[] }
-            const groupMap = new Map<string, Group>()
-            const otherTasks: { task: DailyReportTask; idx: number }[] = []
-            completed.forEach((t, idx) => {
+            const HEADER_PALETTES = [
+              { bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-900', accent: 'bg-violet-500', badge: 'bg-violet-100 text-violet-700' },
+              { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900', accent: 'bg-blue-500', badge: 'bg-blue-100 text-blue-700' },
+              { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-900', accent: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700' },
+              { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-900', accent: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700' },
+              { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-900', accent: 'bg-rose-500', badge: 'bg-rose-100 text-rose-700' },
+              { bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-900', accent: 'bg-cyan-500', badge: 'bg-cyan-100 text-cyan-700' },
+            ]
+            const paletteFor = (id: string) => {
+              let h = 0
+              for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+              return HEADER_PALETTES[Math.abs(h) % HEADER_PALETTES.length]
+            }
+
+            // 1) 내가 속한 모든 프로젝트(myProjects) + completed[] 안에 있는 프로젝트 ID 합집합
+            const idSet = new Set<string>()
+            const nameMap = new Map<string, string>()
+            myProjects.forEach((p) => { idSet.add(p.id); nameMap.set(p.id, p.project_name) })
+            completed.forEach((t) => {
               if (t.project_id) {
-                const key = t.project_id
-                if (!groupMap.has(key)) {
-                  groupMap.set(key, {
-                    projectId: t.project_id,
-                    projectName: t.project_name || '프로젝트',
-                    tasks: [],
-                  })
-                }
-                groupMap.get(key)!.tasks.push({ task: t, idx })
-              } else {
-                otherTasks.push({ task: t, idx })
+                idSet.add(t.project_id)
+                if (!nameMap.has(t.project_id) && t.project_name) nameMap.set(t.project_id, t.project_name)
               }
             })
-            const groups = Array.from(groupMap.values())
 
-            if (groups.length === 0 && otherTasks.length === 0) {
+            // 2) 비프로젝트(project_id null) 항목 수집
+            const otherTasks: { task: DailyReportTask; idx: number }[] = []
+            completed.forEach((t, idx) => {
+              if (!t.project_id) otherTasks.push({ task: t, idx })
+            })
+
+            // 3) 프로젝트별 task 매핑
+            const projectTasksMap = new Map<string, { task: DailyReportTask; idx: number }[]>()
+            completed.forEach((t, idx) => {
+              if (!t.project_id) return
+              const arr = projectTasksMap.get(t.project_id) ?? []
+              arr.push({ task: t, idx })
+              projectTasksMap.set(t.project_id, arr)
+            })
+
+            // 4) 그룹 리스트 — 활동 많은 순으로 정렬
+            const groups = Array.from(idSet).map((pid) => ({
+              projectId: pid,
+              projectName: nameMap.get(pid) || '프로젝트',
+              tasks: projectTasksMap.get(pid) ?? [],
+            })).sort((a, b) => b.tasks.length - a.tasks.length || a.projectName.localeCompare(b.projectName))
+
+            if (groups.length === 0 && otherTasks.length === 0 && !myProjectsLoading) {
               return (
                 <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-4 text-center">
-                  오늘 업데이트한 프로젝트 작업이 없습니다. 위 "📁 프로젝트에서 다시 불러오기"를 누르거나 프로젝트 보드에서 작업을 업데이트해주세요.
+                  소속된 프로젝트가 없습니다. 프로젝트 보드에서 본인을 담당자로 추가해주세요.
                 </p>
               )
             }
 
             return (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {/* 프로젝트별 그룹 */}
-                {groups.map((g) => (
-                  <div key={g.projectId} className="rounded-lg border border-gray-200 bg-white p-3 space-y-3">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-base shrink-0">📁</span>
-                        <h3 className="font-semibold text-gray-900 text-sm truncate">{g.projectName}</h3>
-                        <Badge variant="default" className="shrink-0">{g.tasks.length}</Badge>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => addTask(setCompleted, g.projectId, g.projectName)}
-                      >
-                        + 항목 추가
-                      </Button>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      {g.tasks.map(({ task, idx }) => (
-                        <div key={task.id} className="flex gap-2 items-start">
-                          <span className="text-emerald-500 shrink-0 mt-2.5 text-sm">✓</span>
-                          <Input
-                            value={task.title}
-                            onChange={(e) => updateTask(setCompleted, idx, 'title', e.target.value)}
-                            placeholder="작업 내용"
-                            className="flex-1"
-                          />
-                          <button
-                            onClick={() => removeTask(setCompleted, idx)}
-                            className="text-red-400 hover:text-red-600 text-sm mt-2 shrink-0"
-                            title="삭제"
-                          >
-                            ✕
-                          </button>
+                {groups.map((g) => {
+                  const palette = paletteFor(g.projectId)
+                  return (
+                    <div key={g.projectId} className={`rounded-lg border ${palette.border} overflow-hidden`}>
+                      {/* 색상 헤더 블럭 */}
+                      <div className={`${palette.bg} px-4 py-2.5 border-b ${palette.border} flex items-center justify-between flex-wrap gap-2`}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`inline-block w-1 h-5 rounded-full ${palette.accent} shrink-0`} />
+                          <span className="text-base shrink-0">📁</span>
+                          <h3 className={`font-bold ${palette.text} text-sm break-keep [word-break:keep-all]`}>{g.projectName}</h3>
+                          {g.tasks.length > 0 && (
+                            <span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold ${palette.badge} shrink-0`}>
+                              {g.tasks.length}
+                            </span>
+                          )}
                         </div>
-                      ))}
-                    </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => addTask(setCompleted, g.projectId, g.projectName)}
+                        >
+                          + 항목 추가
+                        </Button>
+                      </div>
 
-                    {/* 프로젝트별 메모 — RichEditor */}
-                    <div className="pt-1">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        📝 {g.projectName} 메모
-                      </label>
-                      <RichEditor
-                        value={projectMemos[g.projectId] || ''}
-                        onChange={(html) => setProjectMemos((prev) => ({ ...prev, [g.projectId]: html }))}
-                        placeholder={`${g.projectName} 관련 추가 메모를 작성하세요 (이미지/링크/파일 첨부 가능).`}
-                        minHeight="120px"
-                      />
-                    </div>
-                  </div>
-                ))}
+                      {/* 바디 */}
+                      <div className="p-3 space-y-3 bg-white">
+                        {g.tasks.length > 0 && (
+                          <div className="space-y-1.5">
+                            {g.tasks.map(({ task, idx }) => (
+                              <div key={task.id} className="flex gap-2 items-start">
+                                <span className="text-emerald-500 shrink-0 mt-2.5 text-sm">✓</span>
+                                <Input
+                                  value={task.title}
+                                  onChange={(e) => updateTask(setCompleted, idx, 'title', e.target.value)}
+                                  placeholder="작업 내용"
+                                  className="flex-1"
+                                />
+                                <button
+                                  onClick={() => removeTask(setCompleted, idx)}
+                                  className="text-red-400 hover:text-red-600 text-sm mt-2 shrink-0"
+                                  title="삭제"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
-                {/* 비프로젝트 항목 */}
+                        {/* 프로젝트별 메모 — RichEditor */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            📝 작업 현황 메모
+                          </label>
+                          <RichEditor
+                            value={projectMemos[g.projectId] || ''}
+                            onChange={(html) => setProjectMemos((prev) => ({ ...prev, [g.projectId]: html }))}
+                            placeholder={`${g.projectName} 관련 작업 현황을 자유롭게 작성하세요 (이미지/링크/파일 첨부 가능).`}
+                            minHeight="120px"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* 비프로젝트 항목 — 회색 헤더 */}
                 {otherTasks.length > 0 && (
-                  <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-3">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2">
+                        <span className="inline-block w-1 h-5 rounded-full bg-gray-400 shrink-0" />
                         <span className="text-base">🗒️</span>
-                        <h3 className="font-semibold text-gray-900 text-sm">기타 작업</h3>
-                        <Badge variant="default">{otherTasks.length}</Badge>
+                        <h3 className="font-bold text-gray-900 text-sm">기타 작업 (프로젝트 외)</h3>
+                        <span className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700 shrink-0">
+                          {otherTasks.length}
+                        </span>
                       </div>
                       <Button
                         size="sm"
@@ -976,7 +1111,7 @@ ${completedText || '아직 없음'}
                         + 항목 추가
                       </Button>
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="p-3 space-y-1.5 bg-white">
                       {otherTasks.map(({ task, idx }) => (
                         <div key={task.id} className="flex gap-2 items-start">
                           <span className="text-emerald-500 shrink-0 mt-2.5 text-sm">✓</span>
@@ -999,11 +1134,11 @@ ${completedText || '아직 없음'}
                   </div>
                 )}
 
-                {/* 비프로젝트 항목이 없을 때도 추가할 수 있는 버튼 */}
+                {/* 비프로젝트 항목이 없을 때 추가 버튼 */}
                 {otherTasks.length === 0 && (
                   <Button
                     size="sm"
-                    variant="ghost"
+                    variant="outline"
                     className="w-full justify-center"
                     onClick={() => addTask(setCompleted, null, null)}
                   >
