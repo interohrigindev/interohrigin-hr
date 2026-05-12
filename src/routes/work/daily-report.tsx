@@ -130,6 +130,12 @@ export default function DailyReportPage() {
   const [satisfaction, setSatisfaction] = useState<number>(5)
   const [satisfactionComment, setSatisfactionComment] = useState('')
   const [blockers, setBlockers] = useState('')
+  // 0512: 작업 현황 아래 자유 입력 메모
+  const [workMemo, setWorkMemo] = useState('')
+
+  // 0512: AI 우선순위 / TaskSection / 진행 중 등 UI 임시 숨김. state·함수는 향후 복원 위해 보존.
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  void [Sparkles, TaskSection, aiLoading, importingProjects, addTask, updateTask, removeTask, importInProgressFromProjects, handleAISuggestion]
 
   // 결재 전송 다이얼로그
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
@@ -261,11 +267,13 @@ export default function DailyReportPage() {
       setSatisfaction(r.satisfaction_score ?? 5)
       setSatisfactionComment(r.satisfaction_comment || '')
       setBlockers(r.blockers || '')
+      setWorkMemo(((r as unknown) as { work_memo?: string }).work_memo || '')
     } else {
       setReport(null)
       setSatisfaction(5)
       setSatisfactionComment('')
       setBlockers('')
+      setWorkMemo('')
       setAiSuggestion(null)
 
       // ─── 금일 프로젝트 활동 자동 수집 ─────────────────
@@ -637,6 +645,7 @@ ${completedText || '아직 없음'}
       satisfaction_score: satisfaction,
       satisfaction_comment: satisfactionComment.trim() || null,
       blockers: blockers.trim() || null,
+      work_memo: workMemo.trim() || null,
     }
 
     if (report?.id) {
@@ -735,69 +744,82 @@ ${completedText || '아직 없음'}
       {/* 전일 피드백 */}
       <YesterdayFeedback employeeId={employeeId} selectedDate={selectedDate} />
 
-      {/* AI Priority */}
+      {/* 0512: AI 우선순위 제안 숨김 (state 는 유지) */}
+      {/* 0512: 미완료 이월 작업 숨김 (블록 단순화) — state 는 유지하여 자동 이월 데이터 보존 */}
+
+      {/* 작업 현황 — 본인 프로젝트 자동 연동 + 자유 입력 */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-purple-500" /> AI 우선순위 제안
-            </CardTitle>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAISuggestion}
-              disabled={aiLoading}
-            >
-              {aiLoading ? <Spinner size="sm" /> : '제안 받기'}
-            </Button>
-          </div>
+          <CardTitle className="text-base">작업 현황</CardTitle>
         </CardHeader>
-        {aiSuggestion && (
-          <CardContent>
-            <div className="bg-purple-50 p-3 rounded-lg text-sm text-purple-900 whitespace-pre-wrap">
-              {aiSuggestion}
+        <CardContent className="space-y-4">
+          {/* 자동 연동: 본인이 속한 프로젝트의 작업/단계 (read-only) */}
+          {completed.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-gray-500">📌 오늘 업데이트된 내 프로젝트 작업</p>
+              <ul className="space-y-1 bg-gray-50 rounded-lg p-3">
+                {completed.map((t) => (
+                  <li key={t.id} className="text-sm text-gray-700 flex items-start gap-2">
+                    <span className="text-emerald-500 shrink-0">✓</span>
+                    <span className="break-all">{t.title}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </CardContent>
-        )}
+          ) : (
+            <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
+              오늘 업데이트한 프로젝트 작업이 없습니다. 프로젝트 보드에서 작업을 업데이트하면 자동 표시됩니다.
+            </p>
+          )}
+
+          {/* 자유 입력 영역 — 게시판형 메모 */}
+          <Textarea
+            label="작업 현황 추가 메모 (자유 입력)"
+            value={workMemo}
+            onChange={(e) => setWorkMemo(e.target.value)}
+            placeholder="자동 표시되지 않은 작업이나 세부 내용을 자유롭게 작성해주세요. 텍스트 / 표 / 이미지 링크 모두 가능합니다."
+            rows={6}
+          />
+        </CardContent>
       </Card>
 
-      {/* 0512: 미완료 이월 작업 숨김 (블록 단순화) — state 는 유지하여 자동 이월 데이터 보존 */}
-      {/* Completed (작업 현황) */}
-      <TaskSection
-        title="작업 현황"
-        tasks={completed}
-        onAdd={() => addTask(setCompleted)}
-        onUpdate={(idx, field, value) => updateTask(setCompleted, idx, field, value)}
-        onRemove={(idx) => removeTask(setCompleted, idx)}
-      />
-
-      {/* In Progress (진행 중 작업) */}
-      <TaskSection
-        title="진행 중 작업"
-        tasks={inProgress}
-        onAdd={() => addTask(setInProgress)}
-        onUpdate={(idx, field, value) => updateTask(setInProgress, idx, field, value)}
-        onRemove={(idx) => removeTask(setInProgress, idx)}
-        onImportFromProjects={importInProgressFromProjects}
-        importLoading={importingProjects}
-      />
-
+      {/* 0512: 진행 중 작업 숨김 — state 는 유지 (저장/이월용) */}
       {/* 0512: 내일 계획 숨김 — state 는 유지하되 UI 미노출 */}
 
-      {/* 오늘의 총평 — 만족도 + 한 줄 메모 (블로커/장애요인 통합, 메모 영역 확장) */}
+      {/* 오늘의 총평 — 만족도 + 한 줄 메모 + 이슈/블로커 */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">오늘의 총평</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* 0512: 만족도 점수 숨김 — state 는 유지하되 UI 미노출 */}
+          {/* 만족도 점수 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              오늘 업무 만족도: <span className="text-brand-600 font-bold">{satisfaction}</span>
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setSatisfaction(n)}
+                  className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                    n <= satisfaction
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <Textarea
-            label="오늘의 한 줄 총평 (자유 메모)"
+            label="오늘의 한 줄 총평"
             value={satisfactionComment}
             onChange={(e) => setSatisfactionComment(e.target.value)}
-            placeholder="오늘 하루를 자유롭게 정리해주세요. 텍스트/요약/소감 모두 가능합니다."
-            rows={5}
+            placeholder="오늘 하루를 자유롭게 정리해주세요."
+            rows={3}
           />
 
           <Textarea
