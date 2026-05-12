@@ -94,20 +94,30 @@ function TaskSection({
   )
 }
 
+// 0513: toISOString() 은 UTC 기준 → 한국(UTC+9) 에서 새벽 시간에 하루 밀리는 버그.
+// 로컬 날짜 컴포넌트로 YYYY-MM-DD 생성.
 function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
 }
 
 function prevDay(date: string): string {
-  const d = new Date(date)
+  const d = new Date(date + 'T00:00:00')
   d.setDate(d.getDate() - 1)
   return formatDate(d)
 }
 
 function nextDay(date: string): string {
-  const d = new Date(date)
+  const d = new Date(date + 'T00:00:00')
   d.setDate(d.getDate() + 1)
   return formatDate(d)
+}
+
+// 0513: 오늘 이후(미래) 날짜로 이동 차단
+function isFutureDate(date: string): boolean {
+  return date > formatDate(new Date())
 }
 
 export default function DailyReportPage() {
@@ -237,12 +247,14 @@ export default function DailyReportPage() {
       setMyProjectsLoading(true)
       try {
         // 0512: 진행중(active) 프로젝트만 — 완료/홀딩/취소 제외
+        // 0513: + 모든 stage 가 '완료' 인 active 프로젝트도 사실상 완료된 것으로 간주하여 제외
+        //       (unified-dashboard.tsx 의 완료 판정 로직과 동일)
         const { data } = await supabase
           .from('project_boards')
           .select('id, project_name, assignee_ids, manager_id, leader_id, executive_id, status')
           .eq('status', 'active')
         if (cancelled) return
-        const mine = (data || []).filter((p: {
+        const mineRaw = (data || []).filter((p: {
           assignee_ids?: string[] | null
           manager_id?: string | null
           leader_id?: string | null
@@ -253,7 +265,33 @@ export default function DailyReportPage() {
           p.leader_id === employeeId ||
           p.executive_id === employeeId
         )
-        // 오늘 활동 카운트는 별도 — 일단 0 으로
+
+        // 각 프로젝트의 stages 를 조회해 모두 '완료' 인 경우 제외
+        if (mineRaw.length === 0) {
+          setMyProjects([])
+          return
+        }
+        const projectIds = mineRaw.map((p: { id: string }) => p.id)
+        const { data: stages } = await supabase
+          .from('pipeline_stages')
+          .select('project_id, status')
+          .in('project_id', projectIds)
+        if (cancelled) return
+
+        const stagesByProject = new Map<string, string[]>()
+        ;(stages || []).forEach((s: { project_id: string; status: string }) => {
+          const arr = stagesByProject.get(s.project_id) ?? []
+          arr.push(s.status)
+          stagesByProject.set(s.project_id, arr)
+        })
+
+        const mine = mineRaw.filter((p: { id: string }) => {
+          const stageStatuses = stagesByProject.get(p.id) ?? []
+          // stage 가 1개 이상 있고 모두 '완료' → 사실상 완료된 프로젝트 → 제외
+          if (stageStatuses.length > 0 && stageStatuses.every((s) => s === '완료')) return false
+          return true
+        })
+
         setMyProjects(mine.map((p: { id: string; project_name: string }) => ({
           id: p.id, project_name: p.project_name, today_activity_count: 0,
         })))
@@ -920,7 +958,7 @@ ${completedText || '아직 없음'}
         </div>
       </div>
 
-      {/* Date selector */}
+      {/* Date selector — 오늘 이후 미래 날짜 선택 불가 */}
       <div className="flex items-center gap-3">
         <Button size="sm" variant="outline" onClick={() => setSelectedDate(prevDay(selectedDate))}>
           <ChevronLeft className="h-4 w-4" />
@@ -930,11 +968,32 @@ ${completedText || '아직 없음'}
           <Input
             type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            max={formatDate(new Date())}
+            onChange={(e) => {
+              const v = e.target.value
+              if (!v) return
+              if (isFutureDate(v)) {
+                toast('미래 날짜의 일일 업무보고는 작성할 수 없습니다.', 'info')
+                return
+              }
+              setSelectedDate(v)
+            }}
             className="w-40"
           />
         </div>
-        <Button size="sm" variant="outline" onClick={() => setSelectedDate(nextDay(selectedDate))}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={isFutureDate(nextDay(selectedDate)) || selectedDate >= formatDate(new Date())}
+          onClick={() => {
+            const n = nextDay(selectedDate)
+            if (isFutureDate(n)) {
+              toast('오늘 이후의 일일 업무보고는 작성할 수 없습니다.', 'info')
+              return
+            }
+            setSelectedDate(n)
+          }}
+        >
           <ChevronRight className="h-4 w-4" />
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setSelectedDate(formatDate(new Date()))}>
