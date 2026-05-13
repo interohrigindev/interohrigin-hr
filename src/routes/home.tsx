@@ -27,12 +27,12 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { openIoMall } from '@/lib/iomall'
+import { openIoCs as openIoCsSso } from '@/lib/iocs'
 import { DateWeatherWidget } from '@/components/DateWeatherWidget'
 
 // 0513: IO CS 고객관리 플랫폼 접근 — 역할/부서 기반 자동 판정
 // 허용: 시스템 관리자(admin), 대표(ceo), 임원(director/division_head),
 //       BM 리더(role=leader & 부서명에 'BM'), CS 부서(부서명에 'CS' 또는 '고객')
-const IOCS_URL = 'https://iocs-eys.pages.dev'
 const IOCS_ALWAYS_ALLOWED_ROLES = ['admin', 'director', 'division_head', 'ceo']
 
 async function checkIoCsAccess(profile: { id?: string; role?: string | null; department_id?: string | null } | null): Promise<boolean> {
@@ -61,7 +61,8 @@ async function openIoCs(profile: { id?: string; role?: string | null; department
     alert('IO CS 고객관리 플랫폼은 승인된 사용자만 사용할 수 있습니다.\n(허용: CS 부서 · 임원 · BM 리더 · 대표 · 시스템 관리자)')
     return
   }
-  window.open(IOCS_URL, '_blank', 'noopener,noreferrer')
+  // IO Mall 과 동일 방식 — /sso 라우트로 토큰 전달 (Supabase 세션 공유)
+  await openIoCsSso('/')
 }
 
 interface BlockItem {
