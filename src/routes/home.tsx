@@ -29,16 +29,36 @@ import { cn } from '@/lib/utils'
 import { openIoMall } from '@/lib/iomall'
 import { DateWeatherWidget } from '@/components/DateWeatherWidget'
 
-// 0513: IO CS 고객관리 플랫폼 접근 — admin/director/division_head/ceo 는 항상 가능, 그 외엔 employees.iocs_access
+// 0513: IO CS 고객관리 플랫폼 접근 — 역할/부서 기반 자동 판정
+// 허용: 시스템 관리자(admin), 대표(ceo), 임원(director/division_head),
+//       BM 리더(role=leader & 부서명에 'BM'), CS 부서(부서명에 'CS' 또는 '고객')
 const IOCS_URL = 'https://iocs-eys.pages.dev'
 const IOCS_ALWAYS_ALLOWED_ROLES = ['admin', 'director', 'division_head', 'ceo']
-function openIoCs(profile: { role?: string | null; iocs_access?: boolean } | null) {
-  const allowed = !!profile && (
-    (profile.role && IOCS_ALWAYS_ALLOWED_ROLES.includes(profile.role)) ||
-    profile.iocs_access === true
-  )
-  if (!allowed) {
-    alert('IO CS 고객관리 플랫폼은 승인받은 사용자만 사용할 수 있습니다.\n관리자에게 접근 권한을 요청해주세요.')
+
+async function checkIoCsAccess(profile: { id?: string; role?: string | null; department_id?: string | null } | null): Promise<boolean> {
+  if (!profile?.role) return false
+  // 1) 시스템 관리자 / 대표 / 임원 — 항상 허용
+  if (IOCS_ALWAYS_ALLOWED_ROLES.includes(profile.role)) return true
+
+  // 2) 부서명 조회 (BM 리더 + CS 부서 판정용)
+  if (!profile.department_id) return false
+  const { data: dept } = await supabase
+    .from('departments').select('name').eq('id', profile.department_id).single()
+  const deptName = dept?.name ?? ''
+
+  // 3) CS 부서 소속이면 누구나 허용
+  if (/(CS|고객)/i.test(deptName)) return true
+
+  // 4) BM 리더 — role=leader AND 부서명에 BM
+  if (profile.role === 'leader' && /BM/i.test(deptName)) return true
+
+  return false
+}
+
+async function openIoCs(profile: { id?: string; role?: string | null; department_id?: string | null } | null) {
+  const ok = await checkIoCsAccess(profile)
+  if (!ok) {
+    alert('IO CS 고객관리 플랫폼은 승인된 사용자만 사용할 수 있습니다.\n(허용: CS 부서 · 임원 · BM 리더 · 대표 · 시스템 관리자)')
     return
   }
   window.open(IOCS_URL, '_blank', 'noopener,noreferrer')
@@ -168,7 +188,7 @@ export default function Home() {
           <button
             key={block.path}
             onClick={() => {
-              if (block.path === 'iocs') { openIoCs(profile as { role?: string | null; iocs_access?: boolean } | null); return }
+              if (block.path === 'iocs') { openIoCs(profile as { id?: string; role?: string | null; department_id?: string | null } | null); return }
               if (block.onClick) block.onClick()
               else navigate(block.path)
             }}
@@ -302,7 +322,7 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
           <button
             key={block.path}
             onClick={() => {
-              if (block.path === 'iocs') { openIoCs(profile as { role?: string | null; iocs_access?: boolean } | null); return }
+              if (block.path === 'iocs') { openIoCs(profile as { id?: string; role?: string | null; department_id?: string | null } | null); return }
               if (block.onClick) block.onClick()
               else navigate(block.path)
             }}

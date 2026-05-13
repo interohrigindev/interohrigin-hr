@@ -26,8 +26,6 @@ export interface Employee {
   position: string | null
   employment_type: EmploymentType | null
   emergency_contact: string | null
-  // 0513: IO CS 고객관리 플랫폼 접근 권한 (admin/director/division_head/ceo 는 무관하게 항상 가능)
-  iocs_access?: boolean
   created_at: string
   updated_at: string
 }
