@@ -52,10 +52,18 @@ const COMMON_QUESTIONS: CommonQ[] = [
     options: ['충분히 이해하고 동의합니다', '동의하지 않습니다'] },
 ]
 
+interface PersonalMeta {
+  birth_date: string
+  mbti: string
+  blood_type: string
+  hanja_name: string
+}
+
 interface DraftState {
   tester_name: string
   tester_email: string
   tester_role: string
+  personal: PersonalMeta
   common: Record<string, string>
   common_etc: Record<string, string>
   pbd: Record<string, number>
@@ -67,12 +75,22 @@ const INITIAL_DRAFT: DraftState = {
   tester_name: '',
   tester_email: '',
   tester_role: '',
+  personal: { birth_date: '', mbti: '', blood_type: '', hanja_name: '' },
   common: {},
   common_etc: {},
   pbd: {},
   feedback: '',
   started_at: Date.now(),
 }
+
+const MBTI_OPTIONS = [
+  'ISTJ', 'ISFJ', 'INFJ', 'INTJ',
+  'ISTP', 'ISFP', 'INFP', 'INTP',
+  'ESTP', 'ESFP', 'ENFP', 'ENTP',
+  'ESTJ', 'ESFJ', 'ENFJ', 'ENTJ',
+  '모르겠음',
+]
+const BLOOD_OPTIONS = ['A', 'B', 'O', 'AB', 'Rh-', '모르겠음']
 
 export default function PublicSurveyTest() {
   const [draft, setDraft] = useState<DraftState>(INITIAL_DRAFT)
@@ -166,6 +184,12 @@ export default function PublicSurveyTest() {
         }
       }
       const meta = {
+        // 인적 메타 (인트로 입력)
+        birth_date: draft.personal.birth_date || null,
+        mbti: draft.personal.mbti || null,
+        blood_type: draft.personal.blood_type || null,
+        hanja_name: draft.personal.hanja_name || null,
+        // PDF Part 1 Q1~Q5
         Q1: mergedCommon.Q1, Q2: mergedCommon.Q2, Q3: mergedCommon.Q3,
         Q4: mergedCommon.Q4, Q5: mergedCommon.Q5,
       }
@@ -219,7 +243,7 @@ export default function PublicSurveyTest() {
           </div>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">이름 *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">이름 <span className="text-rose-500">*</span></label>
               <input
                 value={draft.tester_name}
                 onChange={e => setDraft(d => ({ ...d, tester_name: e.target.value }))}
@@ -228,13 +252,57 @@ export default function PublicSurveyTest() {
                 autoFocus
               />
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">한자 이름 (선택)</label>
+                <input
+                  value={draft.personal.hanja_name}
+                  onChange={e => setDraft(d => ({ ...d, personal: { ...d.personal, hanja_name: e.target.value } }))}
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                  placeholder="洪吉童"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">생년월일 (선택)</label>
+                <input
+                  type="date"
+                  value={draft.personal.birth_date}
+                  onChange={e => setDraft(d => ({ ...d, personal: { ...d.personal, birth_date: e.target.value } }))}
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">MBTI (선택)</label>
+                <select
+                  value={draft.personal.mbti}
+                  onChange={e => setDraft(d => ({ ...d, personal: { ...d.personal, mbti: e.target.value } }))}
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none bg-white"
+                >
+                  <option value="">선택하세요</option>
+                  {MBTI_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">혈액형 (선택)</label>
+                <select
+                  value={draft.personal.blood_type}
+                  onChange={e => setDraft(d => ({ ...d, personal: { ...d.personal, blood_type: e.target.value } }))}
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none bg-white"
+                >
+                  <option value="">선택하세요</option>
+                  {BLOOD_OPTIONS.map(b => <option key={b} value={b}>{b}형</option>)}
+                </select>
+              </div>
+            </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">이메일 (선택)</label>
               <input
                 type="email"
                 value={draft.tester_email}
                 onChange={e => setDraft(d => ({ ...d, tester_email: e.target.value }))}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
                 placeholder="example@email.com"
               />
             </div>
@@ -243,7 +311,7 @@ export default function PublicSurveyTest() {
               <input
                 value={draft.tester_role}
                 onChange={e => setDraft(d => ({ ...d, tester_role: e.target.value }))}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
                 placeholder="예) 마케팅팀 / 팀장"
               />
             </div>

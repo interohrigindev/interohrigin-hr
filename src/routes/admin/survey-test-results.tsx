@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom'
 import { Copy, Loader2, RefreshCw, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import { PBD_QUESTIONS, scorePbd, type PbdScores } from '@/lib/pbd-questions'
+import { PBD_QUESTIONS, scorePbd, AXIS_DETAILS, DOMAIN_PROFILES, type PbdScores, type PbdAxis } from '@/lib/pbd-questions'
 
 interface ResponseRow {
   id: string
@@ -267,6 +267,20 @@ function DetailDrawer({ row, onClose }: { row: ResponseRow; onClose: () => void 
         </div>
 
         <div className="p-6 space-y-6">
+          {/* 응답자 프로필 요약 */}
+          <section className="bg-gradient-to-br from-slate-50 to-brand-50/40 border border-slate-200 rounded-xl p-4">
+            <h3 className="text-sm font-semibold text-slate-900 mb-3">응답자 프로필</h3>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              {row.meta?.hanja_name && <ProfileItem label="한자 이름" value={String(row.meta.hanja_name)} />}
+              {row.meta?.birth_date && <ProfileItem label="생년월일" value={String(row.meta.birth_date)} />}
+              {row.meta?.mbti && <ProfileItem label="MBTI" value={String(row.meta.mbti)} />}
+              {row.meta?.blood_type && <ProfileItem label="혈액형" value={`${row.meta.blood_type}형`} />}
+              {row.tester_email && <ProfileItem label="이메일" value={row.tester_email} />}
+              {row.tester_role && <ProfileItem label="소속/직책" value={row.tester_role} />}
+              {row.meta?.Q2 && <ProfileItem label="지원 분야" value={String(row.meta.Q2)} fullWidth />}
+            </dl>
+          </section>
+
           {/* PBD 스코어 카드 */}
           {scores && (
             <section>
@@ -299,6 +313,33 @@ function DetailDrawer({ row, onClose }: { row: ResponseRow; onClose: () => void 
                 </div>
               </div>
             </section>
+          )}
+
+          {/* 종합 분석 — 축별 상세 해석 */}
+          {scores && (
+            <section>
+              <h3 className="text-sm font-semibold text-slate-900 mb-3">축별 상세 해석</h3>
+              <div className="space-y-3">
+                <AxisDetailCard axis="C1" total={scores.C1} band={scores.c1_band} />
+                <AxisDetailCard axis="C3" total={scores.C3} band={scores.c3_band} />
+                <AxisDetailCard axis="S1" total={scores.S1} band={scores.s1_band} />
+                <AxisDetailCard axis="S3" total={scores.S3} band={scores.s3_band} />
+              </div>
+            </section>
+          )}
+
+          {/* 도메인 프로필 — 면접 질문 + 생애주기 가이드 */}
+          {scores && DOMAIN_PROFILES[scores.domain] && (
+            <DomainProfileSection domain={scores.domain} mbti={row.meta?.mbti as string | undefined} />
+          )}
+
+          {/* 통합 활용 가이드 — 메타와 PBD를 함께 본 코멘트 */}
+          {scores && (
+            <IntegratedGuide
+              scores={scores}
+              mbti={row.meta?.mbti as string | undefined}
+              applyingFor={row.meta?.Q2 as string | undefined}
+            />
           )}
 
           {/* 공통 응답 */}
@@ -347,6 +388,138 @@ function DetailDrawer({ row, onClose }: { row: ResponseRow; onClose: () => void 
         </div>
       </div>
     </div>
+  )
+}
+
+function ProfileItem({ label, value, fullWidth }: { label: string; value: string; fullWidth?: boolean }) {
+  return (
+    <div className={fullWidth ? 'col-span-2' : ''}>
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className="text-sm text-slate-800 break-keep">{value}</dd>
+    </div>
+  )
+}
+
+function AxisDetailCard({ axis, total, band }: { axis: PbdAxis; total: number; band: 'A' | 'Mid' | 'B' }) {
+  const info = AXIS_DETAILS[axis]
+  const b = info.bands[band]
+  const badgeColor =
+    band === 'A' ? 'bg-violet-100 text-violet-700 border-violet-200' :
+    band === 'B' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+    'bg-slate-100 text-slate-700 border-slate-200'
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        <div>
+          <span className="text-xs font-mono text-slate-400">{axis}</span>
+          <span className="text-sm font-semibold text-slate-900 ml-1.5">{info.title}</span>
+        </div>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${badgeColor}`}>
+          {b.name} · {total}점
+        </span>
+      </div>
+      <p className="text-xs text-slate-500 mb-2">{info.description}</p>
+      <p className="text-sm text-slate-700 leading-relaxed mb-3 break-keep">{b.summary}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <div>
+          <div className="font-medium text-emerald-700 mb-1">예상 강점</div>
+          <ul className="space-y-0.5 text-slate-600">
+            {b.strengths.map(s => <li key={s} className="flex gap-1 break-keep"><span className="text-emerald-500">·</span>{s}</li>)}
+          </ul>
+        </div>
+        <div>
+          <div className="font-medium text-amber-700 mb-1">유의 관찰</div>
+          <ul className="space-y-0.5 text-slate-600">
+            {b.cautions.map(c => <li key={c} className="flex gap-1 break-keep"><span className="text-amber-500">·</span>{c}</li>)}
+          </ul>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DomainProfileSection({ domain, mbti }: { domain: string; mbti?: string }) {
+  const p = DOMAIN_PROFILES[domain]
+  if (!p) return null
+  return (
+    <section>
+      <h3 className="text-sm font-semibold text-slate-900 mb-3">종합 도메인 프로필</h3>
+      <div className="bg-gradient-to-br from-brand-50 to-violet-50 border border-brand-200 rounded-xl p-5 mb-4">
+        <div className="flex items-baseline gap-2 mb-2 flex-wrap">
+          <span className="text-base font-bold text-brand-900">{p.name}</span>
+          <span className="text-xs font-medium text-brand-700">{domain}</span>
+          {mbti && mbti !== '모르겠음' && (
+            <span className="text-xs px-2 py-0.5 rounded bg-white border border-brand-200 text-brand-700">MBTI {mbti}</span>
+          )}
+        </div>
+        <p className="text-sm text-slate-700 leading-relaxed break-keep">{p.detail}</p>
+      </div>
+
+      <div className="space-y-3">
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-slate-900 mb-2">📋 추천 면접 질문</h4>
+          <p className="text-xs text-slate-500 mb-2">진단 결과를 기반으로 본인의 사고/행동 패턴을 확인할 수 있는 질문입니다.</p>
+          <ol className="space-y-1.5 text-sm text-slate-700 list-decimal list-inside">
+            {p.interview_questions.map((q, i) => (
+              <li key={i} className="break-keep leading-relaxed">{q}</li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-slate-900 mb-2">🌱 수습 기간 활용 가이드</h4>
+          <p className="text-sm text-slate-700 leading-relaxed break-keep">{p.probation_guide}</p>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-slate-900 mb-2">🚀 정규직 전환 · 커리어 방향성</h4>
+          <p className="text-sm text-slate-700 leading-relaxed break-keep">{p.career_path}</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function IntegratedGuide({ scores, mbti, applyingFor }: { scores: PbdScores; mbti?: string; applyingFor?: string }) {
+  // 통제·역할 두 축은 직무 적합성보다 협업/관리 스타일에 영향이 크므로 별도 코멘트
+  const ctrl = scores.s1_band === 'A' ? '자율형'
+    : scores.s1_band === 'B' ? '규범형'
+    : '균형형'
+  const role = scores.s3_band === 'A' ? '개인 기여형'
+    : scores.s3_band === 'B' ? '팀 협업형'
+    : '복합형'
+
+  return (
+    <section>
+      <h3 className="text-sm font-semibold text-slate-900 mb-3">통합 활용 코멘트</h3>
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-2 text-sm text-slate-700 leading-relaxed">
+        <p className="break-keep">
+          업무 운영 스타일은 <strong className="text-brand-700">{ctrl}</strong> · <strong className="text-brand-700">{role}</strong> 으로 나타납니다.
+          {ctrl === '자율형' && ' 명확한 목표를 주고 방법은 본인에게 맡겼을 때 몰입도가 높아지는 경향이 있습니다.'}
+          {ctrl === '규범형' && ' 가이드와 절차가 명확할수록 안정적인 결과를 만들어내는 경향이 있습니다.'}
+          {role === '개인 기여형' && ' 개별 책임이 명확한 과업에서 강점이 드러나며,'}
+          {role === '팀 협업형' && ' 팀 단위의 공동 목표에서 동기 부여가 높아지며,'}
+          {role === '복합형' && ' 독립과 협업 사이의 전환에 무리가 없으며,'}
+          {' 평가·코칭 시 이 점을 함께 고려하면 효과적입니다.'}
+        </p>
+        {scores.ici < 70 && (
+          <p className="text-xs text-amber-700 break-keep">
+            ⚠ 내적 일관성 지수가 {scores.ici}점으로 다소 낮습니다. 면접에서 응답의 깊이를 추가로 확인해 주세요.
+          </p>
+        )}
+        {mbti && mbti !== '모르겠음' && (
+          <p className="text-xs text-slate-500 break-keep">
+            * MBTI {mbti} 와 PBD {scores.domain} 도메인을 함께 보면, 자기인지(MBTI)와 실제 행동 패턴(PBD)의 정합성을 파악할 수 있습니다.
+            두 결과가 크게 어긋날 경우 자기상과 실행 양상의 차이를 면접에서 확인하면 좋습니다.
+          </p>
+        )}
+        {applyingFor && (
+          <p className="text-xs text-slate-500 break-keep">
+            * 본인이 기술한 지원 직무: <strong className="text-slate-700">"{applyingFor.length > 60 ? applyingFor.slice(0, 60) + '…' : applyingFor}"</strong>
+          </p>
+        )}
+      </div>
+    </section>
   )
 }
 
