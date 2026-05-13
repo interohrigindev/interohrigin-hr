@@ -6,6 +6,7 @@ import { UrgentTaskPopup } from '@/components/urgent/UrgentTaskPopup'
 import { PwaInit } from '@/components/PwaInit'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 import MonitoringDashboard from '@/routes/admin/monitoring'
+import SurveyTestResults from '@/routes/admin/survey-test-results'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AdminRoute } from '@/components/layout/AdminRoute'
 import Login from '@/routes/login'
@@ -116,6 +117,7 @@ import BulletinWrite from '@/routes/bulletin/write'
 // 외부 페이지 (로그인 불필요)
 import PublicApply from '@/routes/public/apply'
 import PublicSurvey from '@/routes/public/survey'
+import PublicSurveyTest from '@/routes/public/survey-test'
 import PublicInterview from '@/routes/public/interview'
 import PublicExitSurvey from '@/routes/public/exit-survey'
 import AcceptOfferPage from '@/routes/public/accept-offer'
@@ -135,6 +137,7 @@ function App() {
             {/* 외부 페이지 (로그인 불필요) */}
             <Route path="/apply/:postingId" element={<PublicApply />} />
             <Route path="/survey/:token" element={<PublicSurvey />} />
+            <Route path="/survey-test" element={<PublicSurveyTest />} />
             <Route path="/interview/:token" element={<PublicInterview />} />
             <Route path="/exit-survey/:token" element={<PublicExitSurvey />} />
             <Route path="/accept/:token" element={<AcceptOfferPage />} />
@@ -208,6 +211,7 @@ function App() {
               <Route path="admin/recruitment/jobs/:id" element={<AdminRoute><RecruitmentJobDetail /></AdminRoute>} />
               <Route path="admin/recruitment/candidates/:id" element={<AdminRoute><CandidateReport /></AdminRoute>} />
               <Route path="admin/recruitment/survey" element={<AdminRoute><SurveyManage /></AdminRoute>} />
+              <Route path="admin/recruitment/survey-test" element={<SurveyTestResults />} />
               <Route path="admin/recruitment/talent" element={<AdminRoute><TalentProfiles /></AdminRoute>} />
               <Route path="admin/recruitment/trust" element={<AdminRoute><AITrustDashboard /></AdminRoute>} />
               <Route path="admin/recruitment/settings" element={<AdminRoute><RecruitmentSettings /></AdminRoute>} />

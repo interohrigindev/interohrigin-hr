@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Pencil, Trash2, Sparkles, Loader2, FileText, GraduationCap, Briefcase, ChevronDown, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, Pencil, Trash2, Sparkles, Loader2, FileText, GraduationCap, Briefcase, ChevronDown, ChevronRight, FlaskConical, BarChart3 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -188,14 +189,48 @@ type은 "text", "choice", "scale" 중 하나입니다.`
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">사전 질의서 관리</h1>
           <p className="text-sm text-gray-500 mt-0.5">경력 구분별 질의서 템플릿을 관리합니다</p>
         </div>
-        <Button onClick={openNew}>
-          <Plus className="h-4 w-4 mr-1" /> 새 템플릿
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/admin/recruitment/survey-test"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-brand-700 bg-brand-50 border border-brand-200 rounded-lg hover:bg-brand-100 transition whitespace-nowrap"
+          >
+            <FlaskConical className="h-4 w-4" />
+            v2.0 테스트 결과
+          </Link>
+          <a
+            href="/survey-test"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition whitespace-nowrap"
+          >
+            <BarChart3 className="h-4 w-4" />
+            v2.0 응답하기
+          </a>
+          <Button onClick={openNew}>
+            <Plus className="h-4 w-4 mr-1" /> 새 템플릿
+          </Button>
+        </div>
+      </div>
+
+      {/* v2.0 안내 배너 */}
+      <div className="bg-gradient-to-br from-brand-50 to-violet-50 border border-brand-200 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
+            <FlaskConical className="w-5 h-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-brand-900 mb-0.5">사전질의서 v2.0 — 1차 테스트 진행 중</div>
+            <p className="text-xs text-brand-700/80 leading-relaxed">
+              PBD 성향 진단(20문항)을 포함한 신규 사전질의서입니다. 관리자·임원이 먼저 응답해보고, 검토를 거쳐 실제 채용에 반영합니다.
+              응답자에게는 "성향 진단" 라벨이 노출되지 않으며 결과 또한 공개되지 않습니다.
+            </p>
+          </div>
+        </div>
       </div>
 
       {templates.length === 0 ? (

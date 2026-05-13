@@ -1,0 +1,461 @@
+// 0513: 사전질의서 v2.0 — 관리자/임원 1차 테스트 페이지 (비로그인 접근)
+// 근거: docs/HR플랫폼_기능업데이트_개발계획_0507.md Phase 1 FR-101~105 + IO_사전질의서_공통문항_v2.0.pdf
+// 클라이언트 의견 반영: "성향 진단/직무 적합도/배치 검토" 라벨은 모두 숨김. 일반 설문처럼 자연스럽게.
+
+import { useEffect, useMemo, useState } from 'react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { PBD_QUESTIONS, SCALE_LABELS } from '@/lib/pbd-questions'
+
+const DRAFT_KEY = 'iohr-survey-test-draft-v1'
+
+type Step =
+  | { kind: 'intro' }
+  | { kind: 'common'; id: string; index: number }
+  | { kind: 'pbd'; pbdIndex: number }
+  | { kind: 'feedback' }
+  | { kind: 'done' }
+
+// Q1~Q9 정의 (PDF Part 1)
+type CommonQ =
+  | { id: string; label: string; type: 'choice'; options: string[]; required?: boolean; help?: string }
+  | { id: string; label: string; type: 'text'; multiline?: boolean; placeholder?: string; required?: boolean; help?: string }
+
+const COMMON_QUESTIONS: CommonQ[] = [
+  { id: 'Q1', label: '채용공고를 어디서 보셨습니까?', type: 'choice', required: true,
+    options: ['사람인', '잡코리아', '링크드인', '인스타그램 / SNS', '지인 추천', '기타'] },
+  { id: 'Q2', label: '귀하가 지원한 분야와 예상 업무를 간략히 기술해주세요',
+    type: 'text', multiline: true, required: true,
+    help: '지원 직무에서 담당할 것으로 예상하는 업무를 구체적으로 작성',
+    placeholder: '예) 콘텐츠 마케팅 — SNS 운영, 카피라이팅, 캠페인 기획 등' },
+  { id: 'Q3', label: '전직장 담당업무 / 퇴사일 / 퇴사사유 / 직전연봉을 작성해주세요',
+    type: 'text', multiline: true, required: true,
+    help: '신입의 경우 아르바이트 및 프리랜서 활동 포함',
+    placeholder: '예) ○○회사 마케팅팀 / 2024.12 / 개인 사유 / 3,200만원' },
+  { id: 'Q4', label: '채용 확정 시 출근 가능일자', type: 'text', required: true,
+    help: '예) 협의 후 즉시 / 2025.07.01', placeholder: '협의 후 즉시 또는 YYYY.MM.DD' },
+  { id: 'Q5', label: '채용 확정 시 희망 연봉', type: 'text', required: true,
+    help: '수습 급여는 면접 시 협의', placeholder: '예) 3,500만원' },
+  { id: 'Q6', label: '필수서류 제출이 가능하신가요?', type: 'choice', required: true,
+    help: '원천징수영수증, 경력증명서, 사업자등록여부확인서, 범죄경력회보서',
+    options: ['가능합니다', '일부 서류는 준비에 시간이 필요합니다', '제출이 어려운 서류가 있습니다'] },
+  { id: 'Q7', label: '경업금지 조항에 동의하십니까?', type: 'choice', required: true,
+    help: '업무기간 내 아르바이트, 프리랜서, 이중취업 등 일체의 경업 금지',
+    options: ['동의합니다', '동의하기 어렵습니다'] },
+  { id: 'Q8', label: '운전면허 보유 및 운전 능숙도', type: 'choice', required: true,
+    options: ['면허 있음 — 능숙하게 운전합니다', '면허 있음 — 자주 운전하지 않습니다', '운전면허 없음'] },
+  { id: 'Q9', label: '면접 녹화·녹음 동의', type: 'choice', required: true,
+    help: '화상면접 시 인사 평가 목적으로만 사용되며 평가 완료 후 즉시 폐기됩니다',
+    options: ['충분히 이해하고 동의합니다', '동의하지 않습니다'] },
+]
+
+interface DraftState {
+  tester_name: string
+  tester_email: string
+  tester_role: string
+  common: Record<string, string>
+  common_etc: Record<string, string>
+  pbd: Record<string, number>
+  feedback: string
+  started_at: number
+}
+
+const INITIAL_DRAFT: DraftState = {
+  tester_name: '',
+  tester_email: '',
+  tester_role: '',
+  common: {},
+  common_etc: {},
+  pbd: {},
+  feedback: '',
+  started_at: Date.now(),
+}
+
+export default function PublicSurveyTest() {
+  const [draft, setDraft] = useState<DraftState>(INITIAL_DRAFT)
+  const [step, setStep] = useState(0)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+
+  // 단계 구성 — intro(0) + 공통 9 + PBD 20 + feedback(31) = 31 step + done
+  const steps: Step[] = useMemo(() => {
+    const list: Step[] = [{ kind: 'intro' }]
+    COMMON_QUESTIONS.forEach((q, i) => list.push({ kind: 'common', id: q.id, index: i }))
+    PBD_QUESTIONS.forEach((_, i) => list.push({ kind: 'pbd', pbdIndex: i }))
+    list.push({ kind: 'feedback' })
+    return list
+  }, [])
+  const totalSteps = steps.length
+  const current = steps[step]
+  const progress = Math.round((step / (totalSteps - 1)) * 100)
+
+  // 자동 저장: localStorage 복원
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (raw) {
+        const restored = JSON.parse(raw)
+        setDraft({ ...INITIAL_DRAFT, ...restored })
+      }
+    } catch {}
+  }, [])
+
+  // 자동 저장: 응답 변화마다 localStorage 갱신
+  useEffect(() => {
+    if (submitted) return
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    } catch {}
+  }, [draft, submitted])
+
+  function updateCommon(id: string, value: string) {
+    setDraft(d => ({ ...d, common: { ...d.common, [id]: value } }))
+  }
+  function updateCommonEtc(id: string, value: string) {
+    setDraft(d => ({ ...d, common_etc: { ...d.common_etc, [id]: value } }))
+  }
+  function updatePbd(pid: string, value: number) {
+    setDraft(d => ({ ...d, pbd: { ...d.pbd, [pid]: value } }))
+  }
+
+  function canProceed(): boolean {
+    if (current.kind === 'intro') {
+      return draft.tester_name.trim().length >= 2
+    }
+    if (current.kind === 'common') {
+      const q = COMMON_QUESTIONS[current.index]
+      const v = draft.common[q.id] || ''
+      if (!q.required) return true
+      if (q.type === 'choice' && v === '기타') {
+        return (draft.common_etc[q.id] || '').trim().length > 0
+      }
+      return v.trim().length > 0
+    }
+    if (current.kind === 'pbd') {
+      const pq = PBD_QUESTIONS[current.pbdIndex]
+      return typeof draft.pbd[pq.id] === 'number'
+    }
+    return true
+  }
+
+  function goNext() {
+    if (!canProceed()) return
+    if (step < totalSteps - 1) setStep(step + 1)
+  }
+  function goPrev() {
+    if (step > 0) setStep(step - 1)
+  }
+
+  async function handleSubmit() {
+    if (submitting) return
+    setSubmitting(true)
+    try {
+      const duration = Math.round((Date.now() - draft.started_at) / 1000)
+      // 공통 응답에서 "기타" 선택 시 etc 값 병합
+      const mergedCommon: Record<string, string> = {}
+      for (const q of COMMON_QUESTIONS) {
+        const v = draft.common[q.id] || ''
+        if (q.type === 'choice' && v === '기타' && draft.common_etc[q.id]) {
+          mergedCommon[q.id] = `기타: ${draft.common_etc[q.id]}`
+        } else if (v) {
+          mergedCommon[q.id] = v
+        }
+      }
+      const meta = {
+        Q1: mergedCommon.Q1, Q2: mergedCommon.Q2, Q3: mergedCommon.Q3,
+        Q4: mergedCommon.Q4, Q5: mergedCommon.Q5,
+      }
+      const consent = {
+        Q6: mergedCommon.Q6, Q7: mergedCommon.Q7, Q8: mergedCommon.Q8, Q9: mergedCommon.Q9,
+      }
+      const { error } = await supabase.from('survey_test_responses').insert({
+        tester_name: draft.tester_name.trim(),
+        tester_email: draft.tester_email.trim() || null,
+        tester_role: draft.tester_role.trim() || null,
+        meta,
+        consent,
+        pbd_answers: draft.pbd,
+        feedback: draft.feedback.trim() || null,
+        duration_seconds: duration,
+      })
+      if (error) throw error
+      localStorage.removeItem(DRAFT_KEY)
+      setSubmitted(true)
+      setStep(totalSteps - 1)
+    } catch (e: any) {
+      alert('제출 중 오류가 발생했습니다: ' + (e?.message || '알 수 없는 오류'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // 단계별 본문 렌더
+  function renderBody() {
+    if (submitted) {
+      return (
+        <div className="text-center py-16">
+          <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-6" />
+          <h2 className="text-2xl font-bold text-slate-900 mb-3">응답해 주셔서 감사합니다</h2>
+          <p className="text-slate-600 leading-relaxed">
+            응답 내용이 저장되었습니다.<br />
+            테스트 진행 중 불편하셨던 부분이나 개선 의견이 있으시면 채용 담당자에게 별도로 전달 부탁드립니다.
+          </p>
+        </div>
+      )
+    }
+    if (current.kind === 'intro') {
+      return (
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">INTEROHRIGIN 사전질의서</h1>
+            <p className="text-slate-600 leading-relaxed text-sm">
+              본 질의서는 약 10~15분 정도 소요됩니다. 응답하신 내용은 면접 참고 자료로만 활용되며 외부로 공유되지 않습니다.<br />
+              <span className="text-slate-500">정답은 없습니다. 평소 본인의 모습에 가장 가까운 응답을 자유롭게 선택해 주세요.</span>
+            </p>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">이름 *</label>
+              <input
+                value={draft.tester_name}
+                onChange={e => setDraft(d => ({ ...d, tester_name: e.target.value }))}
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                placeholder="홍길동"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">이메일 (선택)</label>
+              <input
+                type="email"
+                value={draft.tester_email}
+                onChange={e => setDraft(d => ({ ...d, tester_email: e.target.value }))}
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                placeholder="example@email.com"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">소속 / 직책 (선택)</label>
+              <input
+                value={draft.tester_role}
+                onChange={e => setDraft(d => ({ ...d, tester_role: e.target.value }))}
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                placeholder="예) 마케팅팀 / 팀장"
+              />
+            </div>
+          </div>
+        </div>
+      )
+    }
+    if (current.kind === 'common') {
+      const q = COMMON_QUESTIONS[current.index]
+      const v = draft.common[q.id] || ''
+      return (
+        <div className="space-y-4">
+          <div>
+            <div className="text-xs font-medium text-brand-600 mb-2">{q.id}</div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {q.label}{q.required && <span className="text-rose-500 ml-1">*</span>}
+            </h2>
+            {q.help && <p className="text-xs text-slate-500 mt-1.5">※ {q.help}</p>}
+          </div>
+          {q.type === 'choice' ? (
+            <div className="space-y-2">
+              {q.options.map(opt => (
+                <label
+                  key={opt}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition ${
+                    v === opt
+                      ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-200'
+                      : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name={q.id}
+                    value={opt}
+                    checked={v === opt}
+                    onChange={() => updateCommon(q.id, opt)}
+                    className="w-4 h-4 accent-brand-600"
+                  />
+                  <span className="text-sm text-slate-800">{opt}</span>
+                </label>
+              ))}
+              {v === '기타' && (
+                <input
+                  value={draft.common_etc[q.id] || ''}
+                  onChange={e => updateCommonEtc(q.id, e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg mt-2 focus:ring-2 focus:ring-brand-500 outline-none"
+                  placeholder="직접 입력해주세요"
+                  autoFocus
+                />
+              )}
+            </div>
+          ) : q.multiline ? (
+            <textarea
+              value={v}
+              onChange={e => updateCommon(q.id, e.target.value)}
+              className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none resize-none"
+              rows={4}
+              placeholder={q.placeholder}
+              autoFocus
+            />
+          ) : (
+            <input
+              value={v}
+              onChange={e => updateCommon(q.id, e.target.value)}
+              className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+              placeholder={q.placeholder}
+              autoFocus
+            />
+          )}
+        </div>
+      )
+    }
+    if (current.kind === 'pbd') {
+      const pq = PBD_QUESTIONS[current.pbdIndex]
+      const v = draft.pbd[pq.id]
+      // 응답 척도 안내는 첫 PBD 문항 (pbdIndex === 0) 에서만 자세히 안내
+      const showIntro = current.pbdIndex === 0
+      return (
+        <div className="space-y-5">
+          {showIntro && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700 leading-relaxed">
+              <p className="font-medium text-slate-900 mb-1.5">이어지는 응답 방식 안내</p>
+              <p>각 문항에서 <strong>두 가지 상황 A · B 중 평소 본인에게 더 자연스러운 정도</strong>를 ①~⑤ 중에서 선택해 주세요.</p>
+              <p className="mt-1.5 text-slate-500">정답은 없습니다. 평소의 본인을 솔직하게 선택하는 것이 가장 정확합니다.</p>
+            </div>
+          )}
+          <div>
+            <div className="text-xs font-medium text-brand-600 mb-2">{pq.id}</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-violet-50/60 border border-violet-200 rounded-lg p-4">
+                <div className="text-xs font-bold text-violet-700 mb-1.5">A</div>
+                <p className="text-sm text-slate-800 leading-relaxed">{pq.a_text}</p>
+                <p className="text-xs text-violet-600/80 mt-2 italic">{pq.a_label}</p>
+              </div>
+              <div className="bg-amber-50/60 border border-amber-200 rounded-lg p-4">
+                <div className="text-xs font-bold text-amber-700 mb-1.5">B</div>
+                <p className="text-sm text-slate-800 leading-relaxed">{pq.b_text}</p>
+                <p className="text-xs text-amber-600/80 mt-2 italic">{pq.b_label}</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            {SCALE_LABELS.map(s => {
+              const selected = v === s.value
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => updatePbd(pq.id, s.value)}
+                  className={`flex-1 flex flex-col items-center gap-1 py-3 px-1 rounded-lg border-2 transition ${
+                    selected
+                      ? 'border-brand-500 bg-brand-50 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`text-lg font-bold ${selected ? 'text-brand-700' : 'text-slate-700'}`}>
+                    {['①','②','③','④','⑤'][s.value - 1]}
+                  </span>
+                  <span className={`text-[11px] font-medium ${selected ? 'text-brand-700' : 'text-slate-600'}`}>
+                    {s.short}
+                  </span>
+                  <span className="text-[10px] text-slate-400 leading-tight text-center hidden sm:block">{s.desc}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }
+    if (current.kind === 'feedback') {
+      return (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 mb-1.5">마지막으로, 응답 경험에 대한 의견을 들려주세요</h2>
+            <p className="text-xs text-slate-500">※ 본 항목은 1차 테스트 단계에서만 사용되며, 실제 채용 시에는 표시되지 않습니다.</p>
+          </div>
+          <textarea
+            value={draft.feedback}
+            onChange={e => setDraft(d => ({ ...d, feedback: e.target.value }))}
+            className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none resize-none"
+            rows={6}
+            placeholder="어렵게 느낀 문항, 응답 시 부담스러웠던 표현, UI/UX 개선 의견 등을 자유롭게 작성해 주세요."
+          />
+        </div>
+      )
+    }
+    return null
+  }
+
+  const isLast = step === totalSteps - 1
+  const isFirst = step === 0
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-brand-50/40 py-8 px-4">
+      <div className="max-w-2xl mx-auto">
+        {/* 진행률 바 */}
+        {!submitted && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+              <span>{step} / {totalSteps - 1}</span>
+              <span>{progress}% 완료</span>
+            </div>
+            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-brand-500 to-brand-600 transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 본문 카드 */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+          {renderBody()}
+        </div>
+
+        {/* 하단 네비 */}
+        {!submitted && (
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={goPrev}
+              disabled={isFirst}
+              className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-slate-600 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              이전
+            </button>
+            {isLast ? (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-60 transition shadow-sm"
+              >
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                제출하기
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={!canProceed()}
+                className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm"
+              >
+                다음
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="mt-8 text-center text-xs text-slate-400">
+          ⓒ INTEROHRIGIN I&C · 응답 내용은 자동으로 저장됩니다
+        </div>
+      </div>
+    </div>
+  )
+}
