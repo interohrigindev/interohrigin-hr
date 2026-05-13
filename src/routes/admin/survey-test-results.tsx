@@ -342,16 +342,19 @@ function DetailDrawer({ row, onClose }: { row: ResponseRow; onClose: () => void 
             />
           )}
 
-          {/* 공통 응답 */}
+          {/* 공통 응답 (Q1~Q9만 표시 — 메타 정보는 상단 프로필 카드에서 노출됨) */}
           <section>
             <h3 className="text-sm font-semibold text-slate-900 mb-3">기본정보 응답 (Q1~Q9)</h3>
             <dl className="space-y-2 text-sm">
-              {Object.entries({ ...row.meta, ...row.consent }).map(([k, v]) => (
-                <div key={k} className="flex gap-3 py-1.5 border-b border-slate-100">
-                  <dt className="w-12 shrink-0 text-xs font-mono text-slate-400">{k}</dt>
-                  <dd className="text-slate-700 whitespace-pre-wrap break-keep">{v || '-'}</dd>
-                </div>
-              ))}
+              {Object.entries({ ...row.meta, ...row.consent })
+                .filter(([k]) => /^Q\d+$/.test(k))
+                .sort(([a], [b]) => Number(a.slice(1)) - Number(b.slice(1)))
+                .map(([k, v]) => (
+                  <div key={k} className="flex gap-3 py-1.5 border-b border-slate-100">
+                    <dt className="w-10 shrink-0 text-xs font-mono text-slate-400">{k}</dt>
+                    <dd className="text-slate-700 whitespace-pre-wrap break-keep min-w-0 flex-1">{v || '-'}</dd>
+                  </div>
+                ))}
             </dl>
           </section>
 
