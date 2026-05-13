@@ -118,6 +118,7 @@ import BulletinWrite from '@/routes/bulletin/write'
 import PublicApply from '@/routes/public/apply'
 import PublicSurvey from '@/routes/public/survey'
 import PublicSurveyTest from '@/routes/public/survey-test'
+import PublicSurveyTestResults from '@/routes/public/survey-test-results'
 import PublicInterview from '@/routes/public/interview'
 import PublicExitSurvey from '@/routes/public/exit-survey'
 import AcceptOfferPage from '@/routes/public/accept-offer'
@@ -138,6 +139,7 @@ function App() {
             <Route path="/apply/:postingId" element={<PublicApply />} />
             <Route path="/survey/:token" element={<PublicSurvey />} />
             <Route path="/survey-test" element={<PublicSurveyTest />} />
+            <Route path="/survey-test-results" element={<PublicSurveyTestResults />} />
             <Route path="/interview/:token" element={<PublicInterview />} />
             <Route path="/exit-survey/:token" element={<PublicExitSurvey />} />
             <Route path="/accept/:token" element={<AcceptOfferPage />} />
