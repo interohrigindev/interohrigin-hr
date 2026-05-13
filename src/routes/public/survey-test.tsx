@@ -296,25 +296,6 @@ export default function PublicSurveyTest() {
                 </select>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">이메일 (선택)</label>
-              <input
-                type="email"
-                value={draft.tester_email}
-                onChange={e => setDraft(d => ({ ...d, tester_email: e.target.value }))}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
-                placeholder="example@email.com"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">소속 / 직책 (선택)</label>
-              <input
-                value={draft.tester_role}
-                onChange={e => setDraft(d => ({ ...d, tester_role: e.target.value }))}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
-                placeholder="예) 마케팅팀 / 팀장"
-              />
-            </div>
           </div>
         </div>
       )
