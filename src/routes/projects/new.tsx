@@ -42,6 +42,21 @@ export default function NewProjectPage() {
   const [managerId, setManagerId] = useState('')
   const [leaderId, setLeaderId] = useState('')
   const [executiveId, setExecutiveId] = useState('')
+
+  // 0513: 담당자 디폴트 — 본인 (프로젝트 만든 사람)
+  useEffect(() => {
+    if (!managerId && profile?.id) setManagerId(profile.id)
+  }, [profile?.id, managerId])
+
+  // 0513: 역할별 필터 — 리더는 leader 만, 이사는 director/division_head 만
+  const leaderCandidates = useMemo(
+    () => employees.filter((e) => e.role === 'leader'),
+    [employees]
+  )
+  const executiveCandidates = useMemo(
+    () => employees.filter((e) => e.role === 'director' || e.role === 'division_head'),
+    [employees]
+  )
   const [saving, setSaving] = useState(false)
 
   // 커스텀 템플릿 저장
@@ -543,13 +558,13 @@ export default function NewProjectPage() {
                 label="프로젝트 리더"
                 value={leaderId}
                 onChange={(e) => setLeaderId(e.target.value)}
-                options={[{ value: '', label: '미지정' }, ...employees.map(e => ({ value: e.id, label: e.name }))]}
+                options={[{ value: '', label: '미지정' }, ...leaderCandidates.map(e => ({ value: e.id, label: e.name }))]}
               />
               <Select
                 label="프로젝트 이사"
                 value={executiveId}
                 onChange={(e) => setExecutiveId(e.target.value)}
-                options={[{ value: '', label: '미지정' }, ...employees.map(e => ({ value: e.id, label: e.name }))]}
+                options={[{ value: '', label: '미지정' }, ...executiveCandidates.map(e => ({ value: e.id, label: e.name }))]}
               />
             </div>
 

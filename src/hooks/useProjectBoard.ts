@@ -7,7 +7,7 @@ import type {
   StageStatus, TemplateStage,
 } from '@/types/project-board'
 
-interface EmployeeBasic { id: string; name: string; department_id: string | null }
+interface EmployeeBasic { id: string; name: string; department_id: string | null; role?: string | null }
 interface DepartmentBasic { id: string; name: string; parent_id: string | null }
 
 export function useProjectBoard(statusFilter?: string) {
@@ -50,7 +50,7 @@ export function useProjectBoard(statusFilter?: string) {
     const [tmplRes, permRes, empRes, empAllRes, deptRes] = await Promise.all([
       supabase.from('project_templates').select('*').order('name'),
       supabase.from('board_permissions').select('*'),
-      supabase.from('employees').select('id, name, department_id').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, department_id, role').eq('is_active', true).order('name'),
       supabase.from('employees').select('id, name, is_active').order('name'),
       supabase.from('departments').select('id, name, parent_id').order('name'),
     ])
