@@ -439,9 +439,13 @@ export default function ProjectDetailPage() {
                     onClick={async () => {
                       if (!confirm(`"${stage.stage_name}" 단계를 삭제하시겠습니까?`)) return
                       setPipelineSaving(true)
-                      await removeStage(stage.id)
+                      const res = await removeStage(stage.id)
                       setPipelineSaving(false)
-                      toast('단계가 삭제되었습니다', 'success')
+                      if (res.error) {
+                        toast('삭제 실패: ' + res.error, 'error')
+                      } else {
+                        toast('단계가 삭제되었습니다', 'success')
+                      }
                     }}
                     disabled={pipelineSaving}
                     className="p-1 text-gray-300 hover:text-red-500 transition-colors shrink-0"
