@@ -441,7 +441,9 @@ export default function ProjectDetailPage() {
                       setPipelineSaving(true)
                       const res = await removeStage(stage.id)
                       setPipelineSaving(false)
-                      if (res.error) {
+                      if (res.denied) {
+                        alert('파이프라인 단계는 프로젝트 담당자만 삭제할 수 있습니다.\n관리자/임원 또는 담당자로 지정된 계정으로 시도해주세요.')
+                      } else if (res.error) {
                         toast('삭제 실패: ' + res.error, 'error')
                       } else {
                         toast('단계가 삭제되었습니다', 'success')

@@ -366,13 +366,14 @@ export function useProjectBoard(statusFilter?: string) {
     return { error: null }
   }
 
-  async function removeStage(stageId: string): Promise<{ error: string | null }> {
+  async function removeStage(stageId: string): Promise<{ error: string | null; denied?: boolean }> {
     // RLS 가 silently 거부할 수 있으므로 .select() 로 영향 행 확인
     const { data, error } = await supabase
       .from('pipeline_stages').delete().eq('id', stageId).select('id')
     if (error) return { error: error.message }
     if (!data || data.length === 0) {
-      return { error: '삭제 권한이 없습니다 (RLS 정책 — 관리자/임원/프로젝트 담당자만 가능).' }
+      // 권한 거부 케이스 — 호출 측에서 alert 띄울 수 있도록 denied=true 플래그
+      return { error: '권한 없음', denied: true }
     }
     await fetchData()
     return { error: null }
