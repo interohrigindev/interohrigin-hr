@@ -146,7 +146,13 @@ export default function DailyReportPage() {
   // 0512: 프로젝트별 추가 메모 — { project_id: html }
   const [projectMemos, setProjectMemos] = useState<Record<string, string>>({})
   // 0512: 내가 속한 프로젝트 목록 (오늘 이벤트 유무 무관, 항상 노출)
-  const [myProjects, setMyProjects] = useState<{ id: string; project_name: string; today_activity_count: number }[]>([])
+  // 0513: + 파이프라인 단계 담당자로 지정된 경우도 포함, my_stages 메타로 내 담당 단계 표시
+  const [myProjects, setMyProjects] = useState<{
+    id: string
+    project_name: string
+    today_activity_count: number
+    my_stages: { name: string; status: string }[]
+  }[]>([])
   const [myProjectsLoading, setMyProjectsLoading] = useState(true)
   // 0512: 작업 현황 — 다시 불러오기 진행 표시
   const [refreshingCompleted, setRefreshingCompleted] = useState(false)
@@ -249,12 +255,15 @@ export default function DailyReportPage() {
         // 0512: 진행중(active) 프로젝트만 — 완료/홀딩/취소 제외
         // 0513: + 모든 stage 가 '완료' 인 active 프로젝트도 사실상 완료된 것으로 간주하여 제외
         //       (unified-dashboard.tsx 의 완료 판정 로직과 동일)
-        const { data } = await supabase
+        // 0513-2: + 프로젝트 멤버가 아니어도 pipeline_stages.stage_assignee_ids 에 본인이 있으면 포함
+        const { data: allProjects } = await supabase
           .from('project_boards')
           .select('id, project_name, assignee_ids, manager_id, leader_id, executive_id, status')
           .eq('status', 'active')
         if (cancelled) return
-        const mineRaw = (data || []).filter((p: {
+
+        // 1) 프로젝트 멤버로 참여 중인 active 프로젝트
+        const memberProjects = (allProjects || []).filter((p: {
           assignee_ids?: string[] | null
           manager_id?: string | null
           leader_id?: string | null
@@ -266,34 +275,66 @@ export default function DailyReportPage() {
           p.executive_id === employeeId
         )
 
-        // 각 프로젝트의 stages 를 조회해 모두 '완료' 인 경우 제외
-        if (mineRaw.length === 0) {
-          setMyProjects([])
-          return
+        // 2) 단계 담당자(stage_assignee_ids) 인 단계가 있는 active 프로젝트도 포함
+        //    → 전체 active 프로젝트의 stages 한 번에 조회
+        const allActiveIds = (allProjects || []).map((p: { id: string }) => p.id)
+        let allStages: { project_id: string; stage_name: string; status: string; stage_assignee_ids: string[] | null; stage_order: number }[] = []
+        if (allActiveIds.length > 0) {
+          const { data: stagesData } = await supabase
+            .from('pipeline_stages')
+            .select('project_id, stage_name, status, stage_assignee_ids, stage_order')
+            .in('project_id', allActiveIds)
+          allStages = (stagesData || []) as typeof allStages
         }
-        const projectIds = mineRaw.map((p: { id: string }) => p.id)
-        const { data: stages } = await supabase
-          .from('pipeline_stages')
-          .select('project_id, status')
-          .in('project_id', projectIds)
-        if (cancelled) return
 
-        const stagesByProject = new Map<string, string[]>()
-        ;(stages || []).forEach((s: { project_id: string; status: string }) => {
+        const stagesByProject = new Map<string, typeof allStages>()
+        allStages.forEach((s) => {
           const arr = stagesByProject.get(s.project_id) ?? []
-          arr.push(s.status)
+          arr.push(s)
           stagesByProject.set(s.project_id, arr)
         })
 
-        const mine = mineRaw.filter((p: { id: string }) => {
-          const stageStatuses = stagesByProject.get(p.id) ?? []
-          // stage 가 1개 이상 있고 모두 '완료' → 사실상 완료된 프로젝트 → 제외
-          if (stageStatuses.length > 0 && stageStatuses.every((s) => s === '완료')) return false
-          return true
+        // 단계 담당으로 잡힌 프로젝트 id 수집 (member 가 아니어도 포함)
+        const stageOwnerProjectIds = new Set<string>()
+        allStages.forEach((s) => {
+          if ((s.stage_assignee_ids || []).includes(employeeId)) {
+            stageOwnerProjectIds.add(s.project_id)
+          }
         })
 
-        setMyProjects(mine.map((p: { id: string; project_name: string }) => ({
-          id: p.id, project_name: p.project_name, today_activity_count: 0,
+        // 3) 합집합 — 멤버 ∪ 단계담당자
+        const candidateMap = new Map<string, { id: string; project_name: string }>()
+        memberProjects.forEach((p: { id: string; project_name: string }) => candidateMap.set(p.id, { id: p.id, project_name: p.project_name }))
+        ;(allProjects || []).forEach((p: { id: string; project_name: string }) => {
+          if (stageOwnerProjectIds.has(p.id)) candidateMap.set(p.id, { id: p.id, project_name: p.project_name })
+        })
+
+        // 4) 모든 stage 가 '완료' 인 프로젝트는 제외 (대시보드 완료 판정 동일)
+        const mine: { id: string; project_name: string; my_stages: { name: string; status: string }[] }[] = []
+        for (const [pid, info] of candidateMap) {
+          const stages = stagesByProject.get(pid) ?? []
+          if (stages.length > 0 && stages.every((s) => s.status === '완료')) continue
+          // 본인이 담당으로 지정된 stage 만 my_stages 로 노출 (완료 단계 포함, 정렬 유지)
+          const my_stages = stages
+            .filter((s) => (s.stage_assignee_ids || []).includes(employeeId))
+            .sort((a, b) => a.stage_order - b.stage_order)
+            .map((s) => ({ name: s.stage_name, status: s.status }))
+          mine.push({ id: pid, project_name: info.project_name, my_stages })
+        }
+
+        // 정렬: 내 단계가 있는 프로젝트 우선, 그 다음 프로젝트명
+        mine.sort((a, b) => {
+          if ((a.my_stages.length > 0) !== (b.my_stages.length > 0)) {
+            return a.my_stages.length > 0 ? -1 : 1
+          }
+          return a.project_name.localeCompare(b.project_name, 'ko')
+        })
+
+        setMyProjects(mine.map((p) => ({
+          id: p.id,
+          project_name: p.project_name,
+          today_activity_count: 0,
+          my_stages: p.my_stages,
         })))
       } finally {
         if (!cancelled) setMyProjectsLoading(false)
@@ -1060,11 +1101,14 @@ ${completedText || '아직 없음'}
               }
             })
 
-            // 4) 그룹 리스트 — 활동 많은 순으로 정렬
+            // 4) 그룹 리스트 — 활동 많은 순으로 정렬, my_stages 포함
+            const myStagesByProject = new Map<string, { name: string; status: string }[]>()
+            myProjects.forEach((p) => myStagesByProject.set(p.id, p.my_stages))
             const groups = Array.from(idSet).map((pid) => ({
               projectId: pid,
               projectName: nameMap.get(pid) || '프로젝트',
               tasks: projectTasksMap.get(pid) ?? [],
+              myStages: myStagesByProject.get(pid) ?? [],
             })).sort((a, b) => b.tasks.length - a.tasks.length || a.projectName.localeCompare(b.projectName))
 
             if (groups.length === 0 && otherTasks.length === 0 && !myProjectsLoading) {
@@ -1083,21 +1127,47 @@ ${completedText || '아직 없음'}
                   return (
                     <div key={g.projectId} className={`rounded-lg border ${palette.border} overflow-hidden`}>
                       {/* 색상 헤더 블럭 */}
-                      <div className={`${palette.bg} px-4 py-2.5 border-b ${palette.border} flex items-center justify-between flex-wrap gap-2`}>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`inline-block w-1 h-5 rounded-full ${palette.accent} shrink-0`} />
-                          <span className="text-base shrink-0">📁</span>
-                          <h3 className={`font-bold ${palette.text} text-sm break-keep [word-break:keep-all]`}>{g.projectName}</h3>
-                          {g.tasks.length > 0 && (
-                            <span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold ${palette.badge} shrink-0`}>
-                              {g.tasks.length}
-                            </span>
+                      <div className={`${palette.bg} px-4 py-2.5 border-b ${palette.border} flex items-start justify-between flex-wrap gap-2`}>
+                        <div className="flex flex-col gap-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`inline-block w-1 h-5 rounded-full ${palette.accent} shrink-0`} />
+                            <span className="text-base shrink-0">📁</span>
+                            <h3 className={`font-bold ${palette.text} text-sm break-keep [word-break:keep-all]`}>{g.projectName}</h3>
+                            {g.tasks.length > 0 && (
+                              <span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold ${palette.badge} shrink-0`}>
+                                {g.tasks.length}
+                              </span>
+                            )}
+                          </div>
+                          {/* 내가 담당으로 지정된 파이프라인 단계 */}
+                          {g.myStages.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pl-4">
+                              <span className={`text-[10px] font-medium ${palette.text} opacity-70 shrink-0`}>내 담당 단계</span>
+                              {g.myStages.map((s, i) => {
+                                const dotCls =
+                                  s.status === '완료' ? 'bg-emerald-500' :
+                                  s.status === '진행중' ? 'bg-blue-500' :
+                                  s.status === '홀딩' ? 'bg-amber-500' :
+                                  'bg-gray-300'
+                                return (
+                                  <span
+                                    key={i}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/80 border border-white text-[10px] font-medium text-gray-700 shrink-0"
+                                    title={`${s.name} · ${s.status}`}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${dotCls} shrink-0`} />
+                                    {s.name}
+                                  </span>
+                                )
+                              })}
+                            </div>
                           )}
                         </div>
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => addTask(setCompleted, g.projectId, g.projectName)}
+                          className="shrink-0"
                         >
                           + 항목 추가
                         </Button>
