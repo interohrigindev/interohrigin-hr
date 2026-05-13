@@ -1530,21 +1530,31 @@ export default function UnifiedDashboard() {
                     </div>
                   )
                 })}
-                {overdueTasks.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between p-2.5 bg-amber-50 rounded-lg text-sm border border-amber-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                      <div>
-                        <span className="font-medium text-amber-800 text-xs">{t.title}</span>
-                        <span className="text-amber-500 text-[11px] ml-1">{getEmpName(t.assignee_id)}</span>
+                {overdueTasks.map((t) => {
+                  const linkedProject = t.linked_board_id
+                    ? filteredProjects.find((pr) => pr.id === t.linked_board_id)
+                    : null
+                  return (
+                    <div key={t.id} className="flex items-center justify-between p-2.5 bg-amber-50 rounded-lg text-sm border border-amber-100">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                        <div className="min-w-0">
+                          {linkedProject && (
+                            <span className="inline-block text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded mr-1.5 align-middle">
+                              📁 {linkedProject.project_name}
+                            </span>
+                          )}
+                          <span className="font-medium text-amber-800 text-xs">{t.title}</span>
+                          <span className="text-amber-500 text-[11px] ml-1">{getEmpName(t.assignee_id)}</span>
+                        </div>
                       </div>
+                      <Badge variant="warning" className="text-[10px] shrink-0">
+                        <Calendar className="h-3 w-3 mr-0.5" />
+                        {t.due_date?.slice(5)}
+                      </Badge>
                     </div>
-                    <Badge variant="warning" className="text-[10px]">
-                      <Calendar className="h-3 w-3 mr-0.5" />
-                      {t.due_date?.slice(5)}
-                    </Badge>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>
