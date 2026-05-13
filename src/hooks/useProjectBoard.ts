@@ -45,24 +45,33 @@ export function useProjectBoard(statusFilter?: string) {
     }
 
     // 2단계: 보조 데이터 병렬 로드 (직원, 부서, 템플릿, 권한)
-    const [tmplRes, permRes, empRes, deptRes] = await Promise.all([
+    // 0513: 표시용 직원 이름은 is_active 무관하게 전체 lookup (퇴사자도 이름은 노출),
+    //       선택 UI 용 active 목록은 별도로 사용
+    const [tmplRes, permRes, empRes, empAllRes, deptRes] = await Promise.all([
       supabase.from('project_templates').select('*').order('name'),
       supabase.from('board_permissions').select('*'),
       supabase.from('employees').select('id, name, department_id').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, is_active').order('name'),
       supabase.from('departments').select('id, name, parent_id').order('name'),
     ])
 
     const emps = (empRes.data || []) as EmployeeBasic[]
-    const empMap = new Map<string, string>()
-    for (const e of emps) empMap.set(e.id, e.name)
+    // 0513: 활성 직원만 표시용 — 퇴사·삭제자는 참여자 리스트에서 제외
+    const activeEmpMap = new Map<string, string>()
+    for (const e of (empAllRes.data || []) as { id: string; name: string; is_active: boolean }[]) {
+      if (e.is_active) activeEmpMap.set(e.id, e.name)
+    }
 
     const enriched: ProjectWithStages[] = allProjects.map((p) => ({
       ...p,
       stages: stageMap.get(p.id) || [],
-      assignee_names: p.assignee_ids?.map((id) => empMap.get(id) || '?') || [],
-      manager_name: p.manager_id ? empMap.get(p.manager_id) : undefined,
-      leader_name: p.leader_id ? empMap.get(p.leader_id) : undefined,
-      executive_name: p.executive_id ? empMap.get(p.executive_id) : undefined,
+      // 퇴사·삭제자는 자동 제외 (배열에서 빠짐)
+      assignee_names: (p.assignee_ids ?? [])
+        .map((id) => activeEmpMap.get(id))
+        .filter((n): n is string => !!n),
+      manager_name: p.manager_id ? activeEmpMap.get(p.manager_id) : undefined,
+      leader_name: p.leader_id ? activeEmpMap.get(p.leader_id) : undefined,
+      executive_name: p.executive_id ? activeEmpMap.get(p.executive_id) : undefined,
     }))
 
     // ─── D2-5: 본인 관련 프로젝트만 표시 (CEO/admin 만 전체 조회) ───
@@ -300,15 +309,19 @@ export function useProjectBoard(statusFilter?: string) {
         .select('*')
         .eq('project_id', projectId)
         .order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, name').eq('is_active', true),
+      // 0513: 표시용은 is_active 무관 전체 — 퇴사자 업데이트도 작성자 이름 노출
+      supabase.from('employees').select('id, name, is_active'),
     ])
 
-    const emps = (empRes.data || []) as { id: string; name: string }[]
+    const emps = (empRes.data || []) as { id: string; name: string; is_active: boolean }[]
 
-    return ((updRes.data || []) as ProjectUpdate[]).map((u) => ({
-      ...u,
-      author_name: emps.find((e) => e.id === u.author_id)?.name || '?',
-    }))
+    return ((updRes.data || []) as ProjectUpdate[]).map((u) => {
+      const author = emps.find((e) => e.id === u.author_id)
+      return {
+        ...u,
+        author_name: author ? (author.is_active ? author.name : `${author.name} (퇴사)`) : '(삭제된 사용자)',
+      }
+    })
   }
 
   // ─── Update request status ─────────────────────────────────
