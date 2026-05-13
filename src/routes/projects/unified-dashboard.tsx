@@ -727,7 +727,8 @@ export default function UnifiedDashboard() {
   const activeProjectIds = new Set(activeProjects.map((p) => p.id))
   const activeStages = activeProjects.flatMap((p) => p.stages)
   const delayedStages = activeStages.filter((s) => {
-    if (s.status === '완료' || !s.deadline) return false
+    // 완료/홀딩 단계는 '지연·임박' 에서 제외 (홀딩은 의도된 일시중단)
+    if (s.status === '완료' || s.status === '홀딩' || !s.deadline) return false
     return new Date(s.deadline) < new Date()
   })
   // 0513: 홀딩 단계 — 프로젝트가 전체 홀딩이 아니어도 개별 단계가 홀딩이면 추적
