@@ -721,7 +721,12 @@ export default function UnifiedDashboard() {
   const completedStages = allStages.filter((s) => s.status === '완료').length
   const totalStages = allStages.length
   const overallProgress = totalStages > 0 ? Math.round((completedStages / totalStages) * 100) : 0
-  const delayedStages = allStages.filter((s) => {
+
+  // 0513: '주의 필요' 블럭에서 완료/홀딩/취소 프로젝트의 단계·작업은 제외
+  // (= activeProjects 의 단계 + activeProjects 에 속한 작업만 노출)
+  const activeProjectIds = new Set(activeProjects.map((p) => p.id))
+  const activeStages = activeProjects.flatMap((p) => p.stages)
+  const delayedStages = activeStages.filter((s) => {
     if (s.status === '완료' || !s.deadline) return false
     return new Date(s.deadline) < new Date()
   })
@@ -730,7 +735,10 @@ export default function UnifiedDashboard() {
   const doneTasks = activeTasks.filter((t) => t.status === 'done')
   const overdueTasks = activeTasks.filter((t) => {
     if (t.status === 'done' || !t.due_date) return false
-    return new Date(t.due_date) < new Date()
+    if (new Date(t.due_date) >= new Date()) return false
+    // 프로젝트에 연결되어 있다면 active 프로젝트의 작업만 (완료/홀딩 프로젝트 제외)
+    if (t.linked_board_id && !activeProjectIds.has(t.linked_board_id)) return false
+    return true
   })
   const taskCompletionRate = activeTasks.length > 0 ? Math.round((doneTasks.length / activeTasks.length) * 100) : 0
 
