@@ -322,23 +322,14 @@ export default function PublicSurveyTest() {
           {showIntro && (
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700 leading-relaxed">
               <p className="font-medium text-slate-900 mb-1.5">이어지는 응답 방식 안내</p>
-              <p>각 문항에는 두 가지 상황 <strong>A · B</strong>가 제시됩니다. <strong>A 상황이 평소 본인에게 얼마나 가까운지</strong>를 <strong>매우 그렇다 ~ 매우 아니다</strong> 중에서 선택해 주세요.</p>
+              <p>각 문항을 읽고 <strong>평소 본인의 모습에 얼마나 가까운지</strong>를 <strong>매우 그렇다 ~ 매우 아니다</strong> 중에서 선택해 주세요.</p>
               <p className="mt-1.5 text-slate-500">정답은 없습니다. 평소의 본인을 솔직하게 선택하는 것이 가장 정확합니다.</p>
             </div>
           )}
           <div>
             <div className="text-xs font-medium text-brand-600 mb-2">{pq.id}</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="bg-violet-50/60 border border-violet-200 rounded-lg p-4">
-                <div className="text-xs font-bold text-violet-700 mb-1.5">A</div>
-                <p className="text-sm text-slate-800 leading-relaxed">{pq.a_text}</p>
-                <p className="text-xs text-violet-600/80 mt-2 italic">{pq.a_label}</p>
-              </div>
-              <div className="bg-amber-50/60 border border-amber-200 rounded-lg p-4">
-                <div className="text-xs font-bold text-amber-700 mb-1.5">B</div>
-                <p className="text-sm text-slate-800 leading-relaxed">{pq.b_text}</p>
-                <p className="text-xs text-amber-600/80 mt-2 italic">{pq.b_label}</p>
-              </div>
+            <div className="bg-violet-50/60 border border-violet-200 rounded-lg p-5">
+              <p className="text-base text-slate-900 leading-relaxed">{pq.a_text}</p>
             </div>
           </div>
           <div className="flex items-center justify-between gap-2">
