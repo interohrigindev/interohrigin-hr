@@ -236,7 +236,7 @@ export default function NewProjectPage() {
     if (!selectedDept) { toast('부서를 선택하세요', 'error'); return }
     if (!projectName.trim()) { toast('프로젝트명을 입력하세요', 'error'); return }
     if (editableStages.length === 0) { toast('파이프라인 단계가 필요합니다', 'error'); return }
-    if (assigneeIds.length === 0) { toast('담당자를 선택하세요', 'error'); return }
+    // 0513: 참여자는 선택 사항 (필수 아님)
 
     setSaving(true)
     const finalSharedDepts = isFullAccess
@@ -568,9 +568,9 @@ export default function NewProjectPage() {
               />
             </div>
 
-            {/* 담당자 — 부서별 그룹 + 검색 */}
+            {/* 참여자 — 선택, 부서별 그룹 + 검색 */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">담당자 *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">참여자 (선택)</label>
               <input
                 type="text"
                 placeholder="이름 또는 부서/팀 검색..."
