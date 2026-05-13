@@ -587,6 +587,9 @@ export default function UnifiedDashboard() {
 
   // Slide panel state
   const [slidePanel, setSlidePanel] = useState<SlidePanelState | null>(null)
+  // 0513: 담당자별 업무량 — 펼침 상태 + 정렬 기준
+  const [expandedAssignees, setExpandedAssignees] = useState<Set<string>>(new Set())
+  const [workloadSort, setWorkloadSort] = useState<'load' | 'overdue' | 'projects' | 'tasks'>('load')
 
   // Drag & Drop
   const [draggedId, setDraggedId] = useState<string | null>(null)
@@ -857,25 +860,94 @@ export default function UnifiedDashboard() {
     })
   }, [])
 
-  // Assignee workload
+  // Assignee workload — 인터랙티브 분배 정보
+  type AssigneeRole = 'manager' | 'leader' | 'executive' | 'assignee' | 'stage_owner'
+  type ProjectInvolvement = {
+    project_id: string
+    project_name: string
+    roles: AssigneeRole[]
+    task_count: number
+    overdue_count: number
+    stage_names: string[]
+  }
+  type AssigneeData = {
+    name: string
+    projects: ProjectInvolvement[]
+    total_tasks: number
+    total_overdue: number
+  }
+
   const assigneeWorkload = useMemo(() => {
-    const map = new Map<string, { name: string; projects: number; tasks: number; overdue: number }>()
+    const map = new Map<string, AssigneeData>()
+    const ensure = (uid: string): AssigneeData => {
+      if (!map.has(uid)) map.set(uid, { name: getEmpName(uid), projects: [], total_tasks: 0, total_overdue: 0 })
+      return map.get(uid)!
+    }
+    const projInvFor = (data: AssigneeData, pid: string, pname: string): ProjectInvolvement => {
+      let pi = data.projects.find((p) => p.project_id === pid)
+      if (!pi) {
+        pi = { project_id: pid, project_name: pname, roles: [], task_count: 0, overdue_count: 0, stage_names: [] }
+        data.projects.push(pi)
+      }
+      return pi
+    }
+
+    // 1) 프로젝트 역할(매니저/리더/임원/담당자)
     for (const p of filteredProjects) {
-      for (const aid of p.assignee_ids || []) {
-        if (!map.has(aid)) map.set(aid, { name: getEmpName(aid), projects: 0, tasks: 0, overdue: 0 })
-        map.get(aid)!.projects++
+      const addRole = (uid: string | null | undefined, role: AssigneeRole) => {
+        if (!uid) return
+        const data = ensure(uid)
+        const pi = projInvFor(data, p.id, p.project_name)
+        if (!pi.roles.includes(role)) pi.roles.push(role)
+      }
+      addRole(p.manager_id, 'manager')
+      addRole(p.leader_id, 'leader')
+      addRole(p.executive_id, 'executive')
+      for (const aid of p.assignee_ids || []) addRole(aid, 'assignee')
+
+      // 2) 파이프라인 단계 담당자
+      for (const st of p.stages || []) {
+        for (const uid of st.stage_assignee_ids || []) {
+          const data = ensure(uid)
+          const pi = projInvFor(data, p.id, p.project_name)
+          if (!pi.roles.includes('stage_owner')) pi.roles.push('stage_owner')
+          if (!pi.stage_names.includes(st.stage_name)) pi.stage_names.push(st.stage_name)
+        }
       }
     }
+
+    // 3) 작업 / 지연
     for (const t of activeTasks) {
       if (!t.assignee_id) continue
-      if (!map.has(t.assignee_id)) map.set(t.assignee_id, { name: getEmpName(t.assignee_id), projects: 0, tasks: 0, overdue: 0 })
-      map.get(t.assignee_id)!.tasks++
-      if (t.status !== 'done' && t.due_date && new Date(t.due_date) < new Date()) {
-        map.get(t.assignee_id)!.overdue++
+      const data = ensure(t.assignee_id)
+      data.total_tasks++
+      const isOverdue = t.status !== 'done' && !!t.due_date && new Date(t.due_date) < new Date()
+      if (isOverdue) data.total_overdue++
+
+      if (t.linked_board_id) {
+        const proj = filteredProjects.find((p) => p.id === t.linked_board_id)
+        if (proj) {
+          const pi = projInvFor(data, proj.id, proj.project_name)
+          pi.task_count++
+          if (isOverdue) pi.overdue_count++
+        }
       }
     }
-    return [...map.entries()].sort((a, b) => b[1].tasks - a[1].tasks).slice(0, 8)
-  }, [filteredProjects, activeTasks, getEmpName])
+
+    // 정렬: 선택된 기준에 따라
+    const entries = [...map.entries()]
+    entries.sort((a, b) => {
+      const [, A] = a; const [, B] = b
+      switch (workloadSort) {
+        case 'overdue':  return B.total_overdue - A.total_overdue
+        case 'projects': return B.projects.length - A.projects.length
+        case 'tasks':    return B.total_tasks - A.total_tasks
+        case 'load':
+        default:         return (B.total_tasks + B.projects.length) - (A.total_tasks + A.projects.length)
+      }
+    })
+    return entries.slice(0, 12)
+  }, [filteredProjects, activeTasks, getEmpName, workloadSort])
 
   // Open slide panel
   const openSlidePanel = useCallback((projectId: string, projectName: string, stageId: string, stageName: string) => {
@@ -1570,54 +1642,158 @@ export default function UnifiedDashboard() {
           </CardContent>
         </Card>
 
-        {/* 담당자별 업무량 — 진행 중 프로젝트 수 + 진행 작업 수 + 지연 건수 */}
+        {/* 담당자별 업무량 — 인터랙티브 표 + 펼침 분배 정보 */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Users className="h-4 w-4 text-violet-500" /> 담당자별 업무량
-            </CardTitle>
-            <p className="text-[11px] text-gray-500">P=참여 프로젝트 / T=진행 작업 / 지연=마감 초과 작업</p>
-          </CardHeader>
-          <CardContent>
-            {assigneeWorkload.length === 0 ? (
-              <p className="text-center py-6 text-gray-400 text-sm">데이터 없음</p>
-            ) : (
-              <div className="space-y-2.5">
-                {assigneeWorkload.map(([id, data]) => {
-                  const totalLoad = data.projects + data.tasks
-                  const maxLoad = Math.max(...assigneeWorkload.map(([, d]) => d.projects + d.tasks), 1)
-                  const loadPercent = Math.round((totalLoad / maxLoad) * 100)
-                  const isOverloaded = totalLoad >= 8 || data.overdue > 2
-
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Users className="h-4 w-4 text-violet-500" /> 담당자별 업무량
+              </CardTitle>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-gray-400 mr-1">정렬:</span>
+                {(['load','tasks','projects','overdue'] as const).map((k) => {
+                  const label = { load: '부하', tasks: '작업', projects: '프로젝트', overdue: '지연' }[k]
+                  const isActive = workloadSort === k
                   return (
-                    <div key={id} className="flex items-center gap-3">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                        isOverloaded ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {data.name[0]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-xs font-medium text-gray-800 truncate">{data.name}</span>
-                          <div className="flex items-center gap-2 text-[10px] shrink-0">
-                            <span className="text-blue-600">{data.projects}P</span>
-                            <span className="text-gray-500">{data.tasks}T</span>
-                            {data.overdue > 0 && <span className="text-red-600 font-bold">{data.overdue}지연</span>}
-                          </div>
-                        </div>
-                        <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              isOverloaded ? 'bg-red-500' : loadPercent >= 70 ? 'bg-amber-500' : 'bg-blue-500'
-                            }`}
-                            style={{ width: `${loadPercent}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setWorkloadSort(k)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                        isActive ? 'bg-violet-100 text-violet-700' : 'text-gray-400 hover:text-gray-700'
+                      }`}
+                    >
+                      {label}
+                    </button>
                   )
                 })}
               </div>
+            </div>
+            <p className="text-[11px] text-gray-500">행 클릭 → 프로젝트별 작업·역할 분배 펼치기. 부하 = 작업수 + 참여 프로젝트수.</p>
+          </CardHeader>
+          <CardContent className="p-0">
+            {assigneeWorkload.length === 0 ? (
+              <p className="text-center py-6 text-gray-400 text-sm">데이터 없음</p>
+            ) : (
+              <>
+                {/* 표 헤더 */}
+                <div className="grid grid-cols-[1fr_auto_auto_auto_64px] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-500 uppercase border-b border-gray-100 bg-gray-50/50">
+                  <span>담당자</span>
+                  <span className="text-right">프로젝트</span>
+                  <span className="text-right">작업</span>
+                  <span className="text-right">지연</span>
+                  <span className="text-right">부하</span>
+                </div>
+
+                <div className="divide-y divide-gray-50">
+                  {assigneeWorkload.map(([id, data]) => {
+                    const totalLoad = data.total_tasks + data.projects.length
+                    const maxLoad = Math.max(...assigneeWorkload.map(([, d]) => d.total_tasks + d.projects.length), 1)
+                    const loadPercent = Math.round((totalLoad / maxLoad) * 100)
+                    const isOverloaded = totalLoad >= 8 || data.total_overdue > 2
+                    const isExpanded = expandedAssignees.has(id)
+
+                    const ROLE_LABEL: Record<AssigneeRole, { label: string; cls: string }> = {
+                      manager:     { label: '매니저', cls: 'bg-blue-100 text-blue-700' },
+                      leader:      { label: '리더',   cls: 'bg-violet-100 text-violet-700' },
+                      executive:   { label: '임원',   cls: 'bg-emerald-100 text-emerald-700' },
+                      assignee:    { label: '참여',   cls: 'bg-gray-100 text-gray-700' },
+                      stage_owner: { label: '단계',   cls: 'bg-amber-100 text-amber-700' },
+                    }
+
+                    return (
+                      <div key={id}>
+                        {/* 메인 행 — 클릭 시 펼침 */}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedAssignees((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(id)) next.delete(id)
+                            else next.add(id)
+                            return next
+                          })}
+                          className={`w-full grid grid-cols-[1fr_auto_auto_auto_64px] gap-3 px-4 py-2.5 items-center hover:bg-violet-50/40 transition-colors text-left ${isExpanded ? 'bg-violet-50/30' : ''}`}
+                        >
+                          {/* 담당자 */}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <ChevronRight className={`h-3.5 w-3.5 text-gray-400 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                              isOverloaded ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {data.name[0]}
+                            </div>
+                            <span className="text-xs font-medium text-gray-800 truncate">{data.name}</span>
+                            {isOverloaded && (
+                              <span className="text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full shrink-0">과부하</span>
+                            )}
+                          </div>
+                          {/* 프로젝트 수 */}
+                          <span className="text-xs font-semibold text-blue-700 text-right tabular-nums">{data.projects.length}</span>
+                          {/* 작업 수 */}
+                          <span className="text-xs font-semibold text-gray-700 text-right tabular-nums">{data.total_tasks}</span>
+                          {/* 지연 수 */}
+                          <span className={`text-xs font-bold text-right tabular-nums ${data.total_overdue > 0 ? 'text-red-600' : 'text-gray-300'}`}>
+                            {data.total_overdue}
+                          </span>
+                          {/* 부하 바 */}
+                          <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                isOverloaded ? 'bg-red-500' : loadPercent >= 70 ? 'bg-amber-500' : 'bg-blue-500'
+                              }`}
+                              style={{ width: `${loadPercent}%` }}
+                            />
+                          </div>
+                        </button>
+
+                        {/* 펼침 — 프로젝트별 분배 */}
+                        {isExpanded && (
+                          <div className="px-4 pb-3 pt-1 bg-violet-50/30 space-y-1.5">
+                            {data.projects.length === 0 ? (
+                              <p className="text-[11px] text-gray-400 py-2">참여 중인 프로젝트가 없습니다.</p>
+                            ) : (
+                              data.projects.map((pi) => (
+                                <button
+                                  key={pi.project_id}
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); navigate(`/admin/projects/${pi.project_id}`) }}
+                                  className="w-full text-left p-2 rounded-lg bg-white border border-gray-100 hover:border-violet-300 hover:shadow-sm transition-all"
+                                >
+                                  <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                      <span className="text-[10px]">📁</span>
+                                      <span className="text-xs font-semibold text-gray-900 break-keep [word-break:keep-all]">{pi.project_name}</span>
+                                      {pi.roles.map((r) => (
+                                        <span key={r} className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${ROLE_LABEL[r].cls}`}>
+                                          {ROLE_LABEL[r].label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] shrink-0">
+                                      {pi.task_count > 0 && <span className="text-gray-600">작업 {pi.task_count}</span>}
+                                      {pi.overdue_count > 0 && <span className="text-red-600 font-bold">지연 {pi.overdue_count}</span>}
+                                    </div>
+                                  </div>
+                                  {pi.stage_names.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1 pl-4">
+                                      <span className="text-[9px] text-gray-400">단계:</span>
+                                      {pi.stage_names.map((sn, i) => (
+                                        <span key={i} className="text-[9px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                                          {sn}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
