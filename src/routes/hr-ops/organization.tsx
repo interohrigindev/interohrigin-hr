@@ -373,20 +373,21 @@ export default function OrganizationPage() {
                     ) : (
                       [...members]
                         .sort((a, b) => {
-                          // 0) 대표(ceo)는 항상 최상단
-                          const aCeo = a.role === 'ceo' ? 0 : 1
-                          const bCeo = b.role === 'ceo' ? 0 : 1
-                          if (aCeo !== bCeo) return aCeo - bCeo
-
-                          // 1) 인터오리진 전체 보기에서는 시스템관리자(admin)를 맨 아래로
+                          // 역할 그룹 우선순위:
+                          // 0=대표 / 1=이사·본부장 / 2=리더 / 3=그 외 / 4=시스템관리자(전체 보기에서만)
                           const isFullView = !selectedDeptId
-                          if (isFullView) {
-                            const aAdmin = a.role === 'admin' ? 1 : 0
-                            const bAdmin = b.role === 'admin' ? 1 : 0
-                            if (aAdmin !== bAdmin) return aAdmin - bAdmin
+                          const roleGroup = (role: string): number => {
+                            if (role === 'ceo') return 0
+                            if (role === 'director' || role === 'division_head') return 1
+                            if (role === 'leader') return 2
+                            if (role === 'admin' && isFullView) return 4
+                            return 3
                           }
+                          const aG = roleGroup(a.role)
+                          const bG = roleGroup(b.role)
+                          if (aG !== bG) return aG - bG
 
-                          // 2) 그 외(이사/리더 포함 전 직원) — 사원번호 오름차순(=입사 순)
+                          // 같은 그룹 내에서는 사원번호 오름차순(=입사 순)
                           const aNum = a.employee_number || ''
                           const bNum = b.employee_number || ''
                           if (aNum && bNum) return aNum.localeCompare(bNum, 'ko', { numeric: true })
