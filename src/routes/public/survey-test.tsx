@@ -18,12 +18,13 @@ type Step =
 
 // Q1~Q9 정의 (PDF Part 1)
 type CommonQ =
-  | { id: string; label: string; type: 'choice'; options: string[]; required?: boolean; help?: string }
+  | { id: string; label: string; type: 'choice'; options: string[]; required?: boolean; help?: string; etc_when?: string[]; etc_placeholder?: string }
   | { id: string; label: string; type: 'text'; multiline?: boolean; placeholder?: string; required?: boolean; help?: string }
 
 const COMMON_QUESTIONS: CommonQ[] = [
   { id: 'Q1', label: '채용공고를 어디서 보셨습니까?', type: 'choice', required: true,
-    options: ['사람인', '잡코리아', '링크드인', '인스타그램 / SNS', '지인 추천', '기타'] },
+    options: ['사람인', '잡코리아', '링크드인', '인스타그램 / SNS', '지인 추천', '기타'],
+    etc_when: ['기타'], etc_placeholder: '직접 입력해주세요' },
   { id: 'Q2', label: '귀하가 지원한 분야와 예상 업무를 간략히 기술해주세요',
     type: 'text', multiline: true, required: true,
     help: '지원 직무에서 담당할 것으로 예상하는 업무를 구체적으로 작성',
@@ -38,12 +39,14 @@ const COMMON_QUESTIONS: CommonQ[] = [
     help: '수습 급여는 면접 시 협의', placeholder: '예) 3,500만원' },
   { id: 'Q6', label: '필수서류 제출이 가능하신가요?', type: 'choice', required: true,
     help: '원천징수영수증, 경력증명서, 사업자등록여부확인서, 범죄경력회보서',
-    options: ['가능합니다', '일부 서류는 준비에 시간이 필요합니다', '제출이 어려운 서류가 있습니다'] },
+    options: ['가능합니다', '일부 서류는 준비에 시간이 필요합니다', '제출이 어려운 서류가 있습니다'],
+    etc_when: ['일부 서류는 준비에 시간이 필요합니다', '제출이 어려운 서류가 있습니다'],
+    etc_placeholder: '어떤 서류인지 적어주세요 (예: 범죄경력회보서)' },
   { id: 'Q7', label: '경업금지 조항에 동의하십니까?', type: 'choice', required: true,
     help: '업무기간 내 아르바이트, 프리랜서, 이중취업 등 일체의 경업 금지',
     options: ['동의합니다', '동의하기 어렵습니다'] },
   { id: 'Q8', label: '운전면허 보유 및 운전 능숙도', type: 'choice', required: true,
-    options: ['면허 있음 — 능숙하게 운전합니다', '면허 있음 — 자주 운전하지 않습니다', '운전면허 없음'] },
+    options: ['면허 있음 — 능숙하게 운전합니다', '면허 있음 — 운전이 익숙하지 않습니다 (장롱면허)', '운전면허 없음'] },
   { id: 'Q9', label: '면접 녹화·녹음 동의', type: 'choice', required: true,
     help: '화상면접 시 인사 평가 목적으로만 사용되며 평가 완료 후 즉시 폐기됩니다',
     options: ['충분히 이해하고 동의합니다', '동의하지 않습니다'] },
@@ -126,7 +129,7 @@ export default function PublicSurveyTest() {
       const q = COMMON_QUESTIONS[current.index]
       const v = draft.common[q.id] || ''
       if (!q.required) return true
-      if (q.type === 'choice' && v === '기타') {
+      if (q.type === 'choice' && q.etc_when && q.etc_when.includes(v)) {
         return (draft.common_etc[q.id] || '').trim().length > 0
       }
       return v.trim().length > 0
@@ -151,12 +154,13 @@ export default function PublicSurveyTest() {
     setSubmitting(true)
     try {
       const duration = Math.round((Date.now() - draft.started_at) / 1000)
-      // 공통 응답에서 "기타" 선택 시 etc 값 병합
+      // 공통 응답에서 etc 입력 옵션 선택 시 자유 입력값 병합
       const mergedCommon: Record<string, string> = {}
       for (const q of COMMON_QUESTIONS) {
         const v = draft.common[q.id] || ''
-        if (q.type === 'choice' && v === '기타' && draft.common_etc[q.id]) {
-          mergedCommon[q.id] = `기타: ${draft.common_etc[q.id]}`
+        const etc = draft.common_etc[q.id]
+        if (q.type === 'choice' && q.etc_when?.includes(v) && etc) {
+          mergedCommon[q.id] = `${v} — ${etc}`
         } else if (v) {
           mergedCommon[q.id] = v
         }
@@ -281,12 +285,12 @@ export default function PublicSurveyTest() {
                   <span className="text-sm text-slate-800">{opt}</span>
                 </label>
               ))}
-              {v === '기타' && (
+              {q.etc_when?.includes(v) && (
                 <input
                   value={draft.common_etc[q.id] || ''}
                   onChange={e => updateCommonEtc(q.id, e.target.value)}
                   className="w-full px-4 py-2.5 border border-slate-300 rounded-lg mt-2 focus:ring-2 focus:ring-brand-500 outline-none"
-                  placeholder="직접 입력해주세요"
+                  placeholder={q.etc_placeholder || '직접 입력해주세요'}
                   autoFocus
                 />
               )}
