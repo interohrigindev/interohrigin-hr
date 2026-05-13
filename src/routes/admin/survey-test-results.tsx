@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Copy, Loader2, RefreshCw, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Info, Loader2, RefreshCw, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { PBD_QUESTIONS, scorePbd, AXIS_DETAILS, DOMAIN_PROFILES, type PbdScores, type PbdAxis } from '@/lib/pbd-questions'
@@ -325,16 +325,7 @@ function DetailDrawer({ row, onClose }: { row: ResponseRow; onClose: () => void 
                     <div className="text-slate-500"><strong>검토 가능:</strong> {scores.check_jobs.join(', ') || '-'}</div>
                   </div>
                 </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                  <div className="text-xs text-slate-500 font-medium mb-1">내적 일관성 지수 (ICI)</div>
-                  <div className="text-3xl font-bold text-slate-900">{scores.ici}</div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    {scores.ici >= 90 ? '매우 높음 · 결과 신뢰' :
-                     scores.ici >= 70 ? '높음 · 결과 신뢰' :
-                     scores.ici >= 55 ? '보통 · 면접 이중 확인 권고' :
-                     '낮음 · 재진단 권고'}
-                  </div>
-                </div>
+                <IciCard ici={scores.ici} />
               </div>
             </section>
           )}
@@ -414,6 +405,81 @@ function DetailDrawer({ row, onClose }: { row: ResponseRow; onClose: () => void 
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function IciCard({ ici }: { ici: number }) {
+  // 50점 미만이면 기본적으로 펼친 상태로 시작 (검토자가 해석 가이드를 바로 볼 수 있도록)
+  const [expanded, setExpanded] = useState(ici < 70)
+
+  const level =
+    ici >= 90 ? { label: '매우 높음', badge: 'bg-emerald-100 text-emerald-700', text: 'text-emerald-700' } :
+    ici >= 70 ? { label: '높음', badge: 'bg-blue-100 text-blue-700', text: 'text-blue-700' } :
+    ici >= 55 ? { label: '보통', badge: 'bg-amber-100 text-amber-700', text: 'text-amber-700' } :
+    { label: '낮음', badge: 'bg-rose-100 text-rose-700', text: 'text-rose-700' }
+  const advice =
+    ici >= 90 ? '결과 신뢰' :
+    ici >= 70 ? '결과 신뢰' :
+    ici >= 55 ? '면접 이중 확인 권고' :
+    '재진단 권고'
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="text-xs text-slate-500 font-medium">내적 일관성 지수 (ICI)</div>
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${level.badge}`}>{level.label}</span>
+      </div>
+      <div className="text-3xl font-bold text-slate-900">{ici}</div>
+      <div className={`text-xs mt-1 font-medium ${level.text}`}>{level.label} · {advice}</div>
+
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="mt-3 flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 transition"
+      >
+        <Info className="w-3 h-3" />
+        ICI 가 뭔가요?
+        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-slate-200 text-xs text-slate-600 leading-relaxed space-y-3">
+          <div>
+            <div className="font-semibold text-slate-800 mb-1">ICI 란?</div>
+            <p className="break-keep">
+              응답의 <strong>신뢰도를 측정하는 지표</strong>입니다. 각 축에는 정방향 문항 4개 + 역방향 문항 1개(P4·P9·P14·P19)가 섞여 있어, 본인이 같은 성향이라면 두 응답이 논리적으로 일치해야 합니다. ICI 는 정·역 응답이 얼마나 일치하는지를 0~100점으로 환산합니다.
+            </p>
+          </div>
+          <div>
+            <div className="font-semibold text-slate-800 mb-1">점수가 낮은 이유</div>
+            <ul className="ml-3 space-y-0.5 list-disc break-keep">
+              <li>응답을 무성의하게 진행했을 가능성</li>
+              <li>채용에 유리해 보이는 답을 의식적으로 골라 역방향 문항에서 자기모순 발생</li>
+              <li>자기 인식과 실제 행동 사이의 괴리</li>
+            </ul>
+          </div>
+          <div>
+            <div className="font-semibold text-slate-800 mb-1">구간별 권고 조치</div>
+            <div className="space-y-1">
+              <div className="flex items-start gap-2"><span className="font-mono text-emerald-700 shrink-0 w-12">90↑</span><span className="break-keep">매우 높음 — 결과를 직무 배치 자료로 활용 가능</span></div>
+              <div className="flex items-start gap-2"><span className="font-mono text-blue-700 shrink-0 w-12">70~89</span><span className="break-keep">높음 — 결과 신뢰, 1~2개 항목만 면접에서 확인</span></div>
+              <div className="flex items-start gap-2"><span className="font-mono text-amber-700 shrink-0 w-12">55~69</span><span className="break-keep">보통 — 면접에서 시나리오 질문으로 이중 확인</span></div>
+              <div className="flex items-start gap-2"><span className="font-mono text-rose-700 shrink-0 w-12">~54</span><span className="break-keep">낮음 — 재진단 권고 또는 면접 비중 확대</span></div>
+            </div>
+          </div>
+          {ici < 70 && (
+            <div className="bg-amber-50 border border-amber-200 rounded p-2.5 text-amber-900 text-xs leading-relaxed break-keep">
+              <strong>💡 면접 활용 가이드</strong>
+              <ol className="mt-1 ml-4 space-y-0.5 list-decimal">
+                <li>이 화면 하단 <strong>"문항별 응답 (P1~P20)"</strong> 섹션에서 역방향 문항(✦)의 응답과 같은 축의 정방향 평균을 비교하세요.</li>
+                <li>차이가 큰 축의 영역(사고/추론/통제/역할)에서 <strong>과거 경험 기반 시나리오 질문</strong>을 준비하세요.</li>
+                <li>점수 자체로 탈락 사유는 아닙니다. 다른 평가 자료(과제·레퍼런스 체크)와 함께 종합적으로 판단해 주세요.</li>
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
