@@ -730,6 +730,8 @@ export default function UnifiedDashboard() {
     if (s.status === '완료' || !s.deadline) return false
     return new Date(s.deadline) < new Date()
   })
+  // 0513: 홀딩 단계 — 프로젝트가 전체 홀딩이 아니어도 개별 단계가 홀딩이면 추적
+  const holdingStages = activeStages.filter((s) => s.status === '홀딩')
 
   const activeTasks = tasks.filter((t) => t.status !== 'cancelled')
   const doneTasks = activeTasks.filter((t) => t.status === 'done')
@@ -928,7 +930,14 @@ export default function UnifiedDashboard() {
               <Clock className="h-4 w-4 text-amber-500" />
               <span className="text-[11px] text-gray-500">홀딩</span>
             </div>
-            <p className="text-2xl font-bold text-amber-600">{holdingProjects.length}</p>
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <p className="text-2xl font-bold text-amber-600">{holdingProjects.length}</p>
+              {holdingStages.length > 0 && (
+                <span className="text-[11px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap">
+                  + 단계 {holdingStages.length}
+                </span>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -1612,6 +1621,53 @@ export default function UnifiedDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 0513: 홀딩 단계 — 프로젝트 전체 홀딩이 아니어도 개별 단계 홀딩을 모아서 보기 */}
+      {holdingStages.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2 text-amber-700">
+              <Clock className="h-4 w-4" /> 홀딩 단계
+              <Badge variant="warning" className="text-[10px]">{holdingStages.length}</Badge>
+            </CardTitle>
+            <p className="text-[11px] text-gray-500">진행 중 프로젝트에서 일시 중단된 파이프라인 단계입니다.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+              {(() => {
+                // 프로젝트별 그룹핑
+                const byProject = new Map<string, { project_name: string; stages: typeof holdingStages }>()
+                holdingStages.forEach((s) => {
+                  const proj = activeProjects.find((p) => p.stages.some((st) => st.id === s.id))
+                  if (!proj) return
+                  const cur = byProject.get(proj.id) ?? { project_name: proj.project_name, stages: [] }
+                  cur.stages.push(s)
+                  byProject.set(proj.id, cur)
+                })
+                return Array.from(byProject.entries()).map(([pid, info]) => (
+                  <div key={pid} className="p-2.5 bg-amber-50 rounded-lg border border-amber-100">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="text-[11px] font-bold text-amber-800 break-keep">📁 {info.project_name}</span>
+                      <Badge variant="warning" className="text-[10px]">{info.stages.length}</Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pl-1">
+                      {info.stages.map((s) => (
+                        <span key={s.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-amber-200 text-[11px] text-amber-800">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          {s.stage_name}
+                          {s.deadline && (
+                            <span className="text-[10px] text-amber-500 ml-0.5">· {s.deadline.slice(5)}</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              })()}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ─── Slide Panel ─────────────────────────────────────────── */}
       {slidePanel && (
