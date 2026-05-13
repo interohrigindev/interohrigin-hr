@@ -892,8 +892,12 @@ export default function UnifiedDashboard() {
       return pi
     }
 
-    // 1) 프로젝트 역할(매니저/리더/임원/담당자)
-    for (const p of filteredProjects) {
+    // 0513: 완료된 프로젝트(activeProjects 미포함)는 담당자별 업무량에서 제외
+    //       활성 프로젝트의 참여자/단계 담당자만 집계
+    const activeProjectIdSet = new Set(activeProjects.map((p) => p.id))
+
+    // 1) 프로젝트 역할(매니저/리더/임원/담당자) — 활성 프로젝트만
+    for (const p of activeProjects) {
       const addRole = (uid: string | null | undefined, role: AssigneeRole) => {
         if (!uid) return
         const data = ensure(uid)
@@ -905,7 +909,7 @@ export default function UnifiedDashboard() {
       addRole(p.executive_id, 'executive')
       for (const aid of p.assignee_ids || []) addRole(aid, 'assignee')
 
-      // 2) 파이프라인 단계 담당자
+      // 2) 파이프라인 단계 담당자 — 활성 프로젝트의 단계만
       for (const st of p.stages || []) {
         for (const uid of st.stage_assignee_ids || []) {
           const data = ensure(uid)
@@ -916,22 +920,30 @@ export default function UnifiedDashboard() {
       }
     }
 
-    // 3) 작업 / 지연
+    // 3) 작업 / 지연 — 완료 프로젝트 연결 작업은 카운트 제외
     for (const t of activeTasks) {
       if (!t.assignee_id) continue
+      // 완료된 프로젝트에 연결된 작업은 제외 (linked_board_id 가 있는데 활성에 없으면 skip)
+      if (t.linked_board_id && !activeProjectIdSet.has(t.linked_board_id)) continue
+
       const data = ensure(t.assignee_id)
       data.total_tasks++
       const isOverdue = t.status !== 'done' && !!t.due_date && new Date(t.due_date) < new Date()
       if (isOverdue) data.total_overdue++
 
       if (t.linked_board_id) {
-        const proj = filteredProjects.find((p) => p.id === t.linked_board_id)
+        const proj = activeProjects.find((p) => p.id === t.linked_board_id)
         if (proj) {
           const pi = projInvFor(data, proj.id, proj.project_name)
           pi.task_count++
           if (isOverdue) pi.overdue_count++
         }
       }
+    }
+
+    // 4) 참여 프로젝트 0 + 작업 0 인 사람은 제외 (완료 프로젝트만 참여했던 케이스)
+    for (const [uid, d] of [...map.entries()]) {
+      if (d.projects.length === 0 && d.total_tasks === 0) map.delete(uid)
     }
 
     // 정렬: 선택된 기준에 따라
@@ -947,7 +959,7 @@ export default function UnifiedDashboard() {
       }
     })
     return entries.slice(0, 12)
-  }, [filteredProjects, activeTasks, getEmpName, workloadSort])
+  }, [activeProjects, activeTasks, getEmpName, workloadSort])
 
   // Open slide panel
   const openSlidePanel = useCallback((projectId: string, projectName: string, stageId: string, stageName: string) => {
