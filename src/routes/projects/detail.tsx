@@ -151,10 +151,20 @@ export default function ProjectDetailPage() {
     const newStatus = next[task.status]
     // 낙관적 업데이트
     setLinkedTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: newStatus } : t))
-    const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id)
+    // RLS 가 silently 거부할 수 있으므로 .select() 로 실제 반영 행을 받아 확인
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ status: newStatus })
+      .eq('id', task.id)
+      .select('id, status')
     if (error) {
       toast('상태 변경 실패: ' + error.message, 'error')
-      loadTasks() // 실패 시 원복
+      loadTasks()
+      return
+    }
+    if (!data || data.length === 0) {
+      toast('상태 변경 권한이 없습니다 (RLS 정책 확인 필요).', 'error')
+      loadTasks()
     }
   }
 
