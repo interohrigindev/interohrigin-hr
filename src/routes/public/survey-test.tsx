@@ -322,7 +322,7 @@ export default function PublicSurveyTest() {
           {showIntro && (
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700 leading-relaxed">
               <p className="font-medium text-slate-900 mb-1.5">이어지는 응답 방식 안내</p>
-              <p>각 문항에서 <strong>두 가지 상황 A · B 중 평소 본인에게 더 자연스러운 정도</strong>를 ①~⑤ 중에서 선택해 주세요.</p>
+              <p>각 문항에는 두 가지 상황 <strong>A · B</strong>가 제시됩니다. <strong>A 상황이 평소 본인에게 얼마나 가까운지</strong>를 <strong>매우 그렇다 ~ 매우 아니다</strong> 중에서 선택해 주세요.</p>
               <p className="mt-1.5 text-slate-500">정답은 없습니다. 평소의 본인을 솔직하게 선택하는 것이 가장 정확합니다.</p>
             </div>
           )}

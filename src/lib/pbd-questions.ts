@@ -165,13 +165,13 @@ export const PBD_QUESTIONS: PbdQuestion[] = [
   },
 ]
 
-// 척도 라벨 (지원자 화면에서 노출)
+// 척도 라벨 (지원자 화면에서 노출) — A 문항에 대한 동의 정도
 export const SCALE_LABELS = [
-  { value: 1, short: '매우 A', desc: 'A 성향 매우 강함' },
-  { value: 2, short: 'A 우세', desc: '상황에 따라 B도' },
-  { value: 3, short: '균형', desc: '두 성향이 균형' },
-  { value: 4, short: 'B 우세', desc: '상황에 따라 A도' },
-  { value: 5, short: '매우 B', desc: 'B 성향 매우 강함' },
+  { value: 1, short: '매우 그렇다', desc: 'A에 매우 가까움' },
+  { value: 2, short: '그렇다', desc: 'A에 가까움' },
+  { value: 3, short: '보통', desc: '둘 다 비슷' },
+  { value: 4, short: '아니다', desc: 'B에 가까움' },
+  { value: 5, short: '매우 아니다', desc: 'B에 매우 가까움' },
 ] as const
 
 // ──────────────────────────────────────────────────────────
