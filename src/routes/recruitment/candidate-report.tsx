@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer, Link2, Copy, EyeOff, Pencil, Upload } from 'lucide-react'
+import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer, Link2, Copy, EyeOff, Pencil, Upload, RotateCcw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -2352,15 +2352,59 @@ ${surveyText || '응답 없음'}
                   </Button>
                 </div>
               ) : candidate.status === 'rejected' ? (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
-                  <XCircle className="h-5 w-5 text-red-600 mx-auto mb-1" />
-                  <p className="text-sm text-red-700 font-semibold">불합격</p>
+                <div className="space-y-2">
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+                    <XCircle className="h-5 w-5 text-red-600 mx-auto mb-1" />
+                    <p className="text-sm text-red-700 font-semibold">불합격</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-amber-700 border-amber-300 hover:bg-amber-50"
+                    onClick={async () => {
+                      if (!confirm('불합격 처리를 취소하고 평가를 재개하시겠습니까?\n\n현재 단계는 이력서 검토 상태로 되돌아가며, 이후 면접/평가 진행이 가능합니다.')) return
+                      const restoreStatus: CandidateStatus = report ? 'resume_reviewed' : 'applied'
+                      const { data, error } = await supabase
+                        .from('candidates')
+                        .update({ status: restoreStatus })
+                        .eq('id', id)
+                        .select('id')
+                      if (error) { toast('되돌리기 실패: ' + error.message, 'error'); return }
+                      if (!data || data.length === 0) { toast('권한이 없거나 이미 변경된 상태입니다.', 'error'); return }
+                      setCandidate((p) => p ? { ...p, status: restoreStatus } : p)
+                      toast('불합격 처리가 취소되었습니다.', 'success')
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-1" /> 불합격 취소 (평가 재개)
+                  </Button>
                 </div>
               ) : candidate.status === 'no_show' ? (
-                <div className="p-3 bg-gray-100 border border-gray-300 rounded-lg text-center">
-                  <XCircle className="h-5 w-5 text-gray-500 mx-auto mb-1" />
-                  <p className="text-sm text-gray-700 font-semibold">지원 불참</p>
-                  <p className="text-[11px] text-gray-500 mt-0.5">면접 무단 불참 등으로 평가가 종료되었습니다.</p>
+                <div className="space-y-2">
+                  <div className="p-3 bg-gray-100 border border-gray-300 rounded-lg text-center">
+                    <XCircle className="h-5 w-5 text-gray-500 mx-auto mb-1" />
+                    <p className="text-sm text-gray-700 font-semibold">지원 불참</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">면접 무단 불참 등으로 평가가 종료되었습니다.</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-amber-700 border-amber-300 hover:bg-amber-50"
+                    onClick={async () => {
+                      if (!confirm('지원 불참 처리를 취소하고 평가를 재개하시겠습니까?')) return
+                      const restoreStatus: CandidateStatus = report ? 'resume_reviewed' : 'applied'
+                      const { data, error } = await supabase
+                        .from('candidates')
+                        .update({ status: restoreStatus })
+                        .eq('id', id)
+                        .select('id')
+                      if (error) { toast('되돌리기 실패: ' + error.message, 'error'); return }
+                      if (!data || data.length === 0) { toast('권한이 없거나 이미 변경된 상태입니다.', 'error'); return }
+                      setCandidate((p) => p ? { ...p, status: restoreStatus } : p)
+                      toast('지원 불참 처리가 취소되었습니다.', 'success')
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-1" /> 지원 불참 취소 (평가 재개)
+                  </Button>
                 </div>
               ) : (
                 <p className="text-sm text-gray-500">
