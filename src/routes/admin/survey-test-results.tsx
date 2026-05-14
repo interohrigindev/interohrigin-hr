@@ -452,11 +452,12 @@ function IciCard({ ici }: { ici: number }) {
             </p>
           </div>
           <div>
-            <div className="font-semibold text-slate-800 mb-1">점수가 낮은 이유</div>
+            <div className="font-semibold text-slate-800 mb-1">점수가 낮을 수 있는 이유</div>
             <ul className="ml-3 space-y-0.5 list-disc break-keep">
               <li>응답을 무성의하게 진행했을 가능성</li>
               <li>채용에 유리해 보이는 답을 의식적으로 골라 역방향 문항에서 자기모순 발생</li>
               <li>자기 인식과 실제 행동 사이의 괴리</li>
+              <li><strong className="text-slate-800">양가적 응답</strong> — 같은 축이라도 측면에 따라 다르게 응답한 경우 (정직한 응답자에게도 흔함)</li>
             </ul>
           </div>
           <div>

@@ -434,7 +434,9 @@ export function scorePbd(answers: Record<string, number>): PbdScores | null {
 
   const C1 = sum.C1, C3 = sum.C3, S1 = sum.S1, S3 = sum.S3
 
-  // ICI: 각 축의 역방향 점수(역산 후)와 정방향 4문항 평균의 절댓값 차이를 합산 후 100점 환산
+  // ICI: 각 축의 역방향 점수(역산 후)와 정방향 4문항 평균의 절댓값 차이를 합산해 100점 환산
+  // 보정 사유: 동일 축 안에서도 "측면에 따라 다르게 응답"하는 양가성은 정직한 사람에게도 자연스러움.
+  // → 차이가 0.5 이내는 노이즈로 보고 패널티 0, 분모도 28로 완화하여 자연 변동에 관대하게 산정.
   let deviation = 0
   for (const axis of ['C1', 'C3', 'S1', 'S3'] as PbdAxis[]) {
     const fwd = PBD_QUESTIONS.filter(q => q.axis === axis && !q.reversed)
@@ -443,10 +445,12 @@ export function scorePbd(answers: Record<string, number>): PbdScores | null {
     const fwdAvg = fwd.reduce((s, q) => s + (answers[q.id] || 3), 0) / fwd.length
     const revRaw = rev.reduce((s, q) => s + (answers[q.id] || 3), 0) / rev.length
     const revAdjusted = 6 - revRaw // 역산 후 정방향 기준 값
-    deviation += Math.abs(fwdAvg - revAdjusted)
+    const rawDiff = Math.abs(fwdAvg - revAdjusted)
+    // 0.5 이내 차이는 양가적 응답에 의한 자연 변동으로 간주
+    deviation += Math.max(0, rawDiff - 0.5)
   }
-  // deviation 최대 약 16 (4축 × 최대 4점 차이) → 100점 환산
-  const ici = Math.max(0, Math.min(100, Math.round(100 - (deviation / 16) * 100)))
+  // 4축 × 최대 차이 3.5 ≒ 14 가 이론적 최대, 분모는 14 의 2배로 잡아 일반 응답자에게 관대하게 산정
+  const ici = Math.max(0, Math.min(100, Math.round(100 - (deviation / 14) * 100)))
 
   const c1_label = bandLabel('C1', C1)
   const c3_label = bandLabel('C3', C3)
