@@ -1643,8 +1643,11 @@ ${surveyText || '응답 없음'}
             </Card>
           )}
 
-          {/* 발송 완료 but 미응답 상태 */}
-          {!candidate.pre_survey_data && ['survey_sent'].includes(candidate.status) && (
+          {/* 발송 완료 but 미응답 상태 — 사전질의서가 옵션 발송된 경우에도 발송 이력만 있고 응답이 없으면 표시 */}
+          {!candidate.pre_survey_data && (
+            candidate.status === 'survey_sent' ||
+            ((candidate.survey_send_history as { sent_at: string }[] | undefined)?.length || 0) > 0
+          ) && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
