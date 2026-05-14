@@ -122,7 +122,9 @@ export default function PublicSurvey() {
         completed_at: new Date().toISOString(),
       }
 
-      const { error: updateErr } = await supabase
+      // 0514: .select() 검증 추가 — 기존엔 RLS silent rejection 시에도 성공 화면이 떠서
+      // 지원자는 제출 완료로 인식하지만 DB 에는 0 row 반영되는 문제가 있었음.
+      const { data, error: updateErr } = await supabase
         .from('candidates')
         .update({
           pre_survey_data: surveyData,
@@ -136,8 +138,12 @@ export default function PublicSurvey() {
           },
         })
         .eq('id', candidate.id)
+        .select('id')
 
       if (updateErr) throw new Error(updateErr.message)
+      if (!data || data.length === 0) {
+        throw new Error('응답 저장에 실패했습니다. 페이지를 새로고침한 후 다시 시도해 주세요. 문제가 반복되면 채용 담당자에게 문의 부탁드립니다.')
+      }
       setSubmitted(true)
     } catch (err: any) {
       setError(err.message)
