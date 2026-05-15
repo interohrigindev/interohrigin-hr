@@ -516,19 +516,28 @@ ${prevSummary}
                         if (stageEvals.length > 0) {
                           const avg = stageEvals.reduce((sum, ev) => sum + getTotalScore(ev.scores as Record<string, number>), 0) / stageEvals.length
                           const stageLabel = stage === 'round1' ? '1회차' : stage === 'round2' ? '2회차' : '3회차'
+                          const latestTs = stageEvals.reduce((max, ev) => {
+                            const t = new Date(ev.updated_at || ev.created_at).getTime()
+                            return t > max ? t : max
+                          }, 0)
+                          const latestDate = latestTs > 0 ? formatDate(new Date(latestTs)) : null
                           return (
-                            <span className="inline-flex items-center gap-1">
-                              <span className="text-sm font-bold text-emerald-600">{avg.toFixed(0)}점 완료</span>
-                              {canDeleteRole && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); deleteEvaluations(emp.id, stage as ProbationStage, emp.name, stageLabel) }}
-                                  className="text-gray-300 hover:text-red-500 transition-colors"
-                                  title={`${emp.name} ${stageLabel} 평가 삭제`}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              )}
+                            <span className="inline-flex flex-col items-center leading-tight">
+                              <span className="inline-flex items-center gap-1">
+                                <span className="text-sm font-bold text-emerald-600">{avg.toFixed(0)}점 완료</span>
+                                {canDeleteRole && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); deleteEvaluations(emp.id, stage as ProbationStage, emp.name, stageLabel) }}
+                                    className="text-gray-300 hover:text-red-500 transition-colors"
+                                    title={`${emp.name} ${stageLabel} 평가 삭제`}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                )}
+                              </span>
+                              <span className="text-[10px] text-gray-500">{stageEvals.length}명 평가</span>
+                              {latestDate && <span className="text-[10px] text-gray-400">{latestDate}</span>}
                             </span>
                           )
                         }
