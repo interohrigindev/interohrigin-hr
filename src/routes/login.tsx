@@ -81,8 +81,11 @@ export default function Login() {
     }
 
     setSubmitting(true)
+    // 0515: 운영 도메인 고정 — 데스크톱 앱/localhost 에서 호출 시에도 운영 URL 로 보내지도록
+    // VITE_APP_URL 환경변수 미설정 시 현재 origin 으로 fallback
+    const appUrl = import.meta.env.VITE_APP_URL || window.location.origin
     const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${appUrl}/reset-password`,
     })
 
     if (resetErr) {
