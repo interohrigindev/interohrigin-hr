@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Edit2, Trash2, ImagePlus, X } from 'lucide-react'
+import { Plus, Edit2, Trash2, ImagePlus, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -82,6 +82,9 @@ export default function TaskManage() {
   const [filterStatus, setFilterStatus] = useState<string>('')
   const [filterPriority, setFilterPriority] = useState<string>('')
   const [filterProject, setFilterProject] = useState<string>('')
+
+  // 프로젝트 그룹 접힘 상태 (key: linked_board_id or '__none__')
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   // Dialog
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -256,7 +259,31 @@ export default function TaskManage() {
       {/* Task List — 프로젝트별 그룹 */}
       <Card>
         <CardHeader>
-          <CardTitle>작업 목록 ({filtered.length})</CardTitle>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle>작업 목록 ({filtered.length})</CardTitle>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setCollapsedGroups(new Set())}
+                title="모든 프로젝트 펼치기"
+              >
+                <ChevronDown className="h-3.5 w-3.5 mr-1" /> 전체 펼치기
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  const allKeys = new Set<string>()
+                  for (const t of filtered) allKeys.add(t.linked_board_id || '__none__')
+                  setCollapsedGroups(allKeys)
+                }}
+                title="모든 프로젝트 접기"
+              >
+                <ChevronRight className="h-3.5 w-3.5 mr-1" /> 전체 접기
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {filtered.length === 0 ? (
@@ -281,14 +308,31 @@ export default function TaskManage() {
                   return a[1].projectName.localeCompare(b[1].projectName)
                 })
 
-                return sorted.map(([key, { projectName, tasks: groupTasks }]) => (
+                return sorted.map(([key, { projectName, tasks: groupTasks }]) => {
+                  const isCollapsed = collapsedGroups.has(key)
+                  return (
                   <div key={key} className="space-y-2">
-                    <div className="flex items-center gap-2 px-1 py-1.5 border-b border-gray-200">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCollapsedGroups((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(key)) next.delete(key)
+                          else next.add(key)
+                          return next
+                        })
+                      }}
+                      className="w-full flex items-center gap-2 px-1 py-1.5 border-b border-gray-200 hover:bg-gray-50 transition-colors"
+                    >
+                      {isCollapsed
+                        ? <ChevronRight className="h-4 w-4 text-gray-400" />
+                        : <ChevronDown className="h-4 w-4 text-gray-400" />}
                       <span className={`text-sm font-semibold ${key === '__none__' ? 'text-gray-500' : 'text-brand-700'}`}>
                         {projectName}
                       </span>
                       <span className="text-xs text-gray-400">({groupTasks.length})</span>
-                    </div>
+                    </button>
+                    {!isCollapsed && (
                     <div className="space-y-2">
                       {groupTasks.map((task) => {
                         const assignee = employees.find((e) => e.id === task.assignee_id)
@@ -351,8 +395,10 @@ export default function TaskManage() {
                         )
                       })}
                     </div>
+                    )}
                   </div>
-                ))
+                  )
+                })
               })()}
             </div>
           )}
