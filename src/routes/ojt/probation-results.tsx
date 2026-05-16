@@ -22,7 +22,8 @@ import {
   type ProbationEvaluatorRole,
   type ContinuationRecommendation,
 } from '@/types/employee-lifecycle'
-import { RoundCompletionSummary, type RoundSummary } from '@/components/probation/RoundCompletionSummary'
+import { RoundCompletionSummary, type RoundSummary, type EvaluatorStatus } from '@/components/probation/RoundCompletionSummary'
+import { probationReminderEmail } from '@/lib/email-templates'
 
 // ─── Constants ──────────────────────────────────────────────────
 const STAGES: ProbationStage[] = ['round1', 'round2', 'round3']
@@ -68,6 +69,7 @@ const MAX_SCORE_PER_ITEM = 20
 interface EmployeeBasic {
   id: string
   name: string
+  email?: string | null
   department_id: string | null
   hire_date: string | null
   employment_type: string | null
@@ -152,6 +154,9 @@ export default function ProbationResults() {
   // Module 4: 회차별 종합 요약 (key: `${empId}_${stage}`)
   const [roundSummaries, setRoundSummaries] = useState<Record<string, RoundSummary>>({})
   const [analyzingRound, setAnalyzingRound] = useState<string | null>(null)
+
+  // 개별 독려 이메일 발송 상태 (key: `${empId}_${stage}_${evaluatorId}`)
+  const [sendingReminderKey, setSendingReminderKey] = useState<string | null>(null)
 
   // 견고한 JSON 추출: 코드펜스 제거 + 중괄호 구간만 절단
   function extractJson(raw: string): string {
@@ -277,6 +282,39 @@ ${retry ? '⚠️ 직전 출력이 JSON 형식이 아니었습니다. 이번엔 
     return { leader: hasEligibleLeader ? 1 : 0, executive: Math.max(activeExecCount, 1), ceo: 1 }
   }, [employees, menuPermissions, activeExecCount])
 
+  // 평가자 후보 산출: (피평가자 부서 권한 보유 리더) + (모든 활성 임원) + (대표)
+  function getEligibleEvaluators(empId: string): EvaluatorStatus[] {
+    const target = employees.find((e) => e.id === empId)
+    if (!target) return []
+    const evaluators: EvaluatorStatus[] = []
+
+    const eligibleLeaders = employees.filter((e) => {
+      if (e.role !== 'leader') return false
+      if (e.is_active === false) return false
+      if (e.employment_type === 'probation') return false
+      if (!target.department_id || e.department_id !== target.department_id) return false
+      const menus = menuPermissions.find((m) => m.employee_id === e.id)?.allowed_menus || []
+      return menus.includes('/admin/probation')
+    })
+    for (const l of eligibleLeaders) {
+      evaluators.push({ id: l.id, name: l.name, email: l.email || null, position: l.position || null, role: 'leader', done: false })
+    }
+
+    const activeExecs = employees.filter(
+      (e) => ['executive', 'director', 'division_head'].includes(e.role || '') && e.is_active !== false
+    )
+    for (const x of activeExecs) {
+      evaluators.push({ id: x.id, name: x.name, email: x.email || null, position: x.position || null, role: 'executive', done: false })
+    }
+
+    const ceos = employees.filter((e) => e.role === 'ceo' && e.is_active !== false)
+    for (const c of ceos) {
+      evaluators.push({ id: c.id, name: c.name, email: c.email || null, position: c.position || null, role: 'ceo', done: false })
+    }
+
+    return evaluators
+  }
+
   function getRoundCompletion(stageEvals: EvalWithEmployee[], empId: string) {
     const counts = getRequiredCountsFor(empId)
     const leader = stageEvals.filter((e) => e.evaluator_role === 'leader').length
@@ -286,12 +324,61 @@ ${retry ? '⚠️ 직전 출력이 JSON 형식이 아니었습니다. 이번엔 
       leader >= counts.leader &&
       executive >= counts.executive &&
       ceo >= counts.ceo
+    const evaluators = getEligibleEvaluators(empId).map((ev) => ({
+      ...ev,
+      done: stageEvals.some((se) => se.evaluator_id === ev.id && se.evaluator_role === ev.role),
+    }))
     return {
       leader: { done: leader, required: counts.leader },
       executive: { done: executive, required: counts.executive },
       ceo: { done: ceo, required: counts.ceo },
+      evaluators,
       isComplete,
     }
+  }
+
+  // 회차별 평가 예정일 기준 diff (음수면 지연)
+  const STAGE_OFFSETS: Record<ProbationStage, number> = { round1: 14, round2: 42, round3: 70 }
+  function getDiffDaysFor(empId: string, stage: ProbationStage): number {
+    const emp = employees.find((e) => e.id === empId)
+    if (!emp?.hire_date) return 0
+    const hire = new Date(emp.hire_date)
+    const stageDate = new Date(hire.getTime() + STAGE_OFFSETS[stage] * 86400000)
+    const today = new Date()
+    return Math.ceil((stageDate.getTime() - today.getTime()) / 86400000)
+  }
+
+  // 개별 독려 이메일 발송 (관리자 전용)
+  async function sendIndividualReminder(empId: string, empName: string, stage: ProbationStage, evaluator: EvaluatorStatus) {
+    if (!evaluator.email) {
+      toast('평가자 이메일이 없어 발송할 수 없습니다.', 'error')
+      return
+    }
+    const key = `${empId}::${stage}::${evaluator.id}`
+    setSendingReminderKey(key)
+    const stageLabel = stage === 'round1' ? '1회차' : stage === 'round2' ? '2회차' : '3회차'
+    const roleLabel = evaluator.role === 'leader' ? '리더' : evaluator.role === 'executive' ? '임원' : '대표'
+    const diffDays = getDiffDaysFor(empId, stage)
+    const { subject, html } = probationReminderEmail({
+      evaluatorName: evaluator.name,
+      evaluatorRoleLabel: roleLabel,
+      evaluatorPosition: evaluator.position,
+      employeeName: empName,
+      stage: stageLabel,
+      diffDays,
+    })
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: evaluator.email, subject, html }),
+      })
+      if (res.ok) toast(`${evaluator.name} ${roleLabel}님에게 독려 메일 발송 완료`, 'success')
+      else toast('발송 실패: API 오류', 'error')
+    } catch (err) {
+      toast('발송 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
+    }
+    setSendingReminderKey(null)
   }
 
   async function runRoundSummary(empId: string, empName: string, stage: ProbationStage, stageEvals: EvalWithEmployee[]) {
@@ -554,7 +641,7 @@ ${prevSummary}
     // 퇴사자(is_active=false) 도 포함 — 평가 이력 보존을 위함
     const [evalRes, empRes, deptRes, hrRes, mpRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position, role, is_active').order('name'),
+      supabase.from('employees').select('id, name, email, department_id, hire_date, employment_type, position, role, is_active').order('name'),
       supabase.from('departments').select('id, name'),
       supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
       supabase.from('menu_permissions').select('employee_id, allowed_menus'),
@@ -918,6 +1005,9 @@ ${evalsSummary}
                             cached={cachedSummary}
                             loading={analyzingRound === summaryKey}
                             onAnalyze={() => runRoundSummary(empId, name, stage, stageEvals)}
+                            canSendReminder={!!profile?.role && ['ceo','admin','director','division_head'].includes(profile.role)}
+                            sendingTo={sendingReminderKey?.startsWith(`${empId}::${stage}::`) ? sendingReminderKey.split('::')[2] : null}
+                            onSendReminder={(ev) => sendIndividualReminder(empId, name, stage, ev)}
                           />
                         )}
                         <div className="border rounded-lg overflow-hidden">
