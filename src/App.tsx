@@ -48,6 +48,7 @@ import MyOJTDetail from '@/routes/ojt/my-ojt-detail'
 import EvaluationHub from '@/routes/evaluation-hub'
 import ProbationManage from '@/routes/ojt/probation'
 import ProbationResults from '@/routes/ojt/probation-results'
+import ProbationReminder from '@/routes/ojt/probation-reminder'
 
 // 내 수습 평가 결과
 import MyEvaluations from '@/routes/my-evaluations'
@@ -232,6 +233,7 @@ function App() {
               {/* C4: 일반 직원용 — 동일 컴포넌트, 페이지 내부에서 역할별 분기 */}
               <Route path="my/mentorship" element={<MentorManage />} />
               <Route path="admin/probation" element={<AdminRoute><ProbationManage /></AdminRoute>} />
+              <Route path="admin/probation/reminder" element={<AdminRoute><ProbationReminder /></AdminRoute>} />
               <Route path="admin/probation-results" element={<AdminRoute><ProbationResults /></AdminRoute>} />
 
               {/* 내 수습 평가 결과 */}

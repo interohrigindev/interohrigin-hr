@@ -13,8 +13,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { getProbationGrade, PROBATION_GRADE_CONFIG } from '@/lib/constants'
+import { useNavigate } from 'react-router-dom'
 import { getDefaultEvaluatorRole } from '@/lib/probation-utils'
-import { EvaluationReminderDialog } from '@/components/probation/EvaluationReminderDialog'
 import {
   PROBATION_CRITERIA,
   type ProbationEvaluation,
@@ -108,7 +108,7 @@ export default function ProbationManage() {
   // 클릭한 셀에 대해 평가/마감 선택 다이얼로그
   const [cellAction, setCellAction] = useState<{ empId: string; empName: string; stage: ProbationStage; stageLabel: string; isOverdue: boolean } | null>(null)
   // 미평가자 알림 발송 다이얼로그
-  const [reminderOpen, setReminderOpen] = useState(false)
+  const navigate = useNavigate()
 
   // 회차별 필수 평가자 수 계산 (피드백 반영: 모두 평가 완료 전엔 점수 숨김)
   const requiredCounts = useMemo(() => {
@@ -393,28 +393,13 @@ ${prevSummary}
         <h1 className="text-2xl font-bold text-gray-900">수습 단계별 평가</h1>
         <div className="flex items-center gap-2 flex-wrap">
           {profile?.role && ['admin','ceo','director','division_head'].includes(profile.role) && (
-            <Button variant="outline" className="shrink-0" onClick={() => setReminderOpen(true)}>
+            <Button variant="outline" className="shrink-0" onClick={() => navigate('/admin/probation/reminder')}>
               <Mail className="h-4 w-4 mr-1" /> 미평가자 알림 발송
             </Button>
           )}
           <Button className="shrink-0" onClick={() => openNewEval()}><Plus className="h-4 w-4 mr-1" /> 새 평가</Button>
         </div>
       </div>
-
-      {/* 미평가자 알림 발송 다이얼로그 */}
-      <EvaluationReminderDialog
-        open={reminderOpen}
-        onClose={() => setReminderOpen(false)}
-        allEmployees={employees}
-        evaluations={evaluations}
-        closures={closures}
-        requiredCounts={requiredCounts}
-        menuPermissions={menuPermissions}
-        onAfterSend={(sent, failed) => {
-          if (failed === 0) toast(`${sent}건 알림 발송 완료`, 'success')
-          else toast(`${sent}건 발송 / ${failed}건 실패`, 'error')
-        }}
-      />
 
       {/* Info banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-base text-blue-800">
