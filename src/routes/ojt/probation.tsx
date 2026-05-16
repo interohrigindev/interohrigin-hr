@@ -794,9 +794,18 @@ ${prevSummary}
                             // 미도래(diff > 0): 평가 기간이 시작되지 않았으므로 클릭 차단 (요구사항 #2)
                             // 피드백: 다른 사람이 이미 평가했어도(=isCompleted), 내가 평가해야 한다면(needsMyEval) 클릭 가능
                             // 관리자 권한자: 진행 중(부분 평가) 셀 클릭 시 독려 모달
+                            // 예정일 이전이라도 일부 평가자가 조기에 평가를 시작한 경우에는 독려 허용
                             const cellFullyDone = stageEvals.length > 0 && isStageFullyEvaluated(stageEvals, emp)
-                            const reminderEligible = canSendProbationReminder(profile) && !!hire && !isFuture && !isClosed && !cellFullyDone
-                            const canClick = !!hire && !isFuture && !isClosed && (!isCompleted || needsMyEval || reminderEligible)
+                            const hasAnyEvals = stageEvals.length > 0
+                            const reminderEligible = canSendProbationReminder(profile)
+                              && !!hire
+                              && !isClosed
+                              && !cellFullyDone
+                              && (hasAnyEvals || !isFuture)
+                            const canClick = !!hire && !isClosed && (
+                              (!isFuture && (!isCompleted || needsMyEval))
+                              || reminderEligible
+                            )
                             return (
                               <td
                                 key={stg}
