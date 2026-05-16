@@ -217,7 +217,7 @@ export default function TaskManage() {
       {/* Filters */}
       <Card>
         <CardContent className="py-3">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -232,11 +232,6 @@ export default function TaskManage() {
               value={filterProject}
               onChange={(e) => setFilterProject(e.target.value)}
               options={[{ value: '', label: '전체 프로젝트' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
-            />
-            <Select
-              value={filterAssignee}
-              onChange={(e) => setFilterAssignee(e.target.value)}
-              options={[{ value: '', label: '전체 담당자' }, ...employees.map((e) => ({ value: e.id, label: e.name }))]}
             />
           </div>
         </CardContent>
