@@ -146,10 +146,11 @@ export default function ProbationReminder() {
         const stage = STAGES[i]
         const stageDate = new Date(hire.getTime() + STAGE_OFFSETS[i] * 86400 * 1000)
         const diff = Math.ceil((stageDate.getTime() - today.getTime()) / 86400000)
-        if (diff > 0) continue
         if (closures.some((c) => c.employee_id === emp.id && c.stage === stage)) continue
 
         const stageEvals = evaluations.filter((ev) => ev.employee_id === emp.id && ev.stage === stage)
+        // 예정일이 미래(diff > 0)인 회차는, 이미 평가가 시작된 경우에만 포함 (조기 평가 케이스)
+        if (diff > 0 && stageEvals.length === 0) continue
         const leaderDone = stageEvals.filter((e) => e.evaluator_role === 'leader').length
         const execDone = stageEvals.filter((e) => e.evaluator_role === 'executive').length
         const ceoDone = stageEvals.filter((e) => e.evaluator_role === 'ceo').length
