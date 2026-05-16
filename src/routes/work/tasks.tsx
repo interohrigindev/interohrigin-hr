@@ -90,13 +90,34 @@ export default function TaskManage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [taskRes, projRes, empRes] = await Promise.all([
+    const [taskRes, projectsRes, boardsRes, empRes] = await Promise.all([
       supabase.from('tasks').select('*').order('sort_order', { ascending: true }),
       supabase.from('projects').select('*'),
+      // 운영에서 실제 프로젝트는 project_boards 테이블에 저장됨
+      supabase.from('project_boards').select('id, project_name').order('project_name', { ascending: true }),
       supabase.from('employees').select('*').eq('is_active', true),
     ])
     if (taskRes.data) setTasks(taskRes.data as Task[])
-    if (projRes.data) setProjects(projRes.data as Project[])
+    // projects + project_boards 통합 (project_boards 의 project_name → name 매핑)
+    const merged: Project[] = [
+      ...((projectsRes.data || []) as Project[]),
+      ...((boardsRes.data || []).map((b: { id: string; project_name: string }) => ({
+        id: b.id,
+        name: b.project_name,
+        description: null,
+        department_id: null,
+        owner_id: null,
+        status: 'active' as const,
+        start_date: null,
+        end_date: null,
+        created_at: '',
+        updated_at: '',
+      }))),
+    ]
+    // id 중복 제거 (project_boards 우선)
+    const dedup = new Map<string, Project>()
+    for (const p of merged) dedup.set(p.id, p)
+    setProjects(Array.from(dedup.values()))
     if (empRes.data) setEmployees(empRes.data as Employee[])
     setLoading(false)
   }, [])
