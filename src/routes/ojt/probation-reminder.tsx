@@ -359,9 +359,13 @@ export default function ProbationReminder() {
                         ? 'bg-red-100 text-red-700'
                         : group.diffDays === 0
                           ? 'bg-amber-100 text-amber-700'
-                          : 'bg-gray-100 text-gray-600'
+                          : 'bg-blue-100 text-blue-700'
                     }`}>
-                      {group.diffDays < 0 ? `D+${Math.abs(group.diffDays)} 초과` : group.diffDays === 0 ? 'D-day' : `D-${group.diffDays}`}
+                      {group.diffDays < 0
+                        ? `D+${Math.abs(group.diffDays)} 초과`
+                        : group.diffDays === 0
+                          ? 'D-day'
+                          : `조기 진행중 (예정일 D-${group.diffDays})`}
                     </span>
                   </div>
                   <ul className="space-y-1.5">

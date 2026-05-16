@@ -1111,7 +1111,7 @@ ${prevSummary}
           ? { txt: `D+${Math.abs(cell.diffDays)} 초과`, cls: 'bg-red-100 text-red-700' }
           : cell.diffDays === 0
             ? { txt: 'D-day', cls: 'bg-amber-100 text-amber-700' }
-            : { txt: `D-${cell.diffDays}`, cls: 'bg-gray-100 text-gray-600' }
+            : { txt: `조기 진행중 (예정일 D-${cell.diffDays})`, cls: 'bg-blue-100 text-blue-700' }
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setReminderCell(null)}>
             <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
