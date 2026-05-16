@@ -574,3 +574,122 @@ export function urgentTaskNotificationEmail(
     `.trim(),
   }
 }
+
+// 수습평가 미완료 평가자 알림 이메일 — 톤앤매너 정렬
+export function probationReminderEmail(params: {
+  evaluatorName: string
+  evaluatorRoleLabel: '리더' | '임원' | '대표'
+  /** 직책 (예: "이사", "팀장", "대표"). 우선 사용됨. 없으면 evaluatorRoleLabel 로 fallback */
+  evaluatorPosition?: string | null
+  employeeName: string
+  stage: string // 예: "1회차"
+  diffDays: number // 음수: 초과, 0: D-day, 양수: 남음
+  customBodyText?: string // 관리자가 편집한 추가 메시지 (선택)
+}): { subject: string; html: string } {
+  const { evaluatorName, evaluatorRoleLabel, evaluatorPosition, employeeName, stage, diffDays, customBodyText } = params
+  const honorific = (evaluatorPosition && evaluatorPosition.trim()) || evaluatorRoleLabel
+
+  const severity = diffDays < 0 ? 'urgent' : diffDays === 0 ? 'today' : 'upcoming'
+  const sevMeta = {
+    urgent:   { label: '평가 기한 초과', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+    today:    { label: '오늘 마감',       color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+    upcoming: { label: '평가 진행 필요',   color: '#6B3FA0', bg: '#f5f0fb', border: '#d8b4fe' },
+  }[severity]
+
+  const dueText = diffDays < 0
+    ? `평가 기한이 <strong>${Math.abs(diffDays)}일</strong> 초과되었습니다.`
+    : diffDays === 0
+      ? '오늘이 평가 기한입니다.'
+      : `평가 기한까지 <strong>${diffDays}일</strong> 남았습니다.`
+
+  // 사용자 편집 본문 (선택) — 줄바꿈만 <br>, HTML 이스케이프 처리
+  const customBlock = customBodyText && customBodyText.trim()
+    ? `
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;margin:16px 0;">
+        <p style="font-size:12px;color:#6b7280;margin:0 0 8px;font-weight:bold;">관리자 메시지</p>
+        <p style="font-size:14px;color:#374151;line-height:1.7;margin:0;white-space:pre-wrap;">${
+          customBodyText
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+        }</p>
+      </div>`
+    : ''
+
+  return {
+    subject: `[인터오리진아이앤씨] ${employeeName}님 ${stage} 수습평가 진행 요청`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources · 수습평가 안내</p>
+    </div>
+
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${evaluatorName}</strong> ${honorific}님, 안녕하세요.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
+        수습직원 평가 진행 현황을 안내드립니다. 아직 평가가 완료되지 않아 안내 메일을 드립니다.
+      </p>
+
+      <div style="background:${sevMeta.bg};border:1px solid ${sevMeta.border};border-radius:12px;padding:24px;margin:20px 0;">
+        <p style="font-size:13px;color:${sevMeta.color};margin:0 0 12px;font-weight:bold;">
+          📋 ${sevMeta.label}
+        </p>
+        <table style="width:100%;font-size:14px;color:#374151;">
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;">수습 직원</td>
+            <td style="padding:6px 0;text-align:right;font-weight:bold;color:#1f2937;">${employeeName}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;">평가 회차</td>
+            <td style="padding:6px 0;text-align:right;font-weight:bold;color:#1f2937;">${stage}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;">평가 진행</td>
+            <td style="padding:6px 0;text-align:right;font-weight:bold;color:${sevMeta.color};font-size:15px;">${dueText}</td>
+          </tr>
+        </table>
+      </div>
+
+      ${customBlock}
+
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:20px 0 12px;font-weight:bold;">
+        📌 안내 사항
+      </p>
+      <ul style="font-size:14px;color:#374151;line-height:1.8;margin:0 0 16px;padding-left:20px;">
+        <li>아래 버튼으로 HR 시스템에 로그인하시어 평가를 진행해 주세요</li>
+        <li>각 항목 20점 만점 · 5개 항목 · 총 100점 기준입니다</li>
+        <li>평가 완료 시 자동으로 이 알림에서 제외됩니다</li>
+      </ul>
+
+      <div style="text-align:center;margin:28px 0;">
+        <a href="https://interohrigin-hr2.pages.dev/admin/probation"
+           style="display:inline-block;background:#6B3FA0;color:#ffffff;padding:14px 36px;
+                  border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">
+          수습 평가 진행하기
+        </a>
+      </div>
+
+      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:24px 0 0;">
+        평가 관련 문의 또는 일정 조율이 필요하시면 HR 담당자(admin@interohriginhr.com)에게 연락 부탁드립니다.
+      </p>
+    </div>
+
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진아이앤씨 HR 시스템에서 자동 발송되었습니다.<br>
+        문의: admin@interohriginhr.com
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim(),
+  }
+}

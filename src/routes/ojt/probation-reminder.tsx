@@ -8,6 +8,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { probationReminderEmail } from '@/lib/email-templates'
 import type { ProbationEvaluation, ProbationStage } from '@/types/employee-lifecycle'
 
 interface EmployeeRow {
@@ -52,20 +53,11 @@ interface MissingTarget {
   evaluatorName: string
   evaluatorEmail: string
   evaluatorRole: 'leader' | 'executive' | 'ceo'
+  evaluatorPosition: string | null
   diffDays: number
 }
 
-const DEFAULT_SUBJECT = '[INTEROHRIGIN HR] 수습평가 진행 부탁드립니다'
-const DEFAULT_BODY = `안녕하세요 {{evaluatorName}}님,
-
-수습직원 {{employeeName}}님의 {{stage}} 평가가 아직 미완료 상태입니다.
-{{dueText}}
-
-평가 페이지에 로그인하시어 평가를 진행해 주시면 감사하겠습니다.
-HR 시스템: https://interohrigin-hr2.pages.dev/ojt/probation
-
-감사합니다.
-— 인터오리진 HR 팀`
+const DEFAULT_EXTRA_MESSAGE = ''
 
 export default function ProbationReminder() {
   const navigate = useNavigate()
@@ -79,8 +71,7 @@ export default function ProbationReminder() {
   const [menuPermissions, setMenuPermissions] = useState<MenuPermissionRow[]>([])
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [emailSubject, setEmailSubject] = useState(DEFAULT_SUBJECT)
-  const [emailBody, setEmailBody] = useState(DEFAULT_BODY)
+  const [extraMessage, setExtraMessage] = useState(DEFAULT_EXTRA_MESSAGE)
   const [sending, setSending] = useState(false)
   const [progress, setProgress] = useState<{ sent: number; failed: number; total: number } | null>(null)
 
@@ -191,6 +182,7 @@ export default function ProbationReminder() {
             evaluatorName: evaluator.name,
             evaluatorEmail: evaluator.email,
             evaluatorRole: role,
+            evaluatorPosition: evaluator.position || null,
             diffDays: diff,
           })
         }
@@ -232,19 +224,30 @@ export default function ProbationReminder() {
     else setSelected(new Set(missingTargets.map((t) => t.key)))
   }
 
-  function fillTemplate(target: MissingTarget): { subject: string; body: string } {
-    const dueText = target.diffDays < 0
-      ? `평가 기한이 ${Math.abs(target.diffDays)}일 초과되었습니다.`
-      : target.diffDays === 0
-        ? '오늘이 평가 기한입니다.'
-        : `평가 기한까지 ${target.diffDays}일 남았습니다.`
-    const replace = (s: string) =>
-      s
-        .replaceAll('{{evaluatorName}}', target.evaluatorName)
-        .replaceAll('{{employeeName}}', target.empName)
-        .replaceAll('{{stage}}', target.stageLabel)
-        .replaceAll('{{dueText}}', dueText)
-    return { subject: replace(emailSubject), body: replace(emailBody) }
+  async function handleSendSample() {
+    const sampleEmail = profile?.email || 'interohrigin.dev@gmail.com'
+    setSending(true)
+    const { subject, html } = probationReminderEmail({
+      evaluatorName: '오영근',
+      evaluatorRoleLabel: '대표',
+      evaluatorPosition: '대표',
+      employeeName: '김보미',
+      stage: '1회차',
+      diffDays: -3,
+      customBodyText: extraMessage || '이번 주 금요일까지 평가 완료 부탁드립니다.',
+    })
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: sampleEmail, subject: `[샘플] ${subject}`, html }),
+      })
+      if (res.ok) toast(`샘플 발송 완료: ${sampleEmail}`, 'success')
+      else toast('샘플 발송 실패: API 오류', 'error')
+    } catch (err) {
+      toast('샘플 발송 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
+    }
+    setSending(false)
   }
 
   async function handleSend() {
@@ -256,9 +259,16 @@ export default function ProbationReminder() {
     let sent = 0
     let failed = 0
     for (const target of toSend) {
-      const { subject, body } = fillTemplate(target)
-      const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; line-height: 1.6;">${body
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>`
+      const roleLabel = target.evaluatorRole === 'leader' ? '리더' : target.evaluatorRole === 'executive' ? '임원' : '대표'
+      const { subject, html } = probationReminderEmail({
+        evaluatorName: target.evaluatorName,
+        evaluatorRoleLabel: roleLabel,
+        evaluatorPosition: target.evaluatorPosition,
+        employeeName: target.empName,
+        stage: target.stageLabel,
+        diffDays: target.diffDays,
+        customBodyText: extraMessage,
+      })
       try {
         const res = await fetch('/api/send-email', {
           method: 'POST',
@@ -301,6 +311,9 @@ export default function ProbationReminder() {
             <Mail className="h-6 w-6 text-brand-600" /> 미평가자 알림 발송
           </h1>
         </div>
+        <Button variant="outline" size="sm" onClick={handleSendSample} disabled={sending}>
+          📧 본인에게 샘플 발송
+        </Button>
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900">
@@ -378,28 +391,21 @@ export default function ProbationReminder() {
             <CardTitle className="text-base">이메일 내용</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                제목 <span className="text-xs text-gray-500">(편집 가능)</span>
-              </label>
-              <input
-                type="text"
-                value={emailSubject}
-                onChange={(e) => setEmailSubject(e.target.value)}
-                disabled={sending}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              />
+            <div className="bg-brand-50 border border-brand-200 rounded-lg p-3 text-xs text-brand-800">
+              제목·본문·평가 정보·CTA 버튼은 회사 톤앤매너 템플릿으로 자동 구성됩니다.
+              아래 "추가 메시지" 칸에 평가자에게 특별히 전달할 내용이 있으면 입력해 주세요. (생략 가능)
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">
-                본문 <span className="text-xs text-gray-500">(치환자: {`{{evaluatorName}}, {{employeeName}}, {{stage}}, {{dueText}}`})</span>
+                추가 메시지 <span className="text-xs text-gray-500">(선택)</span>
               </label>
               <Textarea
-                value={emailBody}
-                onChange={(e) => setEmailBody(e.target.value)}
+                value={extraMessage}
+                onChange={(e) => setExtraMessage(e.target.value)}
                 disabled={sending}
-                rows={10}
-                className="w-full text-sm font-mono"
+                rows={5}
+                placeholder="예: 이번 주 금요일까지 평가 완료 부탁드립니다."
+                className="w-full text-sm"
               />
             </div>
           </CardContent>
