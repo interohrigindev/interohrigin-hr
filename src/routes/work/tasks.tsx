@@ -256,7 +256,7 @@ export default function TaskManage() {
         </CardContent>
       </Card>
 
-      {/* Task List */}
+      {/* Task List — 프로젝트별 그룹 */}
       <Card>
         <CardHeader>
           <CardTitle>작업 목록 ({filtered.length})</CardTitle>
@@ -265,70 +265,98 @@ export default function TaskManage() {
           {filtered.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-8">조건에 맞는 작업이 없습니다.</p>
           ) : (
-            <div className="space-y-2">
-              {filtered.map((task) => {
-                const assignee = employees.find((e) => e.id === task.assignee_id)
-                const project = projects.find((p) => p.id === task.project_id)
-                const isOverdue = task.status !== 'done' && task.status !== 'cancelled' && task.due_date && task.due_date < today
+            <div className="space-y-5">
+              {(() => {
+                // 프로젝트별 그룹화 (project_id null → 미지정)
+                const groups = new Map<string, { projectName: string; tasks: Task[] }>()
+                for (const t of filtered) {
+                  const key = t.project_id || '__none__'
+                  const projectName = t.project_id
+                    ? projects.find((p) => p.id === t.project_id)?.name || '알 수 없는 프로젝트'
+                    : '프로젝트 미지정'
+                  if (!groups.has(key)) groups.set(key, { projectName, tasks: [] })
+                  groups.get(key)!.tasks.push(t)
+                }
+                // 정렬: 미지정은 가장 마지막, 나머지는 이름순
+                const sorted = Array.from(groups.entries()).sort((a, b) => {
+                  if (a[0] === '__none__') return 1
+                  if (b[0] === '__none__') return -1
+                  return a[1].projectName.localeCompare(b[1].projectName)
+                })
 
-                return (
-                  <div
-                    key={task.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border ${
-                      isOverdue ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Status toggle button */}
-                      <button
-                        onClick={() => toggleStatus(task)}
-                        className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-colors ${
-                          task.status === 'done'
-                            ? 'bg-emerald-500 border-emerald-500 text-white'
-                            : task.status === 'in_progress'
-                              ? 'bg-blue-100 border-blue-400 text-blue-600'
-                              : 'bg-white border-gray-300 text-gray-400'
-                        }`}
-                        title={`클릭하여 상태 변경: ${STATUS_LABELS[task.status]}`}
-                      >
-                        {task.status === 'done' ? '✓' : task.status === 'in_progress' ? '▶' : ''}
-                      </button>
-
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={PRIORITY_VARIANTS[task.priority]} className="text-[10px] shrink-0">
-                            {PRIORITY_LABELS[task.priority]}
-                          </Badge>
-                          <span className={`text-sm font-medium truncate ${task.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                            {task.title}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
-                          {project && <span>{project.name}</span>}
-                          {assignee && <span>| {assignee.name}</span>}
-                          {task.due_date && (
-                            <span className={isOverdue ? 'text-red-600 font-medium' : ''}>
-                              | {task.due_date}
-                            </span>
-                          )}
-                          {(task.images || []).length > 0 && (
-                            <span className="text-brand-600">| <ImagePlus className="h-3 w-3 inline" /> {task.images.length}</span>
-                          )}
-                        </div>
-                      </div>
+                return sorted.map(([key, { projectName, tasks: groupTasks }]) => (
+                  <div key={key} className="space-y-2">
+                    <div className="flex items-center gap-2 px-1 py-1.5 border-b border-gray-200">
+                      <span className={`text-sm font-semibold ${key === '__none__' ? 'text-gray-500' : 'text-brand-700'}`}>
+                        {projectName}
+                      </span>
+                      <span className="text-xs text-gray-400">({groupTasks.length})</span>
                     </div>
+                    <div className="space-y-2">
+                      {groupTasks.map((task) => {
+                        const assignee = employees.find((e) => e.id === task.assignee_id)
+                        const isOverdue = task.status !== 'done' && task.status !== 'cancelled' && task.due_date && task.due_date < today
 
-                    <div className="flex items-center gap-1 shrink-0 ml-2">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(task)}>
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(task.id)}>
-                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                      </Button>
+                        return (
+                          <div
+                            key={task.id}
+                            className={`flex items-center justify-between p-3 rounded-lg border ${
+                              isOverdue ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <button
+                                onClick={() => toggleStatus(task)}
+                                className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-colors ${
+                                  task.status === 'done'
+                                    ? 'bg-emerald-500 border-emerald-500 text-white'
+                                    : task.status === 'in_progress'
+                                      ? 'bg-blue-100 border-blue-400 text-blue-600'
+                                      : 'bg-white border-gray-300 text-gray-400'
+                                }`}
+                                title={`클릭하여 상태 변경: ${STATUS_LABELS[task.status]}`}
+                              >
+                                {task.status === 'done' ? '✓' : task.status === 'in_progress' ? '▶' : ''}
+                              </button>
+
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={PRIORITY_VARIANTS[task.priority]} className="text-[10px] shrink-0">
+                                    {PRIORITY_LABELS[task.priority]}
+                                  </Badge>
+                                  <span className={`text-sm font-medium truncate ${task.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                    {task.title}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
+                                  {assignee && <span>{assignee.name}</span>}
+                                  {task.due_date && (
+                                    <span className={isOverdue ? 'text-red-600 font-medium' : ''}>
+                                      {assignee ? '| ' : ''}{task.due_date}
+                                    </span>
+                                  )}
+                                  {(task.images || []).length > 0 && (
+                                    <span className="text-brand-600">| <ImagePlus className="h-3 w-3 inline" /> {task.images.length}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0 ml-2">
+                              <Button size="sm" variant="ghost" onClick={() => openEdit(task)}>
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => handleDelete(task.id)}>
+                                <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
-                )
-              })}
+                ))
+              })()}
             </div>
           )}
         </CardContent>
