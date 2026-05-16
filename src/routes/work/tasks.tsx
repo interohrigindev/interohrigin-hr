@@ -93,19 +93,56 @@ export default function TaskManage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [taskRes, boardsRes, empRes] = await Promise.all([
+    const [taskRes, boardsRes, stagesRes, empRes] = await Promise.all([
       supabase.from('tasks').select('*').order('sort_order', { ascending: true }),
-      // 운영 프로젝트는 project_boards. 완료된 프로젝트는 제외
+      // 운영 프로젝트는 project_boards. 완료/종료 상태 방어적 제외
       supabase
         .from('project_boards')
-        .select('id, project_name, status')
-        .neq('status', 'completed')
+        .select('id, project_name, status, manager_id, leader_id, executive_id, assignee_ids')
+        .not('status', 'in', '(completed,done,archived,종료,완료)')
         .order('project_name', { ascending: true }),
+      supabase.from('pipeline_stages').select('project_id, stage_assignee_ids'),
       supabase.from('employees').select('*').eq('is_active', true),
     ])
     if (taskRes.data) setTasks(taskRes.data as Task[])
-    // project_boards 의 project_name → Project.name 매핑
-    const boards: Project[] = (boardsRes.data || []).map((b: { id: string; project_name: string; status: string }) => ({
+
+    type BoardRow = {
+      id: string
+      project_name: string
+      status: string
+      manager_id: string | null
+      leader_id: string | null
+      executive_id: string | null
+      assignee_ids: string[] | null
+    }
+    type StageRow = { project_id: string; stage_assignee_ids: string[] | null }
+
+    const boardsRaw = (boardsRes.data || []) as BoardRow[]
+    const stagesRaw = (stagesRes.data || []) as StageRow[]
+
+    // 본인 관련 프로젝트 ID 계산 (관리자급은 전체 노출)
+    const userId = profile?.id
+    const role = profile?.role
+    const isPrivileged = !!role && ['ceo', 'admin', 'director', 'division_head', 'executive'].includes(role)
+
+    let visibleBoards = boardsRaw
+    if (!isPrivileged && userId) {
+      // pipeline_stages 에서 본인이 단계 담당인 project_id 모음
+      const stageProjectIds = new Set(
+        stagesRaw
+          .filter((s) => (s.stage_assignee_ids || []).includes(userId))
+          .map((s) => s.project_id)
+      )
+      visibleBoards = boardsRaw.filter((b) =>
+        b.manager_id === userId ||
+        b.leader_id === userId ||
+        b.executive_id === userId ||
+        (b.assignee_ids || []).includes(userId) ||
+        stageProjectIds.has(b.id)
+      )
+    }
+
+    const boards: Project[] = visibleBoards.map((b) => ({
       id: b.id,
       name: b.project_name,
       description: null,
@@ -120,7 +157,7 @@ export default function TaskManage() {
     setProjects(boards)
     if (empRes.data) setEmployees(empRes.data as Employee[])
     setLoading(false)
-  }, [])
+  }, [profile?.id, profile?.role])
 
   useEffect(() => { fetchData() }, [fetchData])
 
