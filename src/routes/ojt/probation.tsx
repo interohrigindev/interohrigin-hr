@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, Sparkles, Loader2, AlertTriangle, Trash2, Lock, RotateCcw, Pencil } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Plus, Sparkles, Loader2, AlertTriangle, Trash2, Lock, RotateCcw, Pencil, Mail } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
 import { Button } from '@/components/ui/Button'
@@ -13,6 +13,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { getProbationGrade, PROBATION_GRADE_CONFIG } from '@/lib/constants'
+import { getDefaultEvaluatorRole } from '@/lib/probation-utils'
+import { EvaluationReminderDialog } from '@/components/probation/EvaluationReminderDialog'
 import {
   PROBATION_CRITERIA,
   type ProbationEvaluation,
@@ -57,10 +59,13 @@ const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
 interface EmployeeBasic {
   id: string
   name: string
+  email?: string | null
   department_id: string | null
   hire_date: string | null
   employment_type: string | null
   position: string | null
+  role?: string | null
+  is_active?: boolean | null
   job_title?: string | null
   annual_salary?: number | null
 }
@@ -98,23 +103,45 @@ export default function ProbationManage() {
   const [employeeTeams, setEmployeeTeams] = useState<{ employee_id: string; department_id: string }[]>([])
   // 회차 마감 처리 (관리자 skip)
   const [closures, setClosures] = useState<{ employee_id: string; stage: string; reason: string | null; closed_at: string }[]>([])
+  // 메뉴 권한 (수습평가 권한자 식별용)
+  const [menuPermissions, setMenuPermissions] = useState<{ employee_id: string; allowed_menus: string[] }[]>([])
   // 클릭한 셀에 대해 평가/마감 선택 다이얼로그
   const [cellAction, setCellAction] = useState<{ empId: string; empName: string; stage: ProbationStage; stageLabel: string; isOverdue: boolean } | null>(null)
+  // 미평가자 알림 발송 다이얼로그
+  const [reminderOpen, setReminderOpen] = useState(false)
+
+  // 회차별 필수 평가자 수 계산 (피드백 반영: 모두 평가 완료 전엔 점수 숨김)
+  const requiredCounts = useMemo(() => {
+    const activeExecs = employees.filter(
+      (e) => ['executive', 'director', 'division_head'].includes(e.role || '') && e.is_active !== false
+    ).length
+    return { leader: 1, executive: Math.max(activeExecs, 1), ceo: 1 }
+  }, [employees])
+
+  // 회차의 모든 평가자(리더+모든 임원+대표)가 평가 완료했는지 판정
+  function isStageFullyEvaluated(stageEvals: typeof evaluations) {
+    const leader = stageEvals.filter((e) => e.evaluator_role === 'leader').length
+    const executive = stageEvals.filter((e) => e.evaluator_role === 'executive').length
+    const ceo = stageEvals.filter((e) => e.evaluator_role === 'ceo').length
+    return leader >= requiredCounts.leader && executive >= requiredCounts.executive && ceo >= requiredCounts.ceo
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [evalRes, empRes, deptRes, hrRes, teamsRes, closuresRes] = await Promise.all([
+    const [evalRes, empRes, deptRes, hrRes, teamsRes, closuresRes, mpRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, email, department_id, hire_date, employment_type, position, role, is_active').eq('is_active', true).order('name'),
       supabase.from('departments').select('id, name'),
       supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
       supabase.from('employee_teams').select('employee_id, department_id'),
       supabase.from('probation_round_closures').select('employee_id, stage, reason, closed_at'),
+      supabase.from('menu_permissions').select('employee_id, allowed_menus'),
     ])
 
     if (deptRes.data) setDepartments(deptRes.data)
     if (teamsRes.data) setEmployeeTeams(teamsRes.data)
     if (closuresRes.data) setClosures(closuresRes.data as any)
+    if (mpRes.data) setMenuPermissions(mpRes.data as { employee_id: string; allowed_menus: string[] }[])
 
     if (empRes.data) {
       // HR 상세 정보 병합
@@ -142,7 +169,7 @@ export default function ProbationManage() {
   function openNewEval(empId?: string, stage?: ProbationStage) {
     setSelectedEmployeeId(empId || '')
     setSelectedStage(stage || 'round1')
-    setSelectedRole('leader')
+    setSelectedRole(getDefaultEvaluatorRole(profile?.role))
     setScores(Object.fromEntries(PROBATION_CRITERIA.map((c) => [c.key, 15])))
     setComments('')
     setPraise('')
@@ -364,8 +391,30 @@ ${prevSummary}
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">수습 단계별 평가</h1>
-        <Button className="shrink-0" onClick={() => openNewEval()}><Plus className="h-4 w-4 mr-1" /> 새 평가</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {profile?.role && ['admin','ceo','director','division_head'].includes(profile.role) && (
+            <Button variant="outline" className="shrink-0" onClick={() => setReminderOpen(true)}>
+              <Mail className="h-4 w-4 mr-1" /> 미평가자 알림 발송
+            </Button>
+          )}
+          <Button className="shrink-0" onClick={() => openNewEval()}><Plus className="h-4 w-4 mr-1" /> 새 평가</Button>
+        </div>
       </div>
+
+      {/* 미평가자 알림 발송 다이얼로그 */}
+      <EvaluationReminderDialog
+        open={reminderOpen}
+        onClose={() => setReminderOpen(false)}
+        allEmployees={employees}
+        evaluations={evaluations}
+        closures={closures}
+        requiredCounts={requiredCounts}
+        menuPermissions={menuPermissions}
+        onAfterSend={(sent, failed) => {
+          if (failed === 0) toast(`${sent}건 알림 발송 완료`, 'success')
+          else toast(`${sent}건 발송 / ${failed}건 실패`, 'error')
+        }}
+      />
 
       {/* Info banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-base text-blue-800">
@@ -374,7 +423,11 @@ ${prevSummary}
 
       {/* 수습 직원 평가 일정 테이블 */}
       {(() => {
-        const probEmpsRaw = employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
+        // Module 5: 리더는 본인 부서만 노출 / 임원·대표·관리자는 전체
+        const isLeaderRole = profile?.role === 'leader'
+        const probEmpsRaw = employees
+          .filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
+          .filter((e) => !isLeaderRole || (profile?.department_id && e.department_id === profile.department_id))
         if (probEmpsRaw.length === 0) return null
 
         const today = new Date()
@@ -447,12 +500,41 @@ ${prevSummary}
         // 미사용 변수 경고 회피 (canEvaluate 는 handleSave 에서 직접 사용)
         void canEvaluate
 
+        // 본인이 평가해야 할 셀 개수 (테이블 헤더 카운트 표시용)
+        const myRoleForCount = getDefaultEvaluatorRole(profile?.role)
+        const myMenusForCount = menuPermissions.find((m) => m.employee_id === profile?.id)?.allowed_menus || []
+        const isProbationSelfForCount = profile?.role === 'leader' && employees.find((e) => e.id === profile?.id)?.employment_type === 'probation'
+        const leaderBlocked = profile?.role === 'leader' && (!myMenusForCount.includes('/admin/probation') || isProbationSelfForCount)
+        const myTodoCount = profile?.id && !leaderBlocked ? probEmps.reduce((acc, e) => {
+          const isLeaderOther = profile?.role === 'leader' && (!profile?.department_id || e.department_id !== profile.department_id)
+          if (isLeaderOther) return acc
+          if (!e.hire_date) return acc
+          const hire = new Date(e.hire_date)
+          const offsets = [14, 42, 70]
+          let count = 0
+          STAGES.forEach((stg, i) => {
+            const sDate = new Date(hire.getTime() + offsets[i] * 86400000)
+            const d = Math.ceil((sDate.getTime() - today.getTime()) / 86400000)
+            if (d > 0) return
+            if (closures.some((c) => c.employee_id === e.id && c.stage === stg)) return
+            const stEvals = evaluations.filter((ev) => ev.employee_id === e.id && ev.stage === stg)
+            const mine = stEvals.some((ev) => ev.evaluator_id === profile?.id && ev.evaluator_role === myRoleForCount)
+            if (!mine) count++
+          })
+          return acc + count
+        }, 0) : 0
+
         return (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
+              <CardTitle className="text-base flex items-center gap-2 flex-wrap">
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
                 평가 예정 현황
+                {myTodoCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500 text-white font-bold">
+                    내가 평가해야 할 항목 {myTodoCount}건
+                  </span>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -521,10 +603,17 @@ ${prevSummary}
                             return t > max ? t : max
                           }, 0)
                           const latestDate = latestTs > 0 ? formatDate(new Date(latestTs)) : null
+                          // 피드백: 모든 평가자(리더+모든 임원+대표)가 완료해야 점수 노출
+                          const fullyDone = isStageFullyEvaluated(stageEvals)
+                          const requiredTotal = requiredCounts.leader + requiredCounts.executive + requiredCounts.ceo
                           return (
                             <span className="inline-flex flex-col items-center leading-tight">
                               <span className="inline-flex items-center gap-1">
-                                <span className="text-sm font-bold text-emerald-600">{avg.toFixed(0)}점 완료</span>
+                                {fullyDone ? (
+                                  <span className="text-sm font-bold text-emerald-600">{avg.toFixed(0)}점 완료</span>
+                                ) : (
+                                  <span className="text-sm font-semibold text-amber-600">평가 진행중</span>
+                                )}
                                 {canDeleteRole && (
                                   <button
                                     type="button"
@@ -536,7 +625,9 @@ ${prevSummary}
                                   </button>
                                 )}
                               </span>
-                              <span className="text-[10px] text-gray-500">{stageEvals.length}명 평가</span>
+                              <span className="text-[10px] text-gray-500">
+                                {stageEvals.length}/{requiredTotal}명 평가
+                              </span>
                               {latestDate && <span className="text-[10px] text-gray-400">{latestDate}</span>}
                             </span>
                           )
@@ -612,18 +703,40 @@ ${prevSummary}
                             const rdate = roundDates[sIdx]
                             const diff = rdate ? Math.ceil((rdate.getTime() - today.getTime()) / 86400000) : null
                             const isOverdue = diff !== null && diff < 0
+                            const isFuture = diff !== null && diff > 0
                             // D-day 도달(diff <= 0) + 미완료 → 보라(brand) 강조 / 그 외 활성 → 앰버
                             const isDuePast = !isCompleted && diff !== null && diff <= 0
-                            const canClick = !isCompleted && !!hire
                             const isAdminLevel = profile?.role && ['admin','ceo','director','division_head'].includes(profile.role)
+                            // 피드백: 본인이 평가해야 할 셀 강조 (To-Do 카드 대신 셀에 직접 표시)
+                            const myRole = getDefaultEvaluatorRole(profile?.role)
+                            const isLeaderForOtherDept = profile?.role === 'leader' && (!profile?.department_id || emp.department_id !== profile.department_id)
+                            // 리더의 경우: 수습평가 메뉴 권한 + 본인이 수습 상태가 아닌 경우만 평가 가능
+                            const myMenus = menuPermissions.find((m) => m.employee_id === profile?.id)?.allowed_menus || []
+                            const isProbationSelf = profile?.role === 'leader' && employees.find((e) => e.id === profile?.id)?.employment_type === 'probation'
+                            const leaderLacksPermission = profile?.role === 'leader' && (!myMenus.includes('/admin/probation') || isProbationSelf)
+                            const myAlreadyEvaluated = stageEvals.some(
+                              (ev) => ev.evaluator_id === profile?.id && ev.evaluator_role === myRole
+                            )
+                            const needsMyEval = !!profile?.id
+                              && !isClosed
+                              && !isFuture
+                              && !!hire
+                              && !isLeaderForOtherDept
+                              && !leaderLacksPermission
+                              && !myAlreadyEvaluated
+                            // 미도래(diff > 0): 평가 기간이 시작되지 않았으므로 클릭 차단 (요구사항 #2)
+                            // 피드백: 다른 사람이 이미 평가했어도(=isCompleted), 내가 평가해야 한다면(needsMyEval) 클릭 가능
+                            const canClick = !!hire && !isFuture && !isClosed && (!isCompleted || needsMyEval)
                             return (
                               <td
                                 key={stg}
                                 className={[
-                                  'py-2.5 px-3 text-center transition-colors',
-                                  isDuePast ? 'bg-brand-50 ring-2 ring-inset ring-brand-400 font-semibold' :
+                                  'py-2.5 px-3 text-center transition-colors relative',
+                                  needsMyEval ? 'bg-blue-50 ring-2 ring-inset ring-blue-400 font-semibold' :
+                                    isDuePast ? 'bg-brand-50 ring-2 ring-inset ring-brand-400 font-semibold' :
                                     isActive ? 'animate-amber-blink font-semibold' : '',
                                   canClick ? 'cursor-pointer hover:bg-brand-50' : '',
+                                  isFuture && !isCompleted ? 'opacity-60 cursor-not-allowed' : '',
                                 ].filter(Boolean).join(' ')}
                                 onClick={canClick ? () => {
                                   // 초과 + 관리자 → 작성/마감 선택 다이얼로그
@@ -633,8 +746,19 @@ ${prevSummary}
                                     openNewEval(emp.id, stg)
                                   }
                                 } : undefined}
-                                title={canClick ? `${emp.name} - ${stageLabel} ${isOverdue ? '(초과)' : ''}` : undefined}
+                                title={
+                                  needsMyEval
+                                    ? `📝 내가 평가해야 합니다 — ${emp.name} ${stageLabel}`
+                                    : canClick
+                                      ? `${emp.name} - ${stageLabel} ${isOverdue ? '(초과)' : ''}`
+                                      : isFuture && !isCompleted
+                                        ? `${emp.name} - ${stageLabel}: 평가 기간이 아직 도래하지 않았습니다`
+                                        : undefined
+                                }
                               >
+                                {needsMyEval && (
+                                  <span className="absolute top-1 right-1 text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500 text-white font-bold">내 평가</span>
+                                )}
                                 {getRoundCell(stg, rdate)}
                               </td>
                             )

@@ -22,6 +22,7 @@ import {
   type ProbationEvaluatorRole,
   type ContinuationRecommendation,
 } from '@/types/employee-lifecycle'
+import { RoundCompletionSummary, type RoundSummary } from '@/components/probation/RoundCompletionSummary'
 
 // ─── Constants ──────────────────────────────────────────────────
 const STAGES: ProbationStage[] = ['round1', 'round2', 'round3']
@@ -145,6 +146,10 @@ export default function ProbationResults() {
   const [overallAnalysis, setOverallAnalysis] = useState<Record<string, OverallAnalysis>>({})
   const [analyzingEmp, setAnalyzingEmp] = useState<string | null>(null)
 
+  // Module 4: 회차별 종합 요약 (key: `${empId}_${stage}`)
+  const [roundSummaries, setRoundSummaries] = useState<Record<string, RoundSummary>>({})
+  const [analyzingRound, setAnalyzingRound] = useState<string | null>(null)
+
   // 견고한 JSON 추출: 코드펜스 제거 + 중괄호 구간만 절단
   function extractJson(raw: string): string {
     let t = raw.trim()
@@ -246,6 +251,113 @@ ${retry ? '⚠️ 직전 출력이 JSON 형식이 아니었습니다. 이번엔 
       toast('종합 분석 실패: ' + (err instanceof Error ? err.message : '형식 오류') + ' · 다시 시도해보세요', 'error')
     }
     setAnalyzingEmp(null)
+  }
+
+  // Module 4: 활성 임원 수 계산 (종합 요약 트리거 조건용)
+  const requiredCounts = useMemo(() => {
+    const activeExecs = employees.filter(
+      (e) => ['executive', 'director', 'division_head'].includes(e.role || '') && e.is_active !== false
+    ).length
+    return { leader: 1, executive: Math.max(activeExecs, 1), ceo: 1 }
+  }, [employees])
+
+  function getRoundCompletion(stageEvals: EvalWithEmployee[]) {
+    const leader = stageEvals.filter((e) => e.evaluator_role === 'leader').length
+    const executive = stageEvals.filter((e) => e.evaluator_role === 'executive').length
+    const ceo = stageEvals.filter((e) => e.evaluator_role === 'ceo').length
+    const isComplete =
+      leader >= requiredCounts.leader &&
+      executive >= requiredCounts.executive &&
+      ceo >= requiredCounts.ceo
+    return {
+      leader: { done: leader, required: requiredCounts.leader },
+      executive: { done: executive, required: requiredCounts.executive },
+      ceo: { done: ceo, required: requiredCounts.ceo },
+      isComplete,
+    }
+  }
+
+  async function runRoundSummary(empId: string, empName: string, stage: ProbationStage, stageEvals: EvalWithEmployee[]) {
+    const key = `${empId}_${stage}`
+    setAnalyzingRound(key)
+    try {
+      const config = await getAIConfigForFeature('probation_eval')
+      if (!config) { toast('AI 설정이 필요합니다.', 'error'); setAnalyzingRound(null); return }
+
+      const EVAL_ROLE_LABEL: Record<string, string> = { leader: '리더', executive: '임원', ceo: '대표' }
+      const evalSummary = stageEvals.map((e) => {
+        const s = e.scores as Record<string, number>
+        const total = PROBATION_CRITERIA.reduce((acc, c) => acc + (s[c.key] || 0), 0)
+        const evaluatorName = employees.find((emp) => emp.id === e.evaluator_id)?.name || ''
+        const scoreLines = PROBATION_CRITERIA.map((c) => `  - ${c.label}: ${s[c.key] || 0}/20`).join('\n')
+        return [
+          `[${EVAL_ROLE_LABEL[e.evaluator_role || ''] || e.evaluator_role}${evaluatorName ? ` · ${evaluatorName}` : ''}]`,
+          `총점: ${total}/100`,
+          scoreLines,
+          e.continuation_recommendation ? `권고: ${e.continuation_recommendation}` : '',
+          e.praise ? `칭찬: ${e.praise}` : '',
+          e.improvement ? `보완: ${e.improvement}` : '',
+          e.comments ? `총평: ${e.comments}` : '',
+          e.leader_summary ? `리더 총평: ${e.leader_summary}` : '',
+          e.exec_one_liner ? `임원 한줄: ${e.exec_one_liner}` : '',
+          e.strengths ? `강점: ${e.strengths}` : '',
+        ].filter(Boolean).join('\n')
+      }).join('\n\n')
+
+      const buildPrompt = (retry: boolean) => `당신은 인사 의사결정을 보조하는 AI 분석가입니다. ${empName} 직원의 ${STAGE_SHORT[stage]} 평가가 모든 평가자(리더·임원·대표)에 의해 완료되었습니다. 모든 평가 내용을 통합해 균형 잡힌 종합 요약을 작성하세요.
+
+[평가 기록]
+${evalSummary}
+
+${retry ? '⚠️ 직전 출력이 JSON 형식이 아니었습니다. 이번엔 반드시 아래 스키마를 엄격히 지켜 JSON만 출력하세요.\n\n' : ''}아래 JSON 스키마로 "정확히" 답해주세요. 다른 텍스트·설명·마크다운 코드펜스 없이 순수 JSON 오브젝트 하나만 출력:
+{
+  "consensus": "2~4문장. 모든 평가자의 공통된 의견. 균형있게 종합.",
+  "strengths": ["문자열 2~4개. 여러 평가자가 공통으로 언급한 강점."],
+  "cautions": ["문자열 1~3개. 보완 또는 주의가 필요한 부분."],
+  "recommendation": "continue | warning | terminate 중 하나",
+  "recommendationReason": "1~3문장. 권고 근거."
+}
+
+원칙:
+- 평가자 간 의견이 상충하면 양쪽 의견을 균형있게 병기
+- recommendation 은 평가자들의 권고를 다수결로 결정 (동수일 때는 보수적으로 warning)
+- "결정"이 아닌 "제안/권장" 어조 유지
+- 비난이 아닌 성장 지원 관점`
+
+      let parsed: RoundSummary | null = null
+      let lastErr: unknown = null
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await generateAIContent(config, buildPrompt(attempt > 0))
+          const jsonText = extractJson(result.content)
+          const obj = JSON.parse(jsonText) as Record<string, unknown>
+          const recRaw = typeof obj.recommendation === 'string' ? obj.recommendation : 'continue'
+          const rec: RoundSummary['recommendation'] =
+            recRaw === 'continue' || recRaw === 'warning' || recRaw === 'terminate' ? recRaw : 'continue'
+          const toArr = (v: unknown): string[] => Array.isArray(v)
+            ? v.map((x) => typeof x === 'string' ? x : String(x)).filter(Boolean)
+            : typeof v === 'string' && v.trim() ? [v.trim()] : []
+          const candidate: RoundSummary = {
+            consensus: typeof obj.consensus === 'string' ? obj.consensus : '',
+            strengths: toArr(obj.strengths),
+            cautions: toArr(obj.cautions),
+            recommendation: rec,
+            recommendationReason: typeof obj.recommendationReason === 'string' ? obj.recommendationReason : '',
+          }
+          if (!candidate.consensus && candidate.strengths.length === 0) throw new Error('빈 분석 결과')
+          parsed = candidate
+          break
+        } catch (e) {
+          lastErr = e
+        }
+      }
+      if (!parsed) throw lastErr instanceof Error ? lastErr : new Error('형식 오류')
+      setRoundSummaries((prev) => ({ ...prev, [key]: parsed! }))
+      toast(`${STAGE_SHORT[stage]} 종합 요약이 완료되었습니다.`, 'success')
+    } catch (err: unknown) {
+      toast('종합 요약 실패: ' + (err instanceof Error ? err.message : '오류') + ' · 다시 시도해보세요', 'error')
+    }
+    setAnalyzingRound(null)
   }
 
   type PolishField = 'comments' | 'praise' | 'improvement' | 'leader_summary' | 'exec_one_liner' | 'strengths'
@@ -455,9 +567,17 @@ ${prevSummary}
 
   // ─── Group evaluations by employee ────────────────────────────
   const groupedByEmployee = useMemo(() => {
+    // Module 5: 리더는 본인 부서 직원의 평가만 노출 (RLS와 이중 방어)
+    const isLeaderRole = profile?.role === 'leader'
+    const myDeptId = profile?.department_id
+    const allowedEmployeeIds = isLeaderRole && myDeptId
+      ? new Set(employees.filter((e) => e.department_id === myDeptId).map((e) => e.id))
+      : null
+
     const map = new Map<string, { name: string; evals: EvalWithEmployee[] }>()
     for (const ev of evaluations) {
       if (filterEmployee && ev.employee_id !== filterEmployee) continue
+      if (allowedEmployeeIds && !allowedEmployeeIds.has(ev.employee_id)) continue
       if (!map.has(ev.employee_id)) {
         map.set(ev.employee_id, { name: ev.employee_name || '알 수 없음', evals: [] })
       }
@@ -472,7 +592,7 @@ ${prevSummary}
       })
     }
     return map
-  }, [evaluations, filterEmployee])
+  }, [evaluations, filterEmployee, employees, profile?.role, profile?.department_id])
 
   // ─── Trend analysis ───────────────────────────────────────────
   async function openTrendDialog(employeeId: string, employeeName: string) {
@@ -553,7 +673,11 @@ ${evalsSummary}
         <Select
           value={filterEmployee}
           onChange={(e) => setFilterEmployee(e.target.value)}
-          options={[{ value: '', label: '전체 직원' }, ...employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습')).map((e) => ({ value: e.id, label: e.name }))]}
+          options={[{ value: '', label: '전체 직원' }, ...employees
+            .filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
+            // Module 5: 리더는 본인 부서 직원만 옵션 노출
+            .filter((e) => profile?.role !== 'leader' || (profile?.department_id && e.department_id === profile.department_id))
+            .map((e) => ({ value: e.id, label: e.name }))]}
           placeholder="수습 직원 선택"
         />
       </div>
@@ -760,8 +884,24 @@ ${evalsSummary}
                       : stageEvals
                     if (visibleEvals.length === 0) return null
 
+                    // Module 4: 회차 완료 판정 + 캐시 조회 (리더에게는 노출하지 않음 — 임원/대표 데이터 포함)
+                    const completion = getRoundCompletion(stageEvals)
+                    const summaryKey = `${empId}_${stage}`
+                    const cachedSummary = roundSummaries[summaryKey] || null
+                    const showSummary = profile?.role !== 'leader'
+
                     return (
-                      <div key={stage} className="border rounded-lg overflow-hidden">
+                      <div key={stage} className="space-y-3">
+                        {showSummary && (
+                          <RoundCompletionSummary
+                            stage={stage}
+                            status={completion}
+                            cached={cachedSummary}
+                            loading={analyzingRound === summaryKey}
+                            onAnalyze={() => runRoundSummary(empId, name, stage, stageEvals)}
+                          />
+                        )}
+                        <div className="border rounded-lg overflow-hidden">
                         <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b">
                           <div className="flex items-center gap-2">
                             <Badge variant="primary">{STAGE_SHORT[stage]}</Badge>
@@ -863,6 +1003,7 @@ ${evalsSummary}
                               </div>
                             )
                           })}
+                        </div>
                         </div>
                       </div>
                     )
