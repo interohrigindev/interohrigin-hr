@@ -42,7 +42,7 @@ const STATUS_CYCLE: Record<string, TaskStatus> = {
 interface TaskForm {
   title: string
   description: string
-  project_id: string
+  linked_board_id: string
   assignee_id: string
   priority: TaskPriority
   status: TaskStatus
@@ -54,7 +54,7 @@ interface TaskForm {
 const emptyForm: TaskForm = {
   title: '',
   description: '',
-  project_id: '',
+  linked_board_id: '',
   assignee_id: '',
   priority: 'normal',
   status: 'todo',
@@ -90,34 +90,31 @@ export default function TaskManage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [taskRes, projectsRes, boardsRes, empRes] = await Promise.all([
+    const [taskRes, boardsRes, empRes] = await Promise.all([
       supabase.from('tasks').select('*').order('sort_order', { ascending: true }),
-      supabase.from('projects').select('*'),
-      // 운영에서 실제 프로젝트는 project_boards 테이블에 저장됨
-      supabase.from('project_boards').select('id, project_name').order('project_name', { ascending: true }),
+      // 운영 프로젝트는 project_boards. 완료된 프로젝트는 제외
+      supabase
+        .from('project_boards')
+        .select('id, project_name, status')
+        .neq('status', 'completed')
+        .order('project_name', { ascending: true }),
       supabase.from('employees').select('*').eq('is_active', true),
     ])
     if (taskRes.data) setTasks(taskRes.data as Task[])
-    // projects + project_boards 통합 (project_boards 의 project_name → name 매핑)
-    const merged: Project[] = [
-      ...((projectsRes.data || []) as Project[]),
-      ...((boardsRes.data || []).map((b: { id: string; project_name: string }) => ({
-        id: b.id,
-        name: b.project_name,
-        description: null,
-        department_id: null,
-        owner_id: null,
-        status: 'active' as const,
-        start_date: null,
-        end_date: null,
-        created_at: '',
-        updated_at: '',
-      }))),
-    ]
-    // id 중복 제거 (project_boards 우선)
-    const dedup = new Map<string, Project>()
-    for (const p of merged) dedup.set(p.id, p)
-    setProjects(Array.from(dedup.values()))
+    // project_boards 의 project_name → Project.name 매핑
+    const boards: Project[] = (boardsRes.data || []).map((b: { id: string; project_name: string; status: string }) => ({
+      id: b.id,
+      name: b.project_name,
+      description: null,
+      department_id: null,
+      owner_id: null,
+      status: (b.status as Project['status']) || 'active',
+      start_date: null,
+      end_date: null,
+      created_at: '',
+      updated_at: '',
+    }))
+    setProjects(boards)
     if (empRes.data) setEmployees(empRes.data as Employee[])
     setLoading(false)
   }, [])
@@ -146,7 +143,7 @@ export default function TaskManage() {
     }
     if (filterStatus && t.status !== filterStatus) return false
     if (filterPriority && t.priority !== filterPriority) return false
-    if (filterProject && t.project_id !== filterProject) return false
+    if (filterProject && t.linked_board_id !== filterProject) return false
     return true
   })
 
@@ -169,7 +166,7 @@ export default function TaskManage() {
     setForm({
       title: t.title,
       description: t.description || '',
-      project_id: t.project_id || '',
+      linked_board_id: t.linked_board_id || '',
       assignee_id: t.assignee_id || '',
       priority: t.priority,
       status: t.status,
@@ -189,7 +186,7 @@ export default function TaskManage() {
     const payload = {
       title: form.title.trim(),
       description: form.description.trim() || null,
-      project_id: form.project_id || null,
+      linked_board_id: form.linked_board_id || null,
       assignee_id: form.assignee_id || null,
       priority: form.priority,
       status: form.status,
@@ -267,12 +264,12 @@ export default function TaskManage() {
           ) : (
             <div className="space-y-5">
               {(() => {
-                // 프로젝트별 그룹화 (project_id null → 미지정)
+                // 프로젝트별 그룹화 (linked_board_id null → 미지정)
                 const groups = new Map<string, { projectName: string; tasks: Task[] }>()
                 for (const t of filtered) {
-                  const key = t.project_id || '__none__'
-                  const projectName = t.project_id
-                    ? projects.find((p) => p.id === t.project_id)?.name || '알 수 없는 프로젝트'
+                  const key = t.linked_board_id || '__none__'
+                  const projectName = t.linked_board_id
+                    ? projects.find((p) => p.id === t.linked_board_id)?.name || '알 수 없는 프로젝트'
                     : '프로젝트 미지정'
                   if (!groups.has(key)) groups.set(key, { projectName, tasks: [] })
                   groups.get(key)!.tasks.push(t)
@@ -438,8 +435,8 @@ export default function TaskManage() {
           </div>
           <Select
             label="프로젝트"
-            value={form.project_id}
-            onChange={(e) => setForm((p) => ({ ...p, project_id: e.target.value }))}
+            value={form.linked_board_id}
+            onChange={(e) => setForm((p) => ({ ...p, linked_board_id: e.target.value }))}
             options={[{ value: '', label: '선택 안 함' }, ...projects.map((pr) => ({ value: pr.id, label: pr.name }))]}
           />
           <SearchableSelect
