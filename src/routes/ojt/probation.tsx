@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Plus, Sparkles, Loader2, AlertTriangle, Trash2, Lock, RotateCcw, Pencil, Mail } from 'lucide-react'
+import { Plus, Sparkles, Loader2, AlertTriangle, Trash2, Lock, RotateCcw, Pencil, Mail, CheckCircle2, Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
 import { Button } from '@/components/ui/Button'
@@ -14,7 +14,8 @@ import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { getProbationGrade, PROBATION_GRADE_CONFIG } from '@/lib/constants'
 import { useNavigate } from 'react-router-dom'
-import { getDefaultEvaluatorRole } from '@/lib/probation-utils'
+import { getDefaultEvaluatorRole, isProbationEvaluator, canSendProbationReminder } from '@/lib/probation-utils'
+import { probationReminderEmail } from '@/lib/email-templates'
 import {
   PROBATION_CRITERIA,
   type ProbationEvaluation,
@@ -107,6 +108,8 @@ export default function ProbationManage() {
   const [menuPermissions, setMenuPermissions] = useState<{ employee_id: string; allowed_menus: string[] }[]>([])
   // 클릭한 셀에 대해 평가/마감 선택 다이얼로그
   const [cellAction, setCellAction] = useState<{ empId: string; empName: string; stage: ProbationStage; stageLabel: string; isOverdue: boolean } | null>(null)
+  const [reminderCell, setReminderCell] = useState<{ empId: string; empName: string; stage: ProbationStage; stageLabel: string; diffDays: number } | null>(null)
+  const [reminderSendingId, setReminderSendingId] = useState<string | null>(null)
   // 미평가자 알림 발송 다이얼로그
   const navigate = useNavigate()
 
@@ -130,6 +133,71 @@ export default function ProbationManage() {
     })
     return { leader: hasEligibleLeader ? 1 : 0, executive: Math.max(activeExecCount, 1), ceo: 1 }
   }, [employees, menuPermissions, activeExecCount])
+
+  // 피평가자 셀에 대한 평가자 후보 + 완료 여부
+  type EvaluatorPending = {
+    id: string
+    name: string
+    email: string | null
+    position: string | null
+    role: 'leader' | 'executive' | 'ceo'
+    done: boolean
+  }
+  function getCellEvaluators(emp: { id: string; department_id?: string | null }, stageEvals: typeof evaluations): EvaluatorPending[] {
+    const out: EvaluatorPending[] = []
+    const eligibleLeaders = employees.filter((e) => {
+      if (e.role !== 'leader') return false
+      if (e.is_active === false) return false
+      if (e.employment_type === 'probation') return false
+      if (!emp.department_id || e.department_id !== emp.department_id) return false
+      const menus = menuPermissions.find((m) => m.employee_id === e.id)?.allowed_menus || []
+      return menus.includes('/admin/probation')
+    })
+    for (const l of eligibleLeaders) {
+      out.push({ id: l.id, name: l.name, email: l.email || null, position: l.position || null, role: 'leader', done: false })
+    }
+    const activeExecs = employees.filter(
+      (e) => ['executive', 'director', 'division_head'].includes(e.role || '') && e.is_active !== false
+    )
+    for (const x of activeExecs) {
+      out.push({ id: x.id, name: x.name, email: x.email || null, position: x.position || null, role: 'executive', done: false })
+    }
+    const ceos = employees.filter((e) => e.role === 'ceo' && e.is_active !== false)
+    for (const c of ceos) {
+      out.push({ id: c.id, name: c.name, email: c.email || null, position: c.position || null, role: 'ceo', done: false })
+    }
+    return out.map((ev) => ({
+      ...ev,
+      done: stageEvals.some((se) => se.evaluator_id === ev.id && se.evaluator_role === ev.role),
+    }))
+  }
+
+  async function sendCellReminder(empName: string, stage: ProbationStage, evaluator: EvaluatorPending, diffDays: number) {
+    if (!evaluator.email) { toast('평가자 이메일이 없어 발송할 수 없습니다.', 'error'); return }
+    setReminderSendingId(evaluator.id)
+    const stageLabel = stage === 'round1' ? '1회차' : stage === 'round2' ? '2회차' : '3회차'
+    const roleLabel = evaluator.role === 'leader' ? '리더' : evaluator.role === 'executive' ? '임원' : '대표'
+    const { subject, html } = probationReminderEmail({
+      evaluatorName: evaluator.name,
+      evaluatorRoleLabel: roleLabel,
+      evaluatorPosition: evaluator.position,
+      employeeName: empName,
+      stage: stageLabel,
+      diffDays,
+    })
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: evaluator.email, subject, html }),
+      })
+      if (res.ok) toast(`${evaluator.name} ${roleLabel}님에게 독려 메일 발송 완료`, 'success')
+      else toast('발송 실패: API 오류', 'error')
+    } catch (err) {
+      toast('발송 실패: ' + (err instanceof Error ? err.message : '오류'), 'error')
+    }
+    setReminderSendingId(null)
+  }
 
   // 회차의 모든 필수 평가자(피평가자 부서 기준 리더+임원+대표)가 평가 완료했는지 판정
   function isStageFullyEvaluated(stageEvals: typeof evaluations, emp: { department_id?: string | null }) {
@@ -406,7 +474,7 @@ ${prevSummary}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">수습 단계별 평가</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          {profile?.role && ['admin','ceo','director','division_head'].includes(profile.role) && (
+          {canSendProbationReminder(profile) && (
             <Button variant="outline" className="shrink-0" onClick={() => navigate('/admin/probation/reminder')}>
               <Mail className="h-4 w-4 mr-1" /> 미평가자 알림 발송
             </Button>
@@ -504,7 +572,7 @@ ${prevSummary}
         const myMenusForCount = menuPermissions.find((m) => m.employee_id === profile?.id)?.allowed_menus || []
         const isProbationSelfForCount = profile?.role === 'leader' && employees.find((e) => e.id === profile?.id)?.employment_type === 'probation'
         const leaderBlocked = profile?.role === 'leader' && (!myMenusForCount.includes('/admin/probation') || isProbationSelfForCount)
-        const myTodoCount = profile?.id && !leaderBlocked ? probEmps.reduce((acc, e) => {
+        const myTodoCount = profile?.id && isProbationEvaluator(profile?.role) && !leaderBlocked ? probEmps.reduce((acc, e) => {
           const isLeaderOther = profile?.role === 'leader' && (!profile?.department_id || e.department_id !== profile.department_id)
           if (isLeaderOther) return acc
           if (!e.hire_date) return acc
@@ -716,6 +784,7 @@ ${prevSummary}
                               (ev) => ev.evaluator_id === profile?.id && ev.evaluator_role === myRole
                             )
                             const needsMyEval = !!profile?.id
+                              && isProbationEvaluator(profile?.role)
                               && !isClosed
                               && !isFuture
                               && !!hire
@@ -724,7 +793,10 @@ ${prevSummary}
                               && !myAlreadyEvaluated
                             // 미도래(diff > 0): 평가 기간이 시작되지 않았으므로 클릭 차단 (요구사항 #2)
                             // 피드백: 다른 사람이 이미 평가했어도(=isCompleted), 내가 평가해야 한다면(needsMyEval) 클릭 가능
-                            const canClick = !!hire && !isFuture && !isClosed && (!isCompleted || needsMyEval)
+                            // 관리자 권한자: 진행 중(부분 평가) 셀 클릭 시 독려 모달
+                            const cellFullyDone = stageEvals.length > 0 && isStageFullyEvaluated(stageEvals, emp)
+                            const reminderEligible = canSendProbationReminder(profile) && !!hire && !isFuture && !isClosed && !cellFullyDone
+                            const canClick = !!hire && !isFuture && !isClosed && (!isCompleted || needsMyEval || reminderEligible)
                             return (
                               <td
                                 key={stg}
@@ -737,6 +809,19 @@ ${prevSummary}
                                   isFuture && !isCompleted ? 'opacity-60 cursor-not-allowed' : '',
                                 ].filter(Boolean).join(' ')}
                                 onClick={canClick ? () => {
+                                  // 1순위: 본인이 평가 필요 → 평가 폼 (관리자라도 평가자 역할이면 폼 우선)
+                                  if (needsMyEval) {
+                                    openNewEval(emp.id, stg)
+                                    return
+                                  }
+                                  // 2순위: 독려 가능자 (admin/ceo/강제묵) → 독려 모달
+                                  if (reminderEligible) {
+                                    setReminderCell({
+                                      empId: emp.id, empName: emp.name, stage: stg, stageLabel,
+                                      diffDays: diff ?? 0,
+                                    })
+                                    return
+                                  }
                                   // 초과 + 관리자 → 작성/마감 선택 다이얼로그
                                   if (isOverdue && isAdminLevel) {
                                     setCellAction({ empId: emp.id, empName: emp.name, stage: stg, stageLabel, isOverdue: true })
@@ -1004,6 +1089,87 @@ ${prevSummary}
           </div>
         </div>
       )}
+
+      {/* 독려 메일 발송 모달 (관리자/대표/강제묵 이사 전용) */}
+      {reminderCell && (() => {
+        const cell = reminderCell
+        const emp = employees.find((e) => e.id === cell.empId)
+        if (!emp) return null
+        const stageEvals = evaluations.filter((ev) => ev.employee_id === cell.empId && ev.stage === cell.stage)
+        const evaluators = getCellEvaluators(emp, stageEvals)
+        const pending = evaluators.filter((ev) => !ev.done)
+        const diffBadge = cell.diffDays < 0
+          ? { txt: `D+${Math.abs(cell.diffDays)} 초과`, cls: 'bg-red-100 text-red-700' }
+          : cell.diffDays === 0
+            ? { txt: 'D-day', cls: 'bg-amber-100 text-amber-700' }
+            : { txt: `D-${cell.diffDays}`, cls: 'bg-gray-100 text-gray-600' }
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setReminderCell(null)}>
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start gap-2">
+                <Mail className="h-5 w-5 text-brand-600 mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-gray-900">
+                    {cell.empName} — {cell.stageLabel} 평가 독려
+                    <span className={`ml-2 text-[11px] px-2 py-0.5 rounded-full ${diffBadge.cls}`}>{diffBadge.txt}</span>
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">아래 미완료 평가자에게 개별 독려 이메일을 발송할 수 있습니다.</p>
+                </div>
+              </div>
+
+              {(['leader', 'executive', 'ceo'] as const).map((roleKey) => {
+                const list = evaluators.filter((e) => e.role === roleKey)
+                if (list.length === 0) return null
+                const roleLabel = roleKey === 'leader' ? '리더' : roleKey === 'executive' ? '임원' : '대표'
+                return (
+                  <div key={roleKey} className="border border-gray-200 rounded-md">
+                    <div className="px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-700 border-b border-gray-200">
+                      {roleLabel} ({list.filter((e) => e.done).length}/{list.length})
+                    </div>
+                    <ul className="divide-y divide-gray-100">
+                      {list.map((ev) => (
+                        <li key={ev.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {ev.done ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" /> : <Clock className="h-4 w-4 text-amber-500 shrink-0" />}
+                            <span className="font-medium text-gray-900 truncate">{ev.name}</span>
+                            {ev.position && <span className="text-xs text-gray-500 truncate">{ev.position}</span>}
+                            <span className={`text-[11px] px-1.5 py-0.5 rounded-full whitespace-nowrap ${ev.done ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {ev.done ? '완료' : '미완료'}
+                            </span>
+                          </div>
+                          {!ev.done && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => sendCellReminder(cell.empName, cell.stage, ev, cell.diffDays)}
+                              disabled={!ev.email || reminderSendingId === ev.id}
+                              className="ml-2 shrink-0"
+                            >
+                              {reminderSendingId === ev.id
+                                ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 발송중</>
+                                : <><Mail className="h-3 w-3 mr-1" /> 독려 발송</>}
+                            </Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )
+              })}
+
+              {pending.length === 0 && (
+                <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+                  모든 평가자가 평가를 완료했습니다.
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="ghost" onClick={() => setReminderCell(null)}>닫기</Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
     </div>
   )

@@ -24,6 +24,7 @@ import {
 } from '@/types/employee-lifecycle'
 import { RoundCompletionSummary, type RoundSummary, type EvaluatorStatus } from '@/components/probation/RoundCompletionSummary'
 import { probationReminderEmail } from '@/lib/email-templates'
+import { canSendProbationReminder } from '@/lib/probation-utils'
 
 // ─── Constants ──────────────────────────────────────────────────
 const STAGES: ProbationStage[] = ['round1', 'round2', 'round3']
@@ -1005,7 +1006,7 @@ ${evalsSummary}
                             cached={cachedSummary}
                             loading={analyzingRound === summaryKey}
                             onAnalyze={() => runRoundSummary(empId, name, stage, stageEvals)}
-                            canSendReminder={!!profile?.role && ['ceo','admin','director','division_head'].includes(profile.role)}
+                            canSendReminder={canSendProbationReminder(profile)}
                             sendingTo={sendingReminderKey?.startsWith(`${empId}::${stage}::`) ? sendingReminderKey.split('::')[2] : null}
                             onSendReminder={(ev) => sendIndividualReminder(empId, name, stage, ev)}
                           />

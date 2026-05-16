@@ -27,3 +27,22 @@ export function getDefaultEvaluatorRole(role: string | null | undefined): Probat
       return 'leader'
   }
 }
+
+/**
+ * 실제 수습평가 평가자 역할을 가진 사람인지 판단.
+ * admin 등 비평가자 역할은 "내 평가" 뱃지/카운트에서 제외해야 함.
+ */
+export function isProbationEvaluator(role: string | null | undefined): boolean {
+  return !!role && ['leader', 'executive', 'director', 'division_head', 'ceo'].includes(role)
+}
+
+/**
+ * 수습평가 독려 이메일 발송 권한.
+ * 시스템 관리자(admin), 대표(ceo), 그리고 임원 중 강제묵 이사에게만 허용.
+ */
+export function canSendProbationReminder(profile?: { role?: string | null; name?: string | null } | null): boolean {
+  if (!profile) return false
+  if (profile.role === 'admin' || profile.role === 'ceo') return true
+  if (profile.name === '강제묵') return true
+  return false
+}

@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { probationReminderEmail } from '@/lib/email-templates'
+import { canSendProbationReminder } from '@/lib/probation-utils'
 import type { ProbationEvaluation, ProbationStage } from '@/types/employee-lifecycle'
 
 interface EmployeeRow {
@@ -75,7 +76,7 @@ export default function ProbationReminder() {
   const [sending, setSending] = useState(false)
   const [progress, setProgress] = useState<{ sent: number; failed: number; total: number } | null>(null)
 
-  const isPrivileged = !!profile?.role && ['ceo', 'admin', 'director', 'division_head'].includes(profile.role)
+  const isPrivileged = canSendProbationReminder(profile)
 
   useEffect(() => {
     if (!isPrivileged) return
