@@ -72,6 +72,8 @@ interface EmployeeBasic {
   hire_date: string | null
   employment_type: string | null
   position: string | null
+  role?: string | null
+  is_active?: boolean | null
   job_title?: string | null
   annual_salary?: number | null
 }
@@ -537,7 +539,7 @@ ${prevSummary}
     // 퇴사자(is_active=false) 도 포함 — 평가 이력 보존을 위함
     const [evalRes, empRes, deptRes, hrRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position, is_active').order('name'),
+      supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position, role, is_active').order('name'),
       supabase.from('departments').select('id, name'),
       supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
     ])

@@ -82,7 +82,6 @@ export default function TaskManage() {
   const [filterStatus, setFilterStatus] = useState<string>('')
   const [filterPriority, setFilterPriority] = useState<string>('')
   const [filterProject, setFilterProject] = useState<string>('')
-  const [filterAssignee, setFilterAssignee] = useState<string>('')
 
   // Dialog
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -127,7 +126,6 @@ export default function TaskManage() {
     if (filterStatus && t.status !== filterStatus) return false
     if (filterPriority && t.priority !== filterPriority) return false
     if (filterProject && t.project_id !== filterProject) return false
-    if (filterAssignee && t.assignee_id !== filterAssignee) return false
     return true
   })
 

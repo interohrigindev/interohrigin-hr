@@ -57,14 +57,6 @@ const STAGE_LABELS: Record<ProbationStage, string> = {
   round3: '3회차',
 }
 
-const ROLE_TO_EVALUATOR: Record<string, 'leader' | 'executive' | 'ceo' | null> = {
-  leader: 'leader',
-  executive: 'executive',
-  director: 'executive',
-  division_head: 'executive',
-  ceo: 'ceo',
-}
-
 interface MissingTarget {
   key: string // {empId}_{stage}_{evaluatorId}
   empId: string
