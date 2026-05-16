@@ -603,17 +603,15 @@ ${prevSummary}
                             return t > max ? t : max
                           }, 0)
                           const latestDate = latestTs > 0 ? formatDate(new Date(latestTs)) : null
-                          // 피드백: 모든 평가자(리더+모든 임원+대표)가 완료해야 점수 노출
+                          // 피드백: 진행 중이어도 현재까지 평균 점수 노출, 완료 여부는 라벨로 구분
                           const fullyDone = isStageFullyEvaluated(stageEvals)
                           const requiredTotal = requiredCounts.leader + requiredCounts.executive + requiredCounts.ceo
                           return (
                             <span className="inline-flex flex-col items-center leading-tight">
                               <span className="inline-flex items-center gap-1">
-                                {fullyDone ? (
-                                  <span className="text-sm font-bold text-emerald-600">{avg.toFixed(0)}점 완료</span>
-                                ) : (
-                                  <span className="text-sm font-semibold text-amber-600">평가 진행중</span>
-                                )}
+                                <span className={`text-sm font-bold ${fullyDone ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                  {avg.toFixed(0)}점{fullyDone ? ' 완료' : ' (진행중)'}
+                                </span>
                                 {canDeleteRole && (
                                   <button
                                     type="button"
