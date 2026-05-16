@@ -110,6 +110,7 @@ export default function ProbationResults() {
   const [evaluations, setEvaluations] = useState<EvalWithEmployee[]>([])
   const [employees, setEmployees] = useState<EmployeeBasic[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
+  const [menuPermissions, setMenuPermissions] = useState<{ employee_id: string; allowed_menus: string[] }[]>([])
   const [loading, setLoading] = useState(true)
 
   // Trend dialog
@@ -256,25 +257,39 @@ ${retry ? '⚠️ 직전 출력이 JSON 형식이 아니었습니다. 이번엔 
   }
 
   // Module 4: 활성 임원 수 계산 (종합 요약 트리거 조건용)
-  const requiredCounts = useMemo(() => {
-    const activeExecs = employees.filter(
+  const activeExecCount = useMemo(() => {
+    return employees.filter(
       (e) => ['executive', 'director', 'division_head'].includes(e.role || '') && e.is_active !== false
     ).length
-    return { leader: 1, executive: Math.max(activeExecs, 1), ceo: 1 }
   }, [employees])
 
-  function getRoundCompletion(stageEvals: EvalWithEmployee[]) {
+  // 피평가자 부서에 수습평가 권한 보유 활성 리더가 있는 경우만 리더 쿼터 1
+  const getRequiredCountsFor = useCallback((empId: string) => {
+    const emp = employees.find((e) => e.id === empId)
+    const hasEligibleLeader = !!emp && employees.some((e) => {
+      if (e.role !== 'leader') return false
+      if (e.is_active === false) return false
+      if (e.employment_type === 'probation') return false
+      if (!emp.department_id || e.department_id !== emp.department_id) return false
+      const menus = menuPermissions.find((m) => m.employee_id === e.id)?.allowed_menus || []
+      return menus.includes('/admin/probation')
+    })
+    return { leader: hasEligibleLeader ? 1 : 0, executive: Math.max(activeExecCount, 1), ceo: 1 }
+  }, [employees, menuPermissions, activeExecCount])
+
+  function getRoundCompletion(stageEvals: EvalWithEmployee[], empId: string) {
+    const counts = getRequiredCountsFor(empId)
     const leader = stageEvals.filter((e) => e.evaluator_role === 'leader').length
     const executive = stageEvals.filter((e) => e.evaluator_role === 'executive').length
     const ceo = stageEvals.filter((e) => e.evaluator_role === 'ceo').length
     const isComplete =
-      leader >= requiredCounts.leader &&
-      executive >= requiredCounts.executive &&
-      ceo >= requiredCounts.ceo
+      leader >= counts.leader &&
+      executive >= counts.executive &&
+      ceo >= counts.ceo
     return {
-      leader: { done: leader, required: requiredCounts.leader },
-      executive: { done: executive, required: requiredCounts.executive },
-      ceo: { done: ceo, required: requiredCounts.ceo },
+      leader: { done: leader, required: counts.leader },
+      executive: { done: executive, required: counts.executive },
+      ceo: { done: ceo, required: counts.ceo },
       isComplete,
     }
   }
@@ -537,14 +552,16 @@ ${prevSummary}
   const fetchData = useCallback(async () => {
     setLoading(true)
     // 퇴사자(is_active=false) 도 포함 — 평가 이력 보존을 위함
-    const [evalRes, empRes, deptRes, hrRes] = await Promise.all([
+    const [evalRes, empRes, deptRes, hrRes, mpRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('id, name, department_id, hire_date, employment_type, position, role, is_active').order('name'),
       supabase.from('departments').select('id, name'),
       supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
+      supabase.from('menu_permissions').select('employee_id, allowed_menus'),
     ])
 
     if (deptRes.data) setDepartments(deptRes.data)
+    if (mpRes.data) setMenuPermissions(mpRes.data as { employee_id: string; allowed_menus: string[] }[])
 
     if (empRes.data) {
       const hrMap = new Map((hrRes.data || []).map((h: any) => [h.employee_id, h]))
@@ -887,7 +904,7 @@ ${evalsSummary}
                     if (visibleEvals.length === 0) return null
 
                     // Module 4: 회차 완료 판정 + 캐시 조회 (리더에게는 노출하지 않음 — 임원/대표 데이터 포함)
-                    const completion = getRoundCompletion(stageEvals)
+                    const completion = getRoundCompletion(stageEvals, empId)
                     const summaryKey = `${empId}_${stage}`
                     const cachedSummary = roundSummaries[summaryKey] || null
                     const showSummary = profile?.role !== 'leader'

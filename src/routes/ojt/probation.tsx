@@ -110,20 +110,34 @@ export default function ProbationManage() {
   // 미평가자 알림 발송 다이얼로그
   const navigate = useNavigate()
 
-  // 회차별 필수 평가자 수 계산 (피드백 반영: 모두 평가 완료 전엔 점수 숨김)
-  const requiredCounts = useMemo(() => {
-    const activeExecs = employees.filter(
+  // 활성 임원 수 (전사 공통)
+  const activeExecCount = useMemo(() => {
+    return employees.filter(
       (e) => ['executive', 'director', 'division_head'].includes(e.role || '') && e.is_active !== false
     ).length
-    return { leader: 1, executive: Math.max(activeExecs, 1), ceo: 1 }
   }, [employees])
 
-  // 회차의 모든 평가자(리더+모든 임원+대표)가 평가 완료했는지 판정
-  function isStageFullyEvaluated(stageEvals: typeof evaluations) {
+  // 피평가자 부서에 수습평가 권한을 가진 활성 리더가 있는지 → 리더 쿼터 동적 계산
+  // (예: 경영관리본부에 권한 가진 리더가 없으면 리더 쿼터 0)
+  const getRequiredCountsFor = useCallback((emp: { department_id?: string | null }) => {
+    const hasEligibleLeader = employees.some((e) => {
+      if (e.role !== 'leader') return false
+      if (e.is_active === false) return false
+      if (e.employment_type === 'probation') return false
+      if (!emp.department_id || e.department_id !== emp.department_id) return false
+      const menus = menuPermissions.find((m) => m.employee_id === e.id)?.allowed_menus || []
+      return menus.includes('/admin/probation')
+    })
+    return { leader: hasEligibleLeader ? 1 : 0, executive: Math.max(activeExecCount, 1), ceo: 1 }
+  }, [employees, menuPermissions, activeExecCount])
+
+  // 회차의 모든 필수 평가자(피평가자 부서 기준 리더+임원+대표)가 평가 완료했는지 판정
+  function isStageFullyEvaluated(stageEvals: typeof evaluations, emp: { department_id?: string | null }) {
+    const counts = getRequiredCountsFor(emp)
     const leader = stageEvals.filter((e) => e.evaluator_role === 'leader').length
     const executive = stageEvals.filter((e) => e.evaluator_role === 'executive').length
     const ceo = stageEvals.filter((e) => e.evaluator_role === 'ceo').length
-    return leader >= requiredCounts.leader && executive >= requiredCounts.executive && ceo >= requiredCounts.ceo
+    return leader >= counts.leader && executive >= counts.executive && ceo >= counts.ceo
   }
 
   const fetchData = useCallback(async () => {
@@ -589,8 +603,9 @@ ${prevSummary}
                           }, 0)
                           const latestDate = latestTs > 0 ? formatDate(new Date(latestTs)) : null
                           // 피드백: 진행 중이어도 현재까지 평균 점수 노출, 완료 여부는 라벨로 구분
-                          const fullyDone = isStageFullyEvaluated(stageEvals)
-                          const requiredTotal = requiredCounts.leader + requiredCounts.executive + requiredCounts.ceo
+                          const fullyDone = isStageFullyEvaluated(stageEvals, emp)
+                          const reqForEmp = getRequiredCountsFor(emp)
+                          const requiredTotal = reqForEmp.leader + reqForEmp.executive + reqForEmp.ceo
                           return (
                             <span className="inline-flex flex-col items-center leading-tight">
                               <span className="inline-flex items-center gap-1">
