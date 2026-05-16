@@ -674,6 +674,8 @@ ${prevSummary}
                           const fullyDone = isStageFullyEvaluated(stageEvals, emp)
                           const reqForEmp = getRequiredCountsFor(emp)
                           const requiredTotal = reqForEmp.leader + reqForEmp.executive + reqForEmp.ceo
+                          // 진행중이면 예정일을, 완료면 최종 제출일을 노출 (조기 평가 케이스 대비)
+                          const displayDate = fullyDone ? latestDate : (roundDate ? formatDate(roundDate) : latestDate)
                           return (
                             <span className="inline-flex flex-col items-center leading-tight">
                               <span className="inline-flex items-center gap-1">
@@ -694,7 +696,7 @@ ${prevSummary}
                               <span className="text-[10px] text-gray-500">
                                 {stageEvals.length}/{requiredTotal}명 평가
                               </span>
-                              {latestDate && <span className="text-[10px] text-gray-400">{latestDate}</span>}
+                              {displayDate && <span className="text-[10px] text-gray-400">{displayDate}</span>}
                             </span>
                           )
                         }
@@ -793,19 +795,11 @@ ${prevSummary}
                               && !myAlreadyEvaluated
                             // 미도래(diff > 0): 평가 기간이 시작되지 않았으므로 클릭 차단 (요구사항 #2)
                             // 피드백: 다른 사람이 이미 평가했어도(=isCompleted), 내가 평가해야 한다면(needsMyEval) 클릭 가능
-                            // 관리자 권한자: 진행 중(부분 평가) 셀 클릭 시 독려 모달
-                            // 예정일 이전이라도 일부 평가자가 조기에 평가를 시작한 경우에는 독려 허용
+                            // 관리자 권한자: 예정일 도달 이후 진행 중 셀 클릭 시 독려 모달
+                            // (조기 평가 케이스는 예정일 전이라 독려 대상에서 제외)
                             const cellFullyDone = stageEvals.length > 0 && isStageFullyEvaluated(stageEvals, emp)
-                            const hasAnyEvals = stageEvals.length > 0
-                            const reminderEligible = canSendProbationReminder(profile)
-                              && !!hire
-                              && !isClosed
-                              && !cellFullyDone
-                              && (hasAnyEvals || !isFuture)
-                            const canClick = !!hire && !isClosed && (
-                              (!isFuture && (!isCompleted || needsMyEval))
-                              || reminderEligible
-                            )
+                            const reminderEligible = canSendProbationReminder(profile) && !!hire && !isFuture && !isClosed && !cellFullyDone
+                            const canClick = !!hire && !isFuture && !isClosed && (!isCompleted || needsMyEval || reminderEligible)
                             return (
                               <td
                                 key={stg}
