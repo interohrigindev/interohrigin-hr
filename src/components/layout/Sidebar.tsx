@@ -355,39 +355,63 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     if (typeof item.to === 'string' && item.to === '/my/ojt' && !hasOjtEnrollment) return false
     return isItemVisible(item)
   })
+  // 빠른 메뉴 (사이드바 상단 그룹): 일일 보고서, 전자 결재, 게시판
+  const QUICK_MENU_PATHS = ['/work/daily-report', '/admin/approval', '/bulletin']
+  const visibleQuickItems = visibleStandaloneItems.filter(
+    (item) => typeof item.to === 'string' && QUICK_MENU_PATHS.includes(item.to)
+  )
+  const visibleOtherStandalone = visibleStandaloneItems.filter(
+    (item) => !(typeof item.to === 'string' && QUICK_MENU_PATHS.includes(item.to))
+  )
   const visibleGroups = navGroups.filter(isGroupVisible)
   const visibleBottomItems = bottomItems.filter(isItemVisible)
 
+  // standalone 항목 렌더링 헬퍼
+  const renderStandaloneItem = (item: typeof standaloneItems[number]) => {
+    const path = resolvePath(item)
+    return (
+      <NavLink
+        key={path}
+        to={path}
+        end={item.end}
+        onClick={onClose}
+        className={({ isActive }) =>
+          cn(
+            'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+            isActive
+              ? 'bg-brand-50 text-brand-700'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          )
+        }
+      >
+        {item.icon}
+        <span className="flex-1">{item.label}</span>
+        {item.to === '/messenger' && messengerUnread > 0 && (
+          <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+            {messengerUnread > 99 ? '99+' : messengerUnread}
+          </span>
+        )}
+      </NavLink>
+    )
+  }
+
   const navContent = (
     <nav className="flex flex-col gap-1 p-4 overflow-y-auto">
-      {/* 기존 개별 메뉴 */}
-      {visibleStandaloneItems.map((item) => {
-        const path = resolvePath(item)
-        return (
-          <NavLink
-            key={path}
-            to={path}
-            end={item.end}
-            onClick={onClose}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-brand-50 text-brand-700'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              )
-            }
-          >
-            {item.icon}
-            <span className="flex-1">{item.label}</span>
-            {item.to === '/messenger' && messengerUnread > 0 && (
-              <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
-                {messengerUnread > 99 ? '99+' : messengerUnread}
-              </span>
-            )}
-          </NavLink>
-        )
-      })}
+      {/* 빠른 메뉴 — 자주 쓰는 일일 보고서/전자 결재/게시판 */}
+      {visibleQuickItems.length > 0 && (
+        <>
+          <div className="px-3 pt-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            빠른 메뉴
+          </div>
+          {visibleQuickItems.map(renderStandaloneItem)}
+          {visibleOtherStandalone.length > 0 && (
+            <div className="my-2 border-t border-gray-200" />
+          )}
+        </>
+      )}
+
+      {/* 기타 개별 메뉴 (CEO 리포트, 직원 신호등, 내 OJT 등) */}
+      {visibleOtherStandalone.map(renderStandaloneItem)}
 
       {/* 구분선 */}
       {visibleGroups.length > 0 && (
