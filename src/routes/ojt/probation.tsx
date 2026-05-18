@@ -1047,6 +1047,10 @@ ${prevSummary}
                     const probEnd = new Date(new Date(e.hire_date).getTime() + 90 * 86400000)
                     if (probEnd.getTime() < new Date().getTime()) return false
                   }
+                  // 리더는 본인 부서 직원만 평가 가능 (임원/대표/관리자는 전체)
+                  if (profile?.role === 'leader') {
+                    if (!profile?.department_id || e.department_id !== profile.department_id) return false
+                  }
                   return true
                 }).map((e) => ({ value: e.id, label: e.name }))}
                 placeholder="수습 직원 선택"
