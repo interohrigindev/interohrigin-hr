@@ -341,9 +341,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   }
 
   // 그룹이 보이려면 최소 1개 이상의 하위 메뉴가 보여야 함
+  // minRole 미충족 사용자라도 menu_permissions 에 명시적으로 권한이 부여된 하위 항목이 있으면 노출
+  // (예: 리더에게 '수습 평가' 권한만 부여한 경우 OJT/수습 그룹이 열림)
   function isGroupVisible(group: NavGroup): boolean {
-    if (group.minRole && !hasRole(group.minRole)) return false
-    return group.items.some(isItemVisible)
+    const meetsRole = !group.minRole || hasRole(group.minRole)
+    if (meetsRole) return group.items.some(isItemVisible)
+    // minRole 미충족 — 명시적 menu_permissions 권한 보유 항목이 있으면 노출
+    if (!allowedMenus) return false
+    return group.items.some((item) => {
+      if (item.hideForRoles && profile?.role && item.hideForRoles.includes(profile.role as EmployeeRole)) return false
+      const path = typeof item.to === 'string' ? item.to : ''
+      if (!path) return false
+      return allowedMenus.includes(path)
+    })
   }
 
   function toggleGroup(groupId: string) {
