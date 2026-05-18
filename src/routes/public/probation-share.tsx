@@ -5,6 +5,7 @@ import {
   TrendingUp, ThumbsUp, AlertTriangle, Sparkles,
   GraduationCap, Building2, CalendarDays, User as UserIcon,
   Lightbulb, Target, LineChart, Award,
+  ArrowUp, ArrowDown, Minus, Activity, Users as UsersIcon, Flag, Compass,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
@@ -125,6 +126,52 @@ function gradeBg(score: number): string {
   if (score >= 70) return 'bg-brand-500'
   if (score >= 50) return 'bg-amber-500'
   return 'bg-red-500'
+}
+
+// AI 추이 분석 텍스트를 6개 섹션(번호별)으로 파싱
+function parseTrendSections(text: string): Array<{ num: number; title: string; body: string }> {
+  if (!text) return []
+  const sections: Array<{ num: number; title: string; body: string }> = []
+  // "1. ", "\n1." 등으로 시작하는 블록 분리
+  const blocks = text.split(/(?=^\s*\d+\.\s)|(?=\n\d+\.\s)/m).map((b) => b.trim()).filter(Boolean)
+  for (const block of blocks) {
+    const m = block.match(/^(\d+)\.\s*(.*?)(?:\n|$)([\s\S]*)/)
+    if (!m) continue
+    const num = parseInt(m[1], 10)
+    const titleLine = m[2].trim()
+    let title = titleLine
+    let body = (m[3] || '').trim()
+    // 제목과 본문이 한 줄에 콜론으로 구분된 경우
+    if (titleLine.includes(':')) {
+      const [t, ...rest] = titleLine.split(':')
+      title = t.trim()
+      const inline = rest.join(':').trim()
+      body = inline + (body ? '\n' + body : '')
+    }
+    if (title) sections.push({ num, title, body })
+  }
+  return sections
+}
+
+const TREND_SECTION_META: Record<number, { color: string; icon: any; titleFallback: string }> = {
+  1: { color: 'blue',    icon: Activity,  titleFallback: '전체 성장 추이' },
+  2: { color: 'emerald', icon: TrendingUp, titleFallback: '성장한 영역 / 정체된 영역' },
+  3: { color: 'amber',   icon: Flag,      titleFallback: '단계별 변화 포인트' },
+  4: { color: 'purple',  icon: UsersIcon, titleFallback: '평가자 간 차이 분석' },
+  5: { color: 'indigo',  icon: Award,     titleFallback: '종합 의견 및 권고' },
+  6: { color: 'cyan',    icon: Compass,   titleFallback: '향후 성장 제안' },
+}
+
+function colorClasses(color: string): { bg: string; border: string; iconBg: string; iconText: string; title: string } {
+  const map: Record<string, { bg: string; border: string; iconBg: string; iconText: string; title: string }> = {
+    blue:    { bg: 'bg-blue-50',    border: 'border-blue-200',    iconBg: 'bg-blue-100',    iconText: 'text-blue-600',    title: 'text-blue-900' },
+    emerald: { bg: 'bg-emerald-50', border: 'border-emerald-200', iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', title: 'text-emerald-900' },
+    amber:   { bg: 'bg-amber-50',   border: 'border-amber-200',   iconBg: 'bg-amber-100',   iconText: 'text-amber-600',   title: 'text-amber-900' },
+    purple:  { bg: 'bg-purple-50',  border: 'border-purple-200',  iconBg: 'bg-purple-100',  iconText: 'text-purple-600',  title: 'text-purple-900' },
+    indigo:  { bg: 'bg-indigo-50',  border: 'border-indigo-200',  iconBg: 'bg-indigo-100',  iconText: 'text-indigo-600',  title: 'text-indigo-900' },
+    cyan:    { bg: 'bg-cyan-50',    border: 'border-cyan-200',    iconBg: 'bg-cyan-100',    iconText: 'text-cyan-600',    title: 'text-cyan-900' },
+  }
+  return map[color] || map.blue
 }
 
 function getRecommendationMajority(evals: SharedEvaluation[]): Recommendation {
@@ -450,24 +497,194 @@ export default function ProbationSharePage() {
           </section>
         )}
 
-        {/* AI 추이 분석 */}
-        {data.ai_cache?.trend?.text && (
-          <section className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 px-6 py-4 border-b border-blue-200">
-              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <LineChart className="h-5 w-5 text-blue-600" /> AI 추이 분석
-                <span className="text-xs font-normal text-gray-500">회차별 변화 종합</span>
-              </h2>
-            </div>
-            <div className="p-6">
-              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
-                <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-                  {data.ai_cache.trend.text}
-                </p>
+        {/* AI 추이 분석 — 시각화된 카드 */}
+        {(data.ai_cache?.trend?.text || stagesPresent.length >= 2) && (() => {
+          const sections = parseTrendSections(data.ai_cache?.trend?.text || '')
+          // 항목별 회차 변화 (5개 평가 항목 × 회차)
+          const itemTrends = PROBATION_CRITERIA.map((c) => {
+            const perStage = stagesPresent.map((stage) => {
+              const list = byStage.get(stage) || []
+              const vals = list.map((e) => e.scores?.[c.key] ?? 0)
+              return { stage, avg: avgOfArray(vals) }
+            })
+            const first = perStage[0]?.avg ?? 0
+            const last = perStage[perStage.length - 1]?.avg ?? 0
+            const delta = last - first
+            return { key: c.key, label: c.label, perStage, delta }
+          })
+          // 평가자 역할별 회차 평균
+          const roleKeys: Array<'leader' | 'executive' | 'ceo'> = ['leader', 'executive', 'ceo']
+          const roleTrends = roleKeys.map((role) => {
+            const perStage = stagesPresent.map((stage) => {
+              const list = (byStage.get(stage) || []).filter((e) => e.evaluator_role === role)
+              const vals = list.map((e) => totalScore(e.scores))
+              return { stage, avg: avgOfArray(vals), count: list.length }
+            })
+            const hasData = perStage.some((p) => p.count > 0)
+            return { role, perStage, hasData }
+          }).filter((r) => r.hasData)
+          // 회차별 권고 다수결
+          const recPerStage = stagesPresent.map((stage) => ({
+            stage,
+            rec: getRecommendationMajority(byStage.get(stage) || []),
+          }))
+
+          return (
+            <section className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden">
+              <div className="bg-gradient-to-r from-blue-50 via-cyan-50 to-sky-50 px-6 py-4 border-b border-blue-200">
+                <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <LineChart className="h-5 w-5 text-blue-600" /> AI 추이 분석
+                  <span className="text-xs font-normal text-gray-500">회차 간 변화 종합 + 데이터 시각화</span>
+                </h2>
               </div>
-            </div>
-          </section>
-        )}
+
+              <div className="p-6 space-y-5">
+                {/* ① 항목별 변화 */}
+                {stagesPresent.length >= 2 && (
+                  <div className="border border-gray-200 rounded-xl p-4">
+                    <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-1.5">
+                      <Activity className="h-4 w-4 text-blue-500" /> 평가 항목별 변화
+                    </h3>
+                    <div className="space-y-2">
+                      {itemTrends.map((it) => {
+                        const trendCls = it.delta > 0.5 ? 'text-emerald-600' : it.delta < -0.5 ? 'text-red-600' : 'text-gray-500'
+                        const TrendIcon = it.delta > 0.5 ? ArrowUp : it.delta < -0.5 ? ArrowDown : Minus
+                        return (
+                          <div key={it.key} className="grid grid-cols-12 items-center gap-2 text-sm">
+                            <div className="col-span-3 text-gray-700 font-medium truncate" title={it.label}>{it.label}</div>
+                            {/* 회차별 점수 막대 */}
+                            <div className="col-span-7 flex items-center gap-1.5">
+                              {it.perStage.map((ps, idx) => (
+                                <div key={ps.stage} className="flex-1 flex items-center gap-1.5">
+                                  <div className="flex-1 bg-gray-100 rounded h-5 relative overflow-hidden">
+                                    <div className={`absolute left-0 top-0 bottom-0 ${gradeBg(ps.avg * 5)} rounded`}
+                                         style={{ width: `${Math.min(ps.avg * 5, 100)}%` }} />
+                                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white drop-shadow">
+                                      {ps.avg.toFixed(1)}
+                                    </span>
+                                  </div>
+                                  {idx < it.perStage.length - 1 && <span className="text-gray-300 text-xs">→</span>}
+                                </div>
+                              ))}
+                            </div>
+                            {/* 변화량 */}
+                            <div className={`col-span-2 flex items-center justify-end gap-1 text-sm font-bold ${trendCls}`}>
+                              <TrendIcon className="h-3.5 w-3.5" />
+                              <span>{it.delta > 0 ? '+' : ''}{it.delta.toFixed(1)}</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <p className="mt-3 text-[11px] text-gray-400">
+                      ※ 색상은 점수에 따라 변경됩니다 (초록 ≥17, 보라 ≥14, 주황 ≥10, 빨강 &lt;10). 변화량은 첫 회차 대비 마지막 회차.
+                    </p>
+                  </div>
+                )}
+
+                {/* ② 평가자 역할별 추이 (멀티 라인 차트) */}
+                {roleTrends.length > 0 && stagesPresent.length >= 2 && (
+                  <div className="border border-gray-200 rounded-xl p-4">
+                    <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-1.5">
+                      <UsersIcon className="h-4 w-4 text-purple-500" /> 평가자 역할별 점수 추이
+                    </h3>
+                    <div className="space-y-3">
+                      {roleTrends.map((rt) => (
+                        <div key={rt.role}>
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full border font-semibold ${ROLE_BADGE[rt.role]}`}>
+                              {ROLE_LABEL[rt.role]}
+                            </span>
+                            <span className="text-gray-500">
+                              {rt.perStage.map((p) => `${(STAGE_LABEL[p.stage] || p.stage).split(' ')[0]}: ${p.avg.toFixed(0)}점`).join(' → ')}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5" style={{ height: '40px' }}>
+                            {rt.perStage.map((ps, idx) => (
+                              <div key={ps.stage} className="flex-1 flex items-center gap-1.5 h-full">
+                                <div className="flex-1 bg-gray-100 rounded h-full relative overflow-hidden">
+                                  <div className={`absolute bottom-0 left-0 right-0 ${gradeBg(ps.avg)} rounded transition-all`}
+                                       style={{ height: `${Math.min(ps.avg, 100)}%`, opacity: ps.count > 0 ? 1 : 0.2 }} />
+                                  <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white drop-shadow">
+                                    {ps.count > 0 ? ps.avg.toFixed(0) : '-'}
+                                  </span>
+                                </div>
+                                {idx < rt.perStage.length - 1 && <span className="text-gray-300 text-sm">→</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ③ 권고 변화 타임라인 */}
+                {recPerStage.some((r) => r.rec) && (
+                  <div className="border border-gray-200 rounded-xl p-4">
+                    <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-1.5">
+                      <Flag className="h-4 w-4 text-amber-500" /> 권고 변화 타임라인
+                    </h3>
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                      {recPerStage.map((r, idx) => {
+                        const rec = r.rec ? REC_STYLE[r.rec] : null
+                        return (
+                          <div key={r.stage} className="flex items-center gap-2">
+                            <div className="flex flex-col items-center gap-1.5 min-w-[88px]">
+                              <span className="text-[11px] text-gray-500 font-medium">{STAGE_LABEL[r.stage] || r.stage}</span>
+                              {rec ? (
+                                <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-semibold ${rec.cls}`}>
+                                  {(() => { const I = rec.icon; return <I className="h-3.5 w-3.5" /> })()} {rec.label}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-400 px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200">미정</span>
+                              )}
+                            </div>
+                            {idx < recPerStage.length - 1 && <span className="text-gray-300">→</span>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ④ AI 텍스트를 6개 섹션 카드로 분리 */}
+                {sections.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {sections.map((s) => {
+                      const meta = TREND_SECTION_META[s.num] || TREND_SECTION_META[1]
+                      const c = colorClasses(meta.color)
+                      const Icon = meta.icon
+                      return (
+                        <div key={s.num} className={`${c.bg} border ${c.border} rounded-xl p-4`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`h-7 w-7 rounded-full ${c.iconBg} ${c.iconText} flex items-center justify-center shrink-0`}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Section {s.num}</div>
+                              <h4 className={`text-sm font-bold ${c.title} truncate`}>{s.title}</h4>
+                            </div>
+                          </div>
+                          {s.body && (
+                            <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{s.body}</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : data.ai_cache?.trend?.text ? (
+                  // 파싱 실패한 경우 fallback (전체 텍스트 그대로)
+                  <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
+                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                      {data.ai_cache.trend.text}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          )
+        })()}
 
         {/* 회차별 상세 */}
         {stagesPresent.map((stage) => {
