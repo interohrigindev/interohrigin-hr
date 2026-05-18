@@ -533,15 +533,17 @@ ${prevSummary}
         // 현재 수습 상태 (employment_type/position 기반)
         const isCurrentlyProbation = (e: typeof allLifecycle[number]) =>
           e.employment_type === 'probation' || (e.position ?? '').includes('수습')
-        // 정규직 전환 추정 조건: 명시적 passed OR (활성 + 수습 이력 + 현재 수습 아님 + failed 아님)
-        const isInferredPassed = (e: typeof allLifecycle[number]) =>
-          e.probation_result === 'passed'
-          || (e.is_active !== false && evaluatedIds.has(e.id) && !isCurrentlyProbation(e) && e.probation_result !== 'failed')
+        // 정규직 전환 = 입사구분(employment_type)이 정규직(full_time) 이면 전환된 것으로 판정
+        // (수습평가 이력 유무와 무관 — 일부 직원은 평가 기록이 없을 수도 있음)
+        const isPassed = (e: typeof allLifecycle[number]) =>
+          e.is_active !== false
+          && e.probation_result !== 'failed'
+          && (e.probation_result === 'passed' || e.employment_type === 'full_time')
         const inProgressEmps = allLifecycle.filter((e) =>
           e.is_active !== false && isCurrentlyProbation(e)
           && e.probation_result !== 'passed' && e.probation_result !== 'failed'
         )
-        const passedEmps = allLifecycle.filter((e) => e.is_active !== false && isInferredPassed(e))
+        const passedEmps = allLifecycle.filter((e) => isPassed(e) && evaluatedIds.has(e.id))
         const failedEmps = allLifecycle.filter((e) =>
           (e.probation_result === 'failed' || e.is_active === false) && evaluatedIds.has(e.id)
         )
@@ -585,11 +587,11 @@ ${prevSummary}
                 && e.probation_result !== 'passed' && e.probation_result !== 'failed'
             }
             if (lifecycleTab === 'passed') {
-              // 명시적 passed 또는 추정 (활성 + 수습 이력 + 현재 수습 아님 + failed 아님)
-              return e.is_active !== false && (
-                e.probation_result === 'passed'
-                || (evaluatedIds.has(e.id) && !isCurrentlyProbation(e) && e.probation_result !== 'failed')
-              )
+              // employment_type='full_time' = 정규직 전환 (또는 명시적 passed)
+              return e.is_active !== false
+                && e.probation_result !== 'failed'
+                && evaluatedIds.has(e.id)
+                && (e.probation_result === 'passed' || e.employment_type === 'full_time')
             }
             // failed: probation_result=failed 또는 퇴사자 (단 수습평가 이력이 있는 경우)
             return (e.probation_result === 'failed' || e.is_active === false) && evaluatedIds.has(e.id)
@@ -890,6 +892,14 @@ ${prevSummary}
                             const myAlreadyEvaluated = stageEvals.some(
                               (ev) => ev.evaluator_id === profile?.id && ev.evaluator_role === myRole
                             )
+                            // 라이프사이클 종료된 직원의 평가는 신규 입력 불가 (정규직 전환/탈락/수습 90일 종료)
+                            const _probEnd = hire ? new Date(hire.getTime() + 90 * 86400000) : null
+                            const _probPeriodOver = !!_probEnd && _probEnd.getTime() < today.getTime()
+                            const _lifecycleSettled = emp.probation_result === 'passed'
+                              || emp.probation_result === 'failed'
+                              || emp.employment_type === 'full_time'
+                              || emp.is_active === false
+                              || _probPeriodOver
                             const needsMyEval = !!profile?.id
                               && isProbationEvaluator(profile?.role)
                               && !isClosed
@@ -898,13 +908,16 @@ ${prevSummary}
                               && !isLeaderForOtherDept
                               && !leaderLacksPermission
                               && !myAlreadyEvaluated
+                              && !_lifecycleSettled
                             // 미도래(diff > 0): 평가 기간이 시작되지 않았으므로 클릭 차단 (요구사항 #2)
                             // 피드백: 다른 사람이 이미 평가했어도(=isCompleted), 내가 평가해야 한다면(needsMyEval) 클릭 가능
                             // 관리자 권한자: 예정일 도달 이후 진행 중 셀 클릭 시 독려 모달
                             // (조기 평가 케이스는 예정일 전이라 독려 대상에서 제외)
                             const cellFullyDone = stageEvals.length > 0 && isStageFullyEvaluated(stageEvals, emp)
-                            const reminderEligible = canSendProbationReminder(profile) && !!hire && !isFuture && !isClosed && !cellFullyDone
-                            const canClick = !!hire && !isFuture && !isClosed && (!isCompleted || needsMyEval || reminderEligible)
+                            // (위에서 계산된 _lifecycleSettled 재사용)
+                            const isLifecycleSettled = _lifecycleSettled
+                            const reminderEligible = canSendProbationReminder(profile) && !!hire && !isFuture && !isClosed && !cellFullyDone && !isLifecycleSettled
+                            const canClick = !!hire && !isFuture && !isClosed && !isLifecycleSettled && (!isCompleted || needsMyEval || reminderEligible)
                             return (
                               <td
                                 key={stg}
@@ -938,13 +951,15 @@ ${prevSummary}
                                   }
                                 } : undefined}
                                 title={
-                                  needsMyEval
-                                    ? `📝 내가 평가해야 합니다 — ${emp.name} ${stageLabel}`
-                                    : canClick
-                                      ? `${emp.name} - ${stageLabel} ${isOverdue ? '(초과)' : ''}`
-                                      : isFuture && !isCompleted
-                                        ? `${emp.name} - ${stageLabel}: 평가 기간이 아직 도래하지 않았습니다`
-                                        : undefined
+                                  isLifecycleSettled
+                                    ? `${emp.name} - ${stageLabel}: 수습 기간이 종료되어 평가가 잠겼습니다`
+                                    : needsMyEval
+                                      ? `📝 내가 평가해야 합니다 — ${emp.name} ${stageLabel}`
+                                      : canClick
+                                        ? `${emp.name} - ${stageLabel} ${isOverdue ? '(초과)' : ''}`
+                                        : isFuture && !isCompleted
+                                          ? `${emp.name} - ${stageLabel}: 평가 기간이 아직 도래하지 않았습니다`
+                                          : undefined
                                 }
                               >
                                 {needsMyEval && (
@@ -957,19 +972,14 @@ ${prevSummary}
                           <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(endDate)}</td>
                           <td className="py-2.5 px-3 text-center text-gray-700">
                             {(() => {
-                              if (emp.probation_result === 'passed') {
+                              // 정규직 전환 — 명시적(passed) 또는 employment_type='full_time' 기준
+                              const isConverted = emp.probation_result === 'passed'
+                                || (emp.is_active !== false && emp.employment_type === 'full_time')
+                              if (isConverted) {
                                 return (
                                   <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                                     정규직 전환
                                     {emp.converted_to_regular_at && <span className="text-[10px] text-emerald-500">({emp.converted_to_regular_at.replaceAll('-', '.')})</span>}
-                                  </span>
-                                )
-                              }
-                              // 추정 정규직 전환 (기존 데이터 — DB 컬럼 없이 employment_type만 변경된 케이스)
-                              if (lifecycleTab === 'passed' && !emp.probation_result) {
-                                return (
-                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200" title="employment_type 기반 추정 — 정확한 전환일을 기록하려면 수습 중 상태에서 '통과' 처리하세요">
-                                    정규직 전환 (추정)
                                   </span>
                                 )
                               }
@@ -1025,7 +1035,20 @@ ${prevSummary}
                 label="직원 *"
                 value={selectedEmployeeId}
                 onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                options={employees.filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습')).map((e) => ({ value: e.id, label: e.name }))}
+                options={employees.filter((e) => {
+                  // 수습 중인 활성 직원만 표시 (라이프사이클 종료자 제외)
+                  if (e.is_active === false) return false
+                  if (e.probation_result === 'passed' || e.probation_result === 'failed') return false
+                  if (e.employment_type === 'full_time') return false
+                  const hasProbType = e.employment_type === 'probation' || (e.position ?? '').includes('수습')
+                  if (!hasProbType) return false
+                  // 수습 90일 종료된 직원도 제외
+                  if (e.hire_date) {
+                    const probEnd = new Date(new Date(e.hire_date).getTime() + 90 * 86400000)
+                    if (probEnd.getTime() < new Date().getTime()) return false
+                  }
+                  return true
+                }).map((e) => ({ value: e.id, label: e.name }))}
                 placeholder="수습 직원 선택"
               />
               <Select
