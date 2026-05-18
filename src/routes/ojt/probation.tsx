@@ -67,6 +67,9 @@ interface EmployeeBasic {
   position: string | null
   role?: string | null
   is_active?: boolean | null
+  probation_completed_at?: string | null
+  probation_result?: 'passed' | 'failed' | 'pending' | null
+  converted_to_regular_at?: string | null
   job_title?: string | null
   annual_salary?: number | null
 }
@@ -83,6 +86,12 @@ export default function ProbationManage() {
   const [employees, setEmployees] = useState<EmployeeBasic[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
+
+  // 수습 라이프사이클 탭: in_progress(수습중) | passed(정규직 전환) | failed(계약 종료)
+  const [lifecycleTab, setLifecycleTab] = useState<'in_progress' | 'passed' | 'failed'>('in_progress')
+  // 통과/탈락 처리 다이얼로그
+  const [lifecycleAction, setLifecycleAction] = useState<{ empId: string; empName: string; action: 'passed' | 'failed' } | null>(null)
+  const [lifecycleSubmitting, setLifecycleSubmitting] = useState(false)
 
   // New evaluation dialog
   const [evalDialogOpen, setEvalDialogOpen] = useState(false)
@@ -199,6 +208,34 @@ export default function ProbationManage() {
     setReminderSendingId(null)
   }
 
+  // 수습 통과/탈락 처리
+  async function processLifecycleAction(empId: string, action: 'passed' | 'failed') {
+    setLifecycleSubmitting(true)
+    const today = new Date()
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const patch: Record<string, unknown> = {
+      probation_result: action,
+      probation_completed_at: todayStr,
+    }
+    if (action === 'passed') {
+      patch.employment_type = 'full_time'
+      patch.converted_to_regular_at = todayStr
+    } else {
+      patch.is_active = false
+    }
+    const { error } = await supabase.from('employees').update(patch).eq('id', empId)
+    setLifecycleSubmitting(false)
+    if (error) {
+      toast('처리 실패: ' + error.message, 'error')
+      return
+    }
+    toast(action === 'passed' ? '수습 통과 (정규직 전환) 처리 완료' : '수습 탈락 (계약 종료) 처리 완료', 'success')
+    setLifecycleAction(null)
+    if (action === 'passed') setLifecycleTab('passed')
+    else setLifecycleTab('failed')
+    fetchData()
+  }
+
   // 회차의 모든 필수 평가자(피평가자 부서 기준 리더+임원+대표)가 평가 완료했는지 판정
   function isStageFullyEvaluated(stageEvals: typeof evaluations, emp: { department_id?: string | null }) {
     const counts = getRequiredCountsFor(emp)
@@ -212,7 +249,7 @@ export default function ProbationManage() {
     setLoading(true)
     const [evalRes, empRes, deptRes, hrRes, teamsRes, closuresRes, mpRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, name, email, department_id, hire_date, employment_type, position, role, is_active').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id, name, email, department_id, hire_date, employment_type, position, role, is_active, probation_completed_at, probation_result, converted_to_regular_at').order('name'),
       supabase.from('departments').select('id, name'),
       supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
       supabase.from('employee_teams').select('employee_id, department_id'),
@@ -488,14 +525,70 @@ ${prevSummary}
         5개 항목 × 20점 (100점 만점) | 3회차 (2주/6주/10주) | 3인 평가 (리더/임원/대표)
       </div>
 
+      {/* 수습 라이프사이클 탭 (수습중 / 정규직 전환 / 계약 종료) */}
+      {(() => {
+        const evaluatedIds = new Set(evaluations.map((ev) => ev.employee_id))
+        const isLeaderRole = profile?.role === 'leader'
+        const allLifecycle = employees.filter((e) => !isLeaderRole || (profile?.department_id && e.department_id === profile.department_id))
+        const inProgressEmps = allLifecycle.filter((e) =>
+          e.is_active !== false && (e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
+          && e.probation_result !== 'passed' && e.probation_result !== 'failed'
+        )
+        const passedEmps = allLifecycle.filter((e) =>
+          e.is_active !== false && e.probation_result === 'passed' && evaluatedIds.has(e.id)
+        )
+        const failedEmps = allLifecycle.filter((e) =>
+          (e.probation_result === 'failed' || e.is_active === false) && evaluatedIds.has(e.id)
+        )
+        return (
+          <div className="flex items-center gap-2 border-b border-gray-200">
+            {([
+              { key: 'in_progress', label: '수습 중', count: inProgressEmps.length, cls: 'text-amber-700 border-amber-500' },
+              { key: 'passed',      label: '정규직 전환', count: passedEmps.length,     cls: 'text-emerald-700 border-emerald-500' },
+              { key: 'failed',      label: '계약 종료',  count: failedEmps.length,     cls: 'text-gray-600 border-gray-500' },
+            ] as const).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setLifecycleTab(tab.key)}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                  lifecycleTab === tab.key
+                    ? tab.cls
+                    : 'text-gray-500 border-transparent hover:text-gray-700'
+                }`}
+              >
+                {tab.label} <span className="ml-1 text-xs font-normal">({tab.count})</span>
+              </button>
+            ))}
+          </div>
+        )
+      })()}
+
       {/* 수습 직원 평가 일정 테이블 */}
       {(() => {
         // Module 5: 리더는 본인 부서만 노출 / 임원·대표·관리자는 전체
         const isLeaderRole = profile?.role === 'leader'
+        const evaluatedIds = new Set(evaluations.map((ev) => ev.employee_id))
         const probEmpsRaw = employees
-          .filter((e) => e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
           .filter((e) => !isLeaderRole || (profile?.department_id && e.department_id === profile.department_id))
-        if (probEmpsRaw.length === 0) return null
+          .filter((e) => {
+            if (lifecycleTab === 'in_progress') {
+              return e.is_active !== false
+                && (e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
+                && e.probation_result !== 'passed' && e.probation_result !== 'failed'
+            }
+            if (lifecycleTab === 'passed') {
+              return e.is_active !== false && e.probation_result === 'passed' && evaluatedIds.has(e.id)
+            }
+            // failed: probation_result=failed 또는 퇴사자 (단 수습평가 이력이 있는 경우)
+            return (e.probation_result === 'failed' || e.is_active === false) && evaluatedIds.has(e.id)
+          })
+        if (probEmpsRaw.length === 0) {
+          const emptyLabel = lifecycleTab === 'in_progress' ? '현재 수습 중인 직원이 없습니다.'
+            : lifecycleTab === 'passed' ? '정규직으로 전환된 직원이 없습니다.'
+            : '수습 종료 후 계약이 종료된 직원이 없습니다.'
+          return <div className="p-8 text-center text-sm text-gray-500">{emptyLabel}</div>
+        }
 
         const today = new Date()
         const formatDate = (d: Date | null) => d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}` : '-'
@@ -619,6 +712,7 @@ ${prevSummary}
                       <th className="text-center py-2.5 px-3 font-semibold">2회차 (6주)</th>
                       <th className="text-center py-2.5 px-3 font-semibold">3회차 (10주)</th>
                       <th className="text-center py-2.5 px-3 font-semibold">수습 종료일</th>
+                      <th className="text-center py-2.5 px-3 font-semibold">결과 처리</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -850,6 +944,41 @@ ${prevSummary}
                             )
                           })}
                           <td className="py-2.5 px-3 text-center text-gray-700">{formatDate(endDate)}</td>
+                          <td className="py-2.5 px-3 text-center text-gray-700">
+                            {(() => {
+                              if (emp.probation_result === 'passed') {
+                                return (
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                                    정규직 전환
+                                    {emp.converted_to_regular_at && <span className="text-[10px] text-emerald-500">({emp.converted_to_regular_at.replaceAll('-', '.')})</span>}
+                                  </span>
+                                )
+                              }
+                              if (emp.probation_result === 'failed') {
+                                return (
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">
+                                    계약 종료
+                                    {emp.probation_completed_at && <span className="text-[10px] text-gray-500">({emp.probation_completed_at.replaceAll('-', '.')})</span>}
+                                  </span>
+                                )
+                              }
+                              if (canSendProbationReminder(profile) && lifecycleTab === 'in_progress') {
+                                return (
+                                  <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                    <Button size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50"
+                                      onClick={() => setLifecycleAction({ empId: emp.id, empName: emp.name, action: 'passed' })}>
+                                      통과
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50"
+                                      onClick={() => setLifecycleAction({ empId: emp.id, empName: emp.name, action: 'failed' })}>
+                                      탈락
+                                    </Button>
+                                  </div>
+                                )
+                              }
+                              return <span className="text-xs text-gray-400">-</span>
+                            })()}
+                          </td>
                         </tr>
                       )
                     })}
@@ -1088,6 +1217,52 @@ ${prevSummary}
                 <Lock className="h-4 w-4 mr-1.5" /> 마감 처리 (평가 없이 skip)
               </Button>
               <Button variant="ghost" onClick={() => setCellAction(null)}>닫기</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 수습 통과/탈락 확정 다이얼로그 */}
+      {lifecycleAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !lifecycleSubmitting && setLifecycleAction(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-2">
+              {lifecycleAction.action === 'passed'
+                ? <Sparkles className="h-5 w-5 text-emerald-500 mt-0.5 shrink-0" />
+                : <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />}
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  {lifecycleAction.action === 'passed' ? '수습 통과 처리 — 정규직 전환' : '수습 탈락 처리 — 계약 종료'}
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  <strong>{lifecycleAction.empName}</strong> 직원의 수습평가를 {lifecycleAction.action === 'passed' ? '통과로 확정' : '탈락으로 확정'}하시겠습니까?
+                </p>
+                {lifecycleAction.action === 'passed' ? (
+                  <ul className="text-xs text-gray-500 mt-2 list-disc pl-4 space-y-0.5">
+                    <li>고용 형태가 <b>정규직(full_time)</b> 으로 변경됩니다.</li>
+                    <li>정규직 전환일이 오늘로 기록됩니다.</li>
+                    <li>이후 인사평가 화면에서 수습 이력이 함께 조회됩니다.</li>
+                  </ul>
+                ) : (
+                  <ul className="text-xs text-gray-500 mt-2 list-disc pl-4 space-y-0.5">
+                    <li>재직 상태가 <b>퇴사(is_active=false)</b> 로 변경됩니다.</li>
+                    <li>수습 종료일이 오늘로 기록됩니다.</li>
+                    <li>로그인이 제한되며 '계약 종료' 탭으로 이동합니다.</li>
+                  </ul>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setLifecycleAction(null)} disabled={lifecycleSubmitting}>취소</Button>
+              <Button
+                onClick={() => processLifecycleAction(lifecycleAction.empId, lifecycleAction.action)}
+                disabled={lifecycleSubmitting}
+                className={lifecycleAction.action === 'passed' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}
+              >
+                {lifecycleSubmitting
+                  ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 처리 중...</>
+                  : (lifecycleAction.action === 'passed' ? '통과 확정' : '탈락 확정')}
+              </Button>
             </div>
           </div>
         </div>
