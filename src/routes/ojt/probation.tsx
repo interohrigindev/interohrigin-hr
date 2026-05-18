@@ -530,13 +530,18 @@ ${prevSummary}
         const evaluatedIds = new Set(evaluations.map((ev) => ev.employee_id))
         const isLeaderRole = profile?.role === 'leader'
         const allLifecycle = employees.filter((e) => !isLeaderRole || (profile?.department_id && e.department_id === profile.department_id))
+        // 현재 수습 상태 (employment_type/position 기반)
+        const isCurrentlyProbation = (e: typeof allLifecycle[number]) =>
+          e.employment_type === 'probation' || (e.position ?? '').includes('수습')
+        // 정규직 전환 추정 조건: 명시적 passed OR (활성 + 수습 이력 + 현재 수습 아님 + failed 아님)
+        const isInferredPassed = (e: typeof allLifecycle[number]) =>
+          e.probation_result === 'passed'
+          || (e.is_active !== false && evaluatedIds.has(e.id) && !isCurrentlyProbation(e) && e.probation_result !== 'failed')
         const inProgressEmps = allLifecycle.filter((e) =>
-          e.is_active !== false && (e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
+          e.is_active !== false && isCurrentlyProbation(e)
           && e.probation_result !== 'passed' && e.probation_result !== 'failed'
         )
-        const passedEmps = allLifecycle.filter((e) =>
-          e.is_active !== false && e.probation_result === 'passed' && evaluatedIds.has(e.id)
-        )
+        const passedEmps = allLifecycle.filter((e) => e.is_active !== false && isInferredPassed(e))
         const failedEmps = allLifecycle.filter((e) =>
           (e.probation_result === 'failed' || e.is_active === false) && evaluatedIds.has(e.id)
         )
@@ -569,16 +574,22 @@ ${prevSummary}
         // Module 5: 리더는 본인 부서만 노출 / 임원·대표·관리자는 전체
         const isLeaderRole = profile?.role === 'leader'
         const evaluatedIds = new Set(evaluations.map((ev) => ev.employee_id))
+        const isCurrentlyProbation = (e: typeof employees[number]) =>
+          e.employment_type === 'probation' || (e.position ?? '').includes('수습')
         const probEmpsRaw = employees
           .filter((e) => !isLeaderRole || (profile?.department_id && e.department_id === profile.department_id))
           .filter((e) => {
             if (lifecycleTab === 'in_progress') {
               return e.is_active !== false
-                && (e.employment_type === 'probation' || (e.position ?? '').includes('수습'))
+                && isCurrentlyProbation(e)
                 && e.probation_result !== 'passed' && e.probation_result !== 'failed'
             }
             if (lifecycleTab === 'passed') {
-              return e.is_active !== false && e.probation_result === 'passed' && evaluatedIds.has(e.id)
+              // 명시적 passed 또는 추정 (활성 + 수습 이력 + 현재 수습 아님 + failed 아님)
+              return e.is_active !== false && (
+                e.probation_result === 'passed'
+                || (evaluatedIds.has(e.id) && !isCurrentlyProbation(e) && e.probation_result !== 'failed')
+              )
             }
             // failed: probation_result=failed 또는 퇴사자 (단 수습평가 이력이 있는 경우)
             return (e.probation_result === 'failed' || e.is_active === false) && evaluatedIds.has(e.id)
@@ -951,6 +962,14 @@ ${prevSummary}
                                   <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                                     정규직 전환
                                     {emp.converted_to_regular_at && <span className="text-[10px] text-emerald-500">({emp.converted_to_regular_at.replaceAll('-', '.')})</span>}
+                                  </span>
+                                )
+                              }
+                              // 추정 정규직 전환 (기존 데이터 — DB 컬럼 없이 employment_type만 변경된 케이스)
+                              if (lifecycleTab === 'passed' && !emp.probation_result) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200" title="employment_type 기반 추정 — 정확한 전환일을 기록하려면 수습 중 상태에서 '통과' 처리하세요">
+                                    정규직 전환 (추정)
                                   </span>
                                 )
                               }
