@@ -120,10 +120,10 @@ export async function generateAIContent(config: AIConfig, prompt: string, files?
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     const cls = classifyError(msg)
-    // 키 오류 또는 할당량 초과만 폴백 — 그 외(네트워크 등)는 원본 에러 유지
-    if (!cls.keyError && !cls.quotaError) throw err
+    // 키 오류 / 할당량 / 리전 차단 → 다른 provider 폴백
+    if (!cls.keyError && !cls.quotaError && !cls.regionError) throw err
 
-    console.warn(`[AI auto-fallback] ${config.provider} ${cls.keyError ? '키 오류' : '할당량'}. 다른 provider 시도.`)
+    console.warn(`[AI auto-fallback] ${config.provider} ${cls.keyError ? '키 오류' : cls.quotaError ? '할당량' : '리전 차단'}. 다른 provider 시도.`)
 
     // 폴백 후보 조회 (현재 config 제외)
     const { data: candidates } = await supabase
@@ -136,8 +136,14 @@ export async function generateAIContent(config: AIConfig, prompt: string, files?
 
     if (!candidates || candidates.length === 0) throw err
 
-    for (const c of candidates) {
+    // 리전 차단 시 같은 provider(gemini)는 계속 차단될 수 있으니 다른 provider 우선
+    const sortedCandidates = cls.regionError
+      ? [...candidates].sort((a) => (a.provider === config.provider ? 1 : -1))
+      : candidates
+
+    for (const c of sortedCandidates) {
       if (c.provider === config.provider && c.api_key === config.apiKey) continue
+      if (cls.regionError && c.provider === config.provider) continue // 같은 provider 스킵
       try {
         const content = await callAIProxy(c.api_key, {
           provider: c.provider,
@@ -148,16 +154,18 @@ export async function generateAIContent(config: AIConfig, prompt: string, files?
       } catch (fallbackErr) {
         const fmsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
         const fcls = classifyError(fmsg)
-        if (!fcls.keyError && !fcls.quotaError) throw fallbackErr
+        if (!fcls.keyError && !fcls.quotaError && !fcls.regionError) throw fallbackErr
         console.warn(`[AI auto-fallback] ${c.provider} 실패, 다음 후보 시도`)
       }
     }
 
     // 전체 폴백 실패 → 사용자 친화 메시지로 재throw
     throw new Error(
-      cls.keyError
-        ? 'AI 키가 유효하지 않습니다. 관리자에게 설정 > AI에서 키 갱신을 요청해주세요.'
-        : 'AI 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+      cls.regionError
+        ? 'AI 서비스가 현재 리전에서 차단됩니다. 다른 AI provider(OpenAI/Claude) 키를 설정 > AI에 등록하면 자동 폴백됩니다.'
+        : cls.keyError
+          ? 'AI 키가 유효하지 않습니다. 관리자에게 설정 > AI에서 키 갱신을 요청해주세요.'
+          : 'AI 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요.'
     )
   }
 }
@@ -176,7 +184,7 @@ export interface AIFallbackResult {
   keyError?: boolean
 }
 
-function classifyError(msg: string): { keyError: boolean; quotaError: boolean } {
+function classifyError(msg: string): { keyError: boolean; quotaError: boolean; regionError: boolean } {
   const lower = msg.toLowerCase()
   const keyError =
     lower.includes('incorrect api key') ||
@@ -194,7 +202,13 @@ function classifyError(msg: string): { keyError: boolean; quotaError: boolean } 
     lower.includes('rate limit') ||
     lower.includes('429') ||
     lower.includes('resource_exhausted')
-  return { keyError, quotaError }
+  // Gemini가 Cloudflare 엣지 리전을 차단하는 케이스 — 다른 provider 로 폴백
+  const regionError =
+    lower.includes('country, region, or territory not supported') ||
+    lower.includes('location not supported') ||
+    lower.includes('not available in your country') ||
+    lower.includes('user_location_invalid')
+  return { keyError, quotaError, regionError }
 }
 
 /**
