@@ -89,6 +89,78 @@ async function callAIProxy(apiKey: string, body: Record<string, unknown>): Promi
   return (data as any).content ?? ''
 }
 
+// ─── 브라우저 직접 호출 (Cloudflare 엣지 리전 차단 시 우회) ──────
+// 한국 사용자 IP에서 AI provider 로 직접 호출 → 차단 회피
+// 보안: API 키가 브라우저 네트워크 탭에 노출됨 (관리자 권한 한정 운용 전제)
+async function callAIDirectFromBrowser(
+  provider: 'gemini' | 'openai' | 'claude',
+  apiKey: string,
+  model: string,
+  body: { prompt?: string; messages?: { role: string; content: string }[]; systemPrompt?: string },
+): Promise<string> {
+  if (provider === 'gemini') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    const reqBody = {
+      contents: [{ parts: [{ text: body.prompt || '' }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(reqBody),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error((err as { error?: { message?: string } })?.error?.message || `Gemini API error: ${res.status}`)
+    }
+    const data = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
+    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  }
+
+  if (provider === 'openai') {
+    const systemMsg = body.systemPrompt || '당신은 인사평가 전문 분석가입니다. 한국어로 응답하며, 구조화된 마크다운 형식으로 분석 리포트를 작성합니다.'
+    const messages = [{ role: 'system', content: systemMsg }, { role: 'user', content: body.prompt || '' }]
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 4096 }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error((err as { error?: { message?: string } })?.error?.message || `OpenAI API error: ${res.status}`)
+    }
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
+    return data.choices?.[0]?.message?.content ?? ''
+  }
+
+  // claude
+  const systemMsg = body.systemPrompt || '당신은 인사평가 전문 분석가입니다. 한국어로 응답하며, 구조화된 마크다운 형식으로 분석 리포트를 작성합니다.'
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      system: systemMsg,
+      messages: [{ role: 'user', content: body.prompt || '' }],
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { error?: { message?: string } })?.error?.message || `Claude API error: ${res.status}`)
+  }
+  const data = await res.json() as { content?: Array<{ text?: string }> }
+  return data.content?.[0]?.text ?? ''
+}
+
 // ─── File attachment type ────────────────────────────────────────
 
 export interface AIFileAttachment {
@@ -134,23 +206,13 @@ export async function generateAIContent(config: AIConfig, prompt: string, files?
       .order('updated_at', { ascending: false })
       .limit(5)
 
-    // 폴백 후보 없으면 원본 에러 그대로 (실제 에러 메시지가 표시되어야 진단 가능)
-    if (!candidates || candidates.length === 0) {
-      throw new Error(
-        cls.regionError
-          ? `AI 호출이 현재 서버 리전에서 차단됩니다. (${config.provider}) 설정 > AI에 다른 provider(OpenAI/Claude) 키를 추가하면 자동 폴백됩니다. [원본: ${msg.slice(0, 120)}]`
-          : cls.keyError
-            ? `AI 키가 유효하지 않습니다. (${config.provider}) 관리자에게 설정 > AI에서 키 갱신을 요청해주세요. [원본: ${msg.slice(0, 120)}]`
-            : `AI 호출 실패: ${msg}`
-      )
-    }
+    const lastErrors: string[] = [`[${config.provider}] ${msg.slice(0, 100)}`]
 
     // 리전 차단 시 같은 provider(gemini)는 계속 차단될 수 있으니 다른 provider 우선
-    const sortedCandidates = cls.regionError
+    const sortedCandidates = candidates && cls.regionError
       ? [...candidates].sort((a) => (a.provider === config.provider ? 1 : -1))
-      : candidates
+      : (candidates || [])
 
-    const lastErrors: string[] = [`[${config.provider}] ${msg.slice(0, 100)}`]
     for (const c of sortedCandidates) {
       if (c.provider === config.provider && c.api_key === config.apiKey) continue
       if (cls.regionError && c.provider === config.provider) continue // 같은 provider 스킵
@@ -170,11 +232,34 @@ export async function generateAIContent(config: AIConfig, prompt: string, files?
       }
     }
 
-    // 전체 폴백 실패 → 모든 시도 에러를 포함해 진단 가능하게
+    // ⚡ 모든 서버 측 프록시 실패 + regionError → 브라우저에서 직접 호출 시도 (한국 사용자 IP 사용)
+    if (cls.regionError && body.action === 'generate' && !files) {
+      console.warn('[AI direct-browser fallback] 서버 측 모두 차단. 브라우저에서 직접 호출 시도.')
+      const browserCandidates: Array<{ provider: 'gemini' | 'openai' | 'claude'; api_key: string; model: string }> = [
+        { provider: config.provider as 'gemini' | 'openai' | 'claude', api_key: config.apiKey, model: config.model },
+        ...((candidates || []) as Array<{ provider: string; api_key: string; model: string }>)
+          .filter((c) => ['gemini', 'openai', 'claude'].includes(c.provider))
+          .map((c) => ({ provider: c.provider as 'gemini' | 'openai' | 'claude', api_key: c.api_key, model: c.model })),
+      ]
+      for (const bc of browserCandidates) {
+        try {
+          const content = await callAIDirectFromBrowser(bc.provider, bc.api_key, bc.model, {
+            prompt: prompt,
+          })
+          console.info(`[AI direct-browser] ${bc.provider} 성공 (브라우저 직접 호출)`)
+          return { content, provider: bc.provider, model: bc.model }
+        } catch (browserErr) {
+          const bmsg = browserErr instanceof Error ? browserErr.message : String(browserErr)
+          lastErrors.push(`[browser:${bc.provider}] ${bmsg.slice(0, 100)}`)
+        }
+      }
+    }
+
+    // 전체 실패 → 진단 정보 포함
     const diag = lastErrors.join(' / ')
     throw new Error(
       cls.regionError
-        ? `모든 AI provider가 차단/실패. 설정 > AI에서 키를 확인하거나 OpenAI/Claude 활성화 필요. 진단: ${diag}`
+        ? `모든 AI provider가 차단/실패 (서버+브라우저). 키 또는 네트워크 확인 필요. 진단: ${diag}`
         : cls.keyError
           ? `AI 키가 모두 유효하지 않습니다. 관리자에게 설정 > AI에서 키 갱신을 요청해주세요. 진단: ${diag}`
           : `AI 호출 실패. 진단: ${diag}`
