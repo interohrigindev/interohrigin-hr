@@ -125,6 +125,7 @@ import PublicExitSurvey from '@/routes/public/exit-survey'
 import AcceptOfferPage from '@/routes/public/accept-offer'
 import CareersPage from '@/routes/public/careers'
 import CandidateSharePage from '@/routes/public/candidate-share'
+import ProbationSharePage from '@/routes/public/probation-share'
 
 function App() {
   return (
@@ -146,6 +147,15 @@ function App() {
             <Route path="/accept/:token" element={<AcceptOfferPage />} />
             <Route path="/careers" element={<CareersPage />} />
             <Route path="/share/candidate/:token" element={<CandidateSharePage />} />
+            {/* 수습평가 공유 — 로그인 필수 (RPC 내부에서 권한 체크) */}
+            <Route
+              path="/share/probation/:token"
+              element={
+                <ProtectedRoute>
+                  <ProbationSharePage />
+                </ProtectedRoute>
+              }
+            />
 
             {/* 인증 필요 영역 */}
             <Route

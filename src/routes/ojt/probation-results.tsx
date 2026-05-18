@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Sparkles, Loader2, TrendingUp, AlertTriangle, CheckCircle, XCircle, Users, ChevronDown, ChevronUp, Pencil, FileDown } from 'lucide-react'
+import { Sparkles, Loader2, TrendingUp, AlertTriangle, CheckCircle, XCircle, Users, ChevronDown, ChevronUp, Pencil, FileDown, Link2, Copy, EyeOff } from 'lucide-react'
 import { generateProbationPdf } from '@/lib/pdf-probation'
 import { loadSealDataURL } from '@/lib/seal-stamp'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -158,6 +158,27 @@ export default function ProbationResults() {
 
   // 개별 독려 이메일 발송 상태 (key: `${empId}_${stage}_${evaluatorId}`)
   const [sendingReminderKey, setSendingReminderKey] = useState<string | null>(null)
+
+  // 공유 링크 상태
+  interface ProbationShareLink {
+    id: string
+    token: string
+    expires_at: string | null
+    is_active: boolean
+    note: string | null
+    created_at: string
+    view_count: number
+    last_viewed_at: string | null
+  }
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const [shareEmpId, setShareEmpId] = useState<string | null>(null)
+  const [shareEmpName, setShareEmpName] = useState<string>('')
+  const [shareLinks, setShareLinks] = useState<ProbationShareLink[]>([])
+  const [shareNote, setShareNote] = useState('')
+  const [shareExpiresDays, setShareExpiresDays] = useState('14')
+  const [creatingShare, setCreatingShare] = useState(false)
+  // 권한: admin / hr_admin / ceo / director / division_head / executive
+  const canShare = !!profile?.role && ['admin','hr_admin','ceo','director','division_head','executive'].includes(profile.role)
 
   // 견고한 JSON 추출: 코드펜스 제거 + 중괄호 구간만 절단
   function extractJson(raw: string): string {
@@ -726,6 +747,99 @@ ${prevSummary}
   }, [groupedByEmployee, expandedEmployees, overallAnalysis, analyzingEmp])
 
   // ─── Trend analysis ───────────────────────────────────────────
+  // ─── 공유 링크 ───────────────────────────────────────────
+  async function loadShareLinksFor(empId: string) {
+    const { data } = await supabase
+      .from('probation_share_links')
+      .select('id, token, expires_at, is_active, note, created_at, view_count, last_viewed_at')
+      .eq('employee_id', empId)
+      .order('created_at', { ascending: false })
+    setShareLinks((data as ProbationShareLink[]) || [])
+  }
+
+  async function openShareDialog(empId: string, empName: string) {
+    setShareEmpId(empId)
+    setShareEmpName(empName)
+    setShareNote('')
+    setShareExpiresDays('14')
+    await loadShareLinksFor(empId)
+    setShareDialogOpen(true)
+  }
+
+  async function createShareLink() {
+    if (!shareEmpId || !profile?.id) return
+    setCreatingShare(true)
+    try {
+      const days = parseInt(shareExpiresDays, 10)
+      const expires_at = days > 0 ? new Date(Date.now() + days * 86400 * 1000).toISOString() : null
+      const { error } = await supabase.from('probation_share_links').insert({
+        employee_id: shareEmpId,
+        expires_at,
+        note: shareNote.trim() || null,
+        created_by: profile.id,
+      })
+      if (error) throw error
+      toast('공유 링크가 생성되었습니다.', 'success')
+      setShareNote('')
+      await loadShareLinksFor(shareEmpId)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '공유 링크 생성 실패', 'error')
+    } finally {
+      setCreatingShare(false)
+    }
+  }
+
+  async function deactivateShareLink(linkId: string) {
+    if (!confirm('이 공유 링크를 비활성화하시겠습니까?')) return
+    const { error } = await supabase.from('probation_share_links').update({ is_active: false }).eq('id', linkId)
+    if (error) { toast(error.message, 'error'); return }
+    if (shareEmpId) await loadShareLinksFor(shareEmpId)
+  }
+
+  function copyShareUrl(token: string) {
+    const url = `${window.location.origin}/share/probation/${token}`
+    navigator.clipboard.writeText(url)
+      .then(() => toast('공유 링크가 복사되었습니다.', 'success'))
+      .catch(() => toast('복사 실패. 직접 URL을 복사하세요: ' + url, 'error'))
+  }
+
+  // 원클릭 공유: 활성 링크가 있으면 재사용, 없으면 즉시 생성 → 클립보드 복사
+  async function quickShare(empId: string, empName: string) {
+    if (!profile?.id) return
+    try {
+      // 활성 + 미만료 링크 우선 조회
+      const { data: existing } = await supabase
+        .from('probation_share_links')
+        .select('token, expires_at, is_active')
+        .eq('employee_id', empId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      const valid = (existing || []).find((l) => l.is_active && (!l.expires_at || new Date(l.expires_at) > new Date()))
+      let token = valid?.token
+      if (!token) {
+        const expires_at = new Date(Date.now() + 14 * 86400 * 1000).toISOString()
+        const { data: created, error } = await supabase.from('probation_share_links').insert({
+          employee_id: empId,
+          expires_at,
+          note: `${empName} 수습평가`,
+          created_by: profile.id,
+        }).select('token').single()
+        if (error) throw error
+        token = (created as { token: string }).token
+      }
+      const url = `${window.location.origin}/share/probation/${token}`
+      try {
+        await navigator.clipboard.writeText(url)
+        toast('공유 링크가 복사되었습니다. (14일 유효)', 'success')
+      } catch {
+        toast('복사 실패. URL: ' + url, 'error')
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '공유 링크 생성 실패', 'error')
+    }
+  }
+
   async function openTrendDialog(employeeId: string, employeeName: string) {
     setTrendEmployeeId(employeeId)
     setTrendEmployeeName(employeeName)
@@ -899,6 +1013,18 @@ ${evalsSummary}
                       <Button size="sm" variant="outline" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openTrendDialog(empId, name) }}>
                         <TrendingUp className="h-3 w-3 mr-1" /> 추이 분석
                       </Button>
+                      {canShare && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={(e: React.MouseEvent) => { e.stopPropagation(); quickShare(empId, name) }}
+                            title="공유 링크를 복사합니다. 받은 사람은 로그인 후 권한이 있으면 열람 가능합니다.">
+                            <Link2 className="h-3 w-3 mr-1" /> 공유
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openShareDialog(empId, name) }}
+                            title="공유 링크 관리 (만료/비활성/메모)">
+                            <Sparkles className="h-3 w-3" />
+                          </Button>
+                        </>
+                      )}
                       {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
                     </div>
                   </div>
@@ -1307,6 +1433,101 @@ ${evalsSummary}
               <div className="p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm text-blue-800 whitespace-pre-wrap">{trendAiResult}</p>
               </div>
+            )}
+          </div>
+        </div>
+      </Dialog>
+
+      {/* ─── 공유 링크 다이얼로그 ─────────────────────────────── */}
+      <Dialog
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        title={`수습평가 공유 링크 — ${shareEmpName}`}
+        className="max-w-2xl max-h-[85vh] overflow-y-auto"
+      >
+        <div className="space-y-5">
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-sm text-purple-900">
+            대표/임원에게 로그인 없이 수습평가 결과를 보여줄 수 있는 읽기 전용 링크를 생성합니다.<br />
+            <span className="text-xs text-purple-700">※ 다회차·다평가자·AI 분석을 가독성 높게 통합 표시.</span>
+          </div>
+
+          {/* 새 링크 생성 */}
+          <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+            <h3 className="text-sm font-bold text-gray-900">새 링크 생성</h3>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">메모 (선택)</label>
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                placeholder="예: 대표님 검토용"
+                value={shareNote}
+                onChange={(e) => setShareNote(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">유효 기간</label>
+              <Select
+                value={shareExpiresDays}
+                onChange={(e) => setShareExpiresDays(e.target.value)}
+                options={[
+                  { value: '7', label: '7일' },
+                  { value: '14', label: '14일 (권장)' },
+                  { value: '30', label: '30일' },
+                  { value: '90', label: '90일' },
+                  { value: '0', label: '만료 없음' },
+                ]}
+              />
+            </div>
+            <Button onClick={createShareLink} disabled={creatingShare} className="w-full">
+              {creatingShare
+                ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 생성 중...</>
+                : <><Link2 className="h-4 w-4 mr-1" /> 공유 링크 생성</>}
+            </Button>
+          </div>
+
+          {/* 기존 링크 목록 */}
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 mb-2">기존 링크</h3>
+            {shareLinks.length === 0 ? (
+              <p className="text-sm text-gray-500">생성된 공유 링크가 없습니다.</p>
+            ) : (
+              <ul className="space-y-2">
+                {shareLinks.map((lk) => {
+                  const expired = lk.expires_at && new Date(lk.expires_at) < new Date()
+                  const url = `${window.location.origin}/share/probation/${lk.token}`
+                  return (
+                    <li key={lk.id} className={`border rounded-lg p-3 ${!lk.is_active || expired ? 'bg-gray-50 border-gray-200 opacity-70' : 'border-gray-200'}`}>
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            {lk.note && <span className="text-sm font-medium text-gray-900">{lk.note}</span>}
+                            {!lk.is_active && <Badge variant="default" className="bg-gray-200 text-gray-600">비활성</Badge>}
+                            {expired && lk.is_active && <Badge variant="default" className="bg-amber-100 text-amber-700">만료</Badge>}
+                            {lk.is_active && !expired && <Badge variant="default" className="bg-emerald-100 text-emerald-700">활성</Badge>}
+                          </div>
+                          <p className="text-xs text-gray-500 break-all">{url}</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            생성 {new Date(lk.created_at).toLocaleDateString('ko-KR')}
+                            {lk.expires_at && ` · 만료 ${new Date(lk.expires_at).toLocaleDateString('ko-KR')}`}
+                            {' · '}조회 {lk.view_count}회
+                            {lk.last_viewed_at && ` (최근 ${new Date(lk.last_viewed_at).toLocaleDateString('ko-KR')})`}
+                          </p>
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          <Button variant="outline" size="sm" onClick={() => copyShareUrl(lk.token)} disabled={!lk.is_active || !!expired}>
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                          {lk.is_active && (
+                            <Button variant="outline" size="sm" onClick={() => deactivateShareLink(lk.id)}>
+                              <EyeOff className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
           </div>
         </div>
