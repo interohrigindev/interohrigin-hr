@@ -4,6 +4,7 @@ import {
   Loader2, AlertCircle, CheckCircle2, XCircle, Clock,
   TrendingUp, ThumbsUp, AlertTriangle, Sparkles,
   GraduationCap, Building2, CalendarDays, User as UserIcon,
+  Lightbulb, Target, LineChart, Award,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
@@ -32,6 +33,29 @@ interface SharedEvaluation {
   updated_at: string
 }
 
+interface OverallAnalysis {
+  strengths: string[]
+  weaknesses: string[]
+  advice: string[]
+  actionPlan: string
+}
+
+interface RoundSummaryCached {
+  consensus: string
+  strengths: string[]
+  cautions: string[]
+  recommendation: 'continue' | 'warning' | 'terminate'
+  recommendationReason: string
+}
+
+interface AICacheBundle {
+  overall?: OverallAnalysis
+  trend?: { text: string }
+  round1?: RoundSummaryCached
+  round2?: RoundSummaryCached
+  round3?: RoundSummaryCached
+}
+
 interface ShareData {
   link: { note: string | null; expires_at: string | null; view_count: number }
   employee: {
@@ -50,6 +74,7 @@ interface ShareData {
   evaluations: SharedEvaluation[]
   closures: Array<{ stage: string; reason: string | null; closed_at: string }>
   evaluators: Array<{ id: string; name: string; role: string }>
+  ai_cache?: AICacheBundle
 }
 
 /* ─── Helpers ───────────────────────────────────────── */
@@ -274,6 +299,172 @@ export default function ProbationSharePage() {
                   </div>
                 )
               })}
+            </div>
+          </section>
+        )}
+
+        {/* AI 종합 분석 (강점·약점·조언·실행계획) */}
+        {data.ai_cache?.overall && (
+          <section className="bg-white rounded-2xl shadow-sm border border-purple-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-100 via-purple-50 to-indigo-50 px-6 py-4 border-b border-purple-200">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-purple-600" /> AI 종합 분석
+                <span className="text-xs font-normal text-gray-500">강점·약점·조언·실행계획</span>
+              </h2>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 강점 */}
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-emerald-800 mb-3 flex items-center gap-1.5">
+                    <ThumbsUp className="h-4 w-4" /> 강점
+                  </h3>
+                  <ul className="space-y-2">
+                    {data.ai_cache.overall.strengths?.map((s, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-emerald-900">
+                        <span className="text-emerald-500 mt-0.5 shrink-0">●</span>
+                        <span className="leading-relaxed">{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* 약점 */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-amber-800 mb-3 flex items-center gap-1.5">
+                    <AlertTriangle className="h-4 w-4" /> 보완점
+                  </h3>
+                  <ul className="space-y-2">
+                    {data.ai_cache.overall.weaknesses?.map((s, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-amber-900">
+                        <span className="text-amber-500 mt-0.5 shrink-0">●</span>
+                        <span className="leading-relaxed">{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* 조언 */}
+              {data.ai_cache.overall.advice && data.ai_cache.overall.advice.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-1.5">
+                    <Lightbulb className="h-4 w-4" /> 조언
+                  </h3>
+                  <ul className="space-y-2">
+                    {data.ai_cache.overall.advice.map((s, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-blue-900">
+                        <span className="text-blue-500 mt-0.5 shrink-0">●</span>
+                        <span className="leading-relaxed">{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* 실행 계획 */}
+              {data.ai_cache.overall.actionPlan && (
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-purple-800 mb-2 flex items-center gap-1.5">
+                    <Target className="h-4 w-4" /> 실행 계획
+                  </h3>
+                  <p className="text-sm text-purple-900 leading-relaxed whitespace-pre-wrap">
+                    {data.ai_cache.overall.actionPlan}
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* 회차별 종합 요약 (round summaries) */}
+        {stagesPresent.some((s) => data.ai_cache?.[s as 'round1' | 'round2' | 'round3']) && (
+          <section className="bg-white rounded-2xl shadow-sm border border-indigo-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b border-indigo-200">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <Award className="h-5 w-5 text-indigo-600" /> 회차별 종합 요약
+                <span className="text-xs font-normal text-gray-500">전체 평가자 통합 AI 분석</span>
+              </h2>
+            </div>
+            <div className="p-6 space-y-4">
+              {stagesPresent.map((stage) => {
+                const summary = data.ai_cache?.[stage as 'round1' | 'round2' | 'round3']
+                if (!summary) return null
+                const rec = REC_STYLE[summary.recommendation]
+                return (
+                  <div key={stage} className="border border-gray-200 rounded-xl p-4 bg-gray-50/50">
+                    <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                      <h3 className="text-sm font-bold text-gray-900">{STAGE_LABEL[stage] || stage}</h3>
+                      {rec && (
+                        <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-semibold ${rec.cls}`}>
+                          {(() => { const I = rec.icon; return <I className="h-3.5 w-3.5" /> })()} {rec.label}
+                        </span>
+                      )}
+                    </div>
+
+                    {summary.consensus && (
+                      <p className="text-sm text-gray-800 leading-relaxed mb-3 whitespace-pre-wrap">
+                        {summary.consensus}
+                      </p>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {summary.strengths && summary.strengths.length > 0 && (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                          <p className="text-[11px] font-semibold text-emerald-700 mb-1.5">공통 강점</p>
+                          <ul className="space-y-1 text-xs text-emerald-900">
+                            {summary.strengths.map((s, i) => (
+                              <li key={i} className="flex items-start gap-1.5">
+                                <span className="text-emerald-500 shrink-0">●</span><span>{s}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {summary.cautions && summary.cautions.length > 0 && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                          <p className="text-[11px] font-semibold text-amber-700 mb-1.5">주의 사항</p>
+                          <ul className="space-y-1 text-xs text-amber-900">
+                            {summary.cautions.map((s, i) => (
+                              <li key={i} className="flex items-start gap-1.5">
+                                <span className="text-amber-500 shrink-0">●</span><span>{s}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    {summary.recommendationReason && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-[11px] font-semibold text-gray-600 mb-1">권고 사유</p>
+                        <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
+                          {summary.recommendationReason}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* AI 추이 분석 */}
+        {data.ai_cache?.trend?.text && (
+          <section className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 px-6 py-4 border-b border-blue-200">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <LineChart className="h-5 w-5 text-blue-600" /> AI 추이 분석
+                <span className="text-xs font-normal text-gray-500">회차별 변화 종합</span>
+              </h2>
+            </div>
+            <div className="p-6">
+              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
+                <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {data.ai_cache.trend.text}
+                </p>
+              </div>
             </div>
           </section>
         )}
