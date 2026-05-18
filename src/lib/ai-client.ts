@@ -207,6 +207,7 @@ export async function generateAIContent(config: AIConfig, prompt: string, files?
       .limit(5)
 
     const lastErrors: string[] = [`[${config.provider}] ${msg.slice(0, 100)}`]
+    let anyRegionError = cls.regionError
 
     // 리전 차단 시 같은 provider(gemini)는 계속 차단될 수 있으니 다른 provider 우선
     const sortedCandidates = candidates && cls.regionError
@@ -227,13 +228,16 @@ export async function generateAIContent(config: AIConfig, prompt: string, files?
         const fmsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
         const fcls = classifyError(fmsg)
         lastErrors.push(`[${c.provider}] ${fmsg.slice(0, 100)}`)
+        if (fcls.regionError) anyRegionError = true
         if (!fcls.keyError && !fcls.quotaError && !fcls.regionError) throw fallbackErr
         console.warn(`[AI auto-fallback] ${c.provider} 실패, 다음 후보 시도`)
       }
     }
 
-    // ⚡ 모든 서버 측 프록시 실패 + regionError → 브라우저에서 직접 호출 시도 (한국 사용자 IP 사용)
-    if (cls.regionError && body.action === 'generate' && !files) {
+    // ⚡ 모든 서버 측 프록시 실패 → 브라우저에서 직접 호출 시도
+    //   - 원본 또는 폴백 중 regionError 가 한번이라도 발생했으면 브라우저 우회
+    //   - 또는 모든 키 무효(keyError)일 수도 있으니 브라우저에서도 시도해서 확실히 진단
+    if ((anyRegionError || cls.keyError) && body.action === 'generate' && !files) {
       console.warn('[AI direct-browser fallback] 서버 측 모두 차단. 브라우저에서 직접 호출 시도.')
       const browserCandidates: Array<{ provider: 'gemini' | 'openai' | 'claude'; api_key: string; model: string }> = [
         { provider: config.provider as 'gemini' | 'openai' | 'claude', api_key: config.apiKey, model: config.model },
@@ -287,6 +291,8 @@ function classifyError(msg: string): { keyError: boolean; quotaError: boolean; r
   const keyError =
     lower.includes('incorrect api key') ||
     lower.includes('invalid api key') ||
+    lower.includes('invalid x-api-key') ||
+    lower.includes('invalid_api_key') ||
     lower.includes('api key not valid') ||
     lower.includes('authentication failed') ||
     lower.includes('invalid authentication') ||
