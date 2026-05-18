@@ -208,7 +208,10 @@ function classifyError(msg: string): { keyError: boolean; quotaError: boolean; r
   // Gemini가 Cloudflare 엣지 리전을 차단하는 케이스 — 다른 provider 로 폴백
   const regionError =
     lower.includes('country, region, or territory not supported') ||
+    lower.includes('location is not supported') ||
     lower.includes('location not supported') ||
+    lower.includes('not supported for the api') ||
+    lower.includes('user location') ||
     lower.includes('not available in your country') ||
     lower.includes('user_location_invalid')
   return { keyError, quotaError, regionError }

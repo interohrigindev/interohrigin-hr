@@ -276,6 +276,13 @@ ${retry ? '⚠️ 직전 출력이 JSON 형식이 아니었습니다. 이번엔 
       }
 
       setOverallAnalysis((prev) => ({ ...prev, [empId]: parsed! }))
+      // DB 영속화 (페이지 재방문 시 복원)
+      await supabase.from('probation_ai_cache').upsert({
+        employee_id: empId,
+        cache_type: 'overall',
+        content: parsed,
+        created_by: profile?.id ?? null,
+      }, { onConflict: 'employee_id,cache_type' })
       toast('종합 분석이 완료되었습니다.', 'success')
     } catch (err: unknown) {
       toast('종합 분석 실패: ' + (err instanceof Error ? err.message : '형식 오류') + ' · 다시 시도해보세요', 'error')
@@ -479,6 +486,13 @@ ${retry ? '⚠️ 직전 출력이 JSON 형식이 아니었습니다. 이번엔 
       }
       if (!parsed) throw lastErr instanceof Error ? lastErr : new Error('형식 오류')
       setRoundSummaries((prev) => ({ ...prev, [key]: parsed! }))
+      // DB 영속화
+      await supabase.from('probation_ai_cache').upsert({
+        employee_id: empId,
+        cache_type: stage,
+        content: parsed,
+        created_by: profile?.id ?? null,
+      }, { onConflict: 'employee_id,cache_type' })
       toast(`${STAGE_SHORT[stage]} 종합 요약이 완료되었습니다.`, 'success')
     } catch (err: unknown) {
       toast('종합 요약 실패: ' + (err instanceof Error ? err.message : '오류') + ' · 다시 시도해보세요', 'error')
@@ -661,12 +675,13 @@ ${prevSummary}
   const fetchData = useCallback(async () => {
     setLoading(true)
     // 퇴사자(is_active=false) 도 포함 — 평가 이력 보존을 위함
-    const [evalRes, empRes, deptRes, hrRes, mpRes] = await Promise.all([
+    const [evalRes, empRes, deptRes, hrRes, mpRes, cacheRes] = await Promise.all([
       supabase.from('probation_evaluations').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('id, name, email, department_id, hire_date, employment_type, position, role, is_active').order('name'),
       supabase.from('departments').select('id, name'),
       supabase.from('employee_hr_details').select('employee_id, job_title, annual_salary'),
       supabase.from('menu_permissions').select('employee_id, allowed_menus'),
+      supabase.from('probation_ai_cache').select('employee_id, cache_type, content'),
     ])
 
     if (deptRes.data) setDepartments(deptRes.data)
@@ -688,6 +703,22 @@ ${prevSummary}
       }))
       setEvaluations(enriched)
     }
+
+    // AI 분석 캐시 로드 (DB에 저장된 결과 복원)
+    if (cacheRes.data) {
+      const overallMap: Record<string, OverallAnalysis> = {}
+      const roundMap: Record<string, RoundSummary> = {}
+      for (const row of cacheRes.data as Array<{ employee_id: string; cache_type: string; content: unknown }>) {
+        if (row.cache_type === 'overall') {
+          overallMap[row.employee_id] = row.content as OverallAnalysis
+        } else if (row.cache_type === 'round1' || row.cache_type === 'round2' || row.cache_type === 'round3') {
+          roundMap[`${row.employee_id}_${row.cache_type}`] = row.content as RoundSummary
+        }
+      }
+      setOverallAnalysis(overallMap)
+      setRoundSummaries(roundMap)
+    }
+
     setLoading(false)
   }, [])
 
@@ -845,16 +876,20 @@ ${prevSummary}
     setTrendEmployeeName(employeeName)
     setTrendAiResult('')
 
-    const { data } = await supabase
-      .from('probation_evaluations')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .order('created_at', { ascending: true })
+    const [evalRes, cacheRes] = await Promise.all([
+      supabase.from('probation_evaluations').select('*').eq('employee_id', employeeId).order('created_at', { ascending: true }),
+      supabase.from('probation_ai_cache').select('content').eq('employee_id', employeeId).eq('cache_type', 'trend').maybeSingle(),
+    ])
 
-    const evals = ((data || []) as ProbationEvaluation[]).sort(
+    const evals = ((evalRes.data || []) as ProbationEvaluation[]).sort(
       (a, b) => (STAGE_ORDER[a.stage as ProbationStage] || 0) - (STAGE_ORDER[b.stage as ProbationStage] || 0)
     )
     setTrendEvaluations(evals)
+
+    // 저장된 추이 분석 결과 복원
+    const cached = (cacheRes.data as { content: { text?: string } } | null)?.content
+    if (cached?.text) setTrendAiResult(cached.text)
+
     setTrendDialogOpen(true)
   }
 
@@ -893,7 +928,17 @@ ${evalsSummary}
 마크다운 없이 일반 텍스트로 작성해주세요. 각 항목은 번호로 구분해주세요.`
 
       const result = await generateAIContent(config, prompt)
-      setTrendAiResult(result.content.trim())
+      const trimmed = result.content.trim()
+      setTrendAiResult(trimmed)
+      // DB 영속화 (추이 분석은 텍스트 1개 → content.text)
+      if (trendEmployeeId) {
+        await supabase.from('probation_ai_cache').upsert({
+          employee_id: trendEmployeeId,
+          cache_type: 'trend',
+          content: { text: trimmed },
+          created_by: profile?.id ?? null,
+        }, { onConflict: 'employee_id,cache_type' })
+      }
       toast('추이 분석이 완료되었습니다.', 'success')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '알 수 없는 오류'
