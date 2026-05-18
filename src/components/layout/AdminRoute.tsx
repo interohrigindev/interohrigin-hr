@@ -39,8 +39,19 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
   const isAdminRole = !!profile?.role && ADMIN_ROLES.includes(profile.role)
   // 명시적 menu_permissions 권한 보유 시 우회 허용 (예: 리더에게 '수습 평가' 권한 부여 케이스)
   // location.pathname 의 정확 매칭 또는 prefix(자식 경로) 매칭 — '/admin/probation' 권한이면 '/admin/probation/reminder' 도 허용
-  const hasMenuPermission = !!allowedMenus && allowedMenus.some((p) =>
-    location.pathname === p || location.pathname.startsWith(p + '/')
+  // 경로 별칭 매핑 — 메뉴 권한 페이지에 저장된 키가 라우트 경로와 다른 케이스 보강
+  const ROUTE_PERM_ALIASES: Record<string, string[]> = {
+    '/monthly-checkin': ['/admin/monthly-checkin'],
+    '/peer-review': ['/admin/peer-review'],
+    '/eval-dashboard': ['/admin/evaluation'],
+    '/admin/employees/search': ['/admin/employees'],
+  }
+  const candidatePaths = [
+    location.pathname,
+    ...(ROUTE_PERM_ALIASES[location.pathname] || []),
+  ]
+  const hasMenuPermission = !!allowedMenus && candidatePaths.some((cand) =>
+    allowedMenus.some((p) => cand === p || cand.startsWith(p + '/'))
   )
 
   if (!isAdminRole && !hasMenuPermission) {

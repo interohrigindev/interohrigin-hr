@@ -323,6 +323,27 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     return item.to as string
   }
 
+  // 사이드바 경로 ↔ 메뉴 권한 페이지(/settings/menu-permissions) 경로 별칭 매핑
+  // (메뉴 권한 페이지에서 저장한 키가 사이드바 to 경로와 다를 경우, 어느 쪽이 저장돼 있어도 인식)
+  const PATH_ALIASES: Record<string, string[]> = {
+    '/monthly-checkin':        ['/admin/monthly-checkin'],
+    '/peer-review':            ['/admin/peer-review'],
+    '/eval-dashboard':         ['/admin/evaluation'],
+    '/settings/evaluation':    ['/admin/settings/evaluation'],
+    '/admin/hr/ai-report':     ['/admin/evaluation/ai-report'],
+    '/admin/hr/verification':  ['/admin/evaluation/ai-verify'],
+    '/admin/hr/sync':          ['/admin/evaluation/sync'],
+    '/admin/employees/search': ['/admin/employees'],
+    '/admin/projects':         ['/admin/dashboard'],
+    '/admin/projects/board':   ['/admin/projects'],
+    '/admin/work/tasks':       ['/admin/work'],
+    '/work/daily-report':      ['/admin/work/daily'],
+    '/admin/recruitment/jobs': ['/admin/recruitment/postings'],
+    '/admin/recruitment/schedules': ['/admin/recruitment/interviews'],
+    '/admin/recruitment/trust': ['/admin/recruitment/ai-trust'],
+    '/admin/probation-results':['/admin/probation-results'],
+  }
+
   function isItemVisible(item: NavItem): boolean {
     if (item.hideForRoles && profile?.role && item.hideForRoles.includes(profile.role as EmployeeRole)) {
       return false
@@ -335,7 +356,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       }
       const path = typeof item.to === 'string' ? item.to : ''
       if (path === 'REPORT_SELF') return allowedMenus.includes('/report')
-      return allowedMenus.includes(path)
+      if (allowedMenus.includes(path)) return true
+      // 별칭 경로도 인식
+      const aliases = PATH_ALIASES[path] || []
+      return aliases.some((a) => allowedMenus.includes(a))
     }
     return false
   }
@@ -352,7 +376,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       if (item.hideForRoles && profile?.role && item.hideForRoles.includes(profile.role as EmployeeRole)) return false
       const path = typeof item.to === 'string' ? item.to : ''
       if (!path) return false
-      return allowedMenus.includes(path)
+      if (allowedMenus.includes(path)) return true
+      const aliases = PATH_ALIASES[path] || []
+      return aliases.some((a) => allowedMenus.includes(a))
     })
   }
 
