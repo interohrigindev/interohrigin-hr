@@ -195,6 +195,9 @@ function classifyError(msg: string): { keyError: boolean; quotaError: boolean; r
     lower.includes('authentication') ||
     lower.includes('unauthoriz') ||
     lower.includes('permission_denied') ||
+    lower.includes('request not allowed') ||
+    lower.includes('requests from referer') ||
+    lower.includes('api keys are not supported') ||
     lower.includes('401') ||
     lower.includes('403')
   const quotaError =
