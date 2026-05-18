@@ -119,6 +119,21 @@ export default function LeaveManagementPage() {
   const [saving, setSaving] = useState(false)
   const [sendingPromotionId, setSendingPromotionId] = useState<string | null>(null)
 
+  // 연차 자동 계산 — 미리보기/검토 다이얼로그 상태
+  interface AutoCalcPreview {
+    employeeId: string
+    name: string
+    hireDate: string
+    currentTotal: number | null
+    currentUsed: number
+    calcTotal: number
+    finalTotal: number  // 관리자가 수정 가능
+    description: string
+    apply: boolean      // 적용 여부 (체크박스)
+  }
+  const [autoCalcPreview, setAutoCalcPreview] = useState<AutoCalcPreview[] | null>(null)
+  const [autoCalcApplying, setAutoCalcApplying] = useState(false)
+
   // 결재라인 직원 목록 (역할별 필터)
   const leaders = useMemo(() => allEmployees.filter((e) => e.role && LEADER_ROLES.includes(e.role) && e.id !== profile?.id), [allEmployees, profile?.id])
   const directors = useMemo(() => allEmployees.filter((e) => e.role && DIRECTOR_ROLES.includes(e.role) && e.id !== profile?.id), [allEmployees, profile?.id])
@@ -357,51 +372,39 @@ export default function LeaveManagementPage() {
         </div>
         <div className="flex gap-2 flex-wrap">
           {isAdmin && (
-            <Button variant="outline" onClick={async () => {
+            <Button variant="outline" onClick={() => {
               if (employees.length === 0) { toast('직원 데이터가 없습니다.', 'error'); return }
-              const missingHireDate = employees.filter(e => !e.hire_date)
-              toast('연차 자동 계산 중...', 'info')
-
-              let updated = 0
-              let failed = 0
+              // 자동 계산만 수행하고 DB 저장은 미리보기 다이얼로그에서 관리자 확인 후 진행
+              const preview: AutoCalcPreview[] = []
+              const missing: string[] = []
               for (const emp of employees) {
-                if (!emp.hire_date) continue
+                if (!emp.hire_date) { missing.push(emp.name); continue }
                 try {
                   const calc = calculateAnnualLeave(emp.hire_date)
                   const hr = hrDetails.find(h => h.employee_id === emp.id)
-                  if (hr) {
-                    const { error } = await supabase.from('employee_hr_details').update({
-                      annual_leave_total: calc.totalDays,
-                      annual_leave_remaining: calc.totalDays - (hr.annual_leave_used || 0),
-                      annual_leave_basis: calc.description,
-                    }).eq('id', hr.id)
-                    if (error) { failed++; console.error(`[${emp.name}] update 실패:`, error); continue }
-                  } else {
-                    const { error } = await supabase.from('employee_hr_details').insert({
-                      employee_id: emp.id,
-                      annual_leave_total: calc.totalDays,
-                      annual_leave_used: 0,
-                      annual_leave_remaining: calc.totalDays,
-                      annual_leave_basis: calc.description,
-                    })
-                    if (error) { failed++; console.error(`[${emp.name}] insert 실패:`, error); continue }
-                  }
-                  updated++
+                  preview.push({
+                    employeeId: emp.id,
+                    name: emp.name,
+                    hireDate: emp.hire_date,
+                    currentTotal: hr?.annual_leave_total ?? null,
+                    currentUsed: hr?.annual_leave_used || 0,
+                    calcTotal: calc.totalDays,
+                    finalTotal: calc.totalDays,
+                    description: calc.description,
+                    apply: hr?.annual_leave_total !== calc.totalDays, // 변경되는 사람만 기본 체크
+                  })
                 } catch (err) {
-                  failed++
                   console.error(`[${emp.name}] 계산 실패:`, err)
                 }
               }
-
-              const missingMsg = missingHireDate.length > 0 ? ` (입사일 없음: ${missingHireDate.length}명)` : ''
-              if (failed > 0) {
-                toast(`완료: ${updated}명 | 실패: ${failed}명${missingMsg}`, 'error')
-              } else if (updated === 0) {
-                toast(`계산 대상 없음${missingMsg}. 직원 설정에서 입사일을 등록하세요.`, 'error')
-              } else {
-                toast(`${updated}명 연차 자동 계산 완료${missingMsg}`, 'success')
+              if (preview.length === 0) {
+                toast(`자동 계산 대상 없음 (입사일 미등록: ${missing.length}명)`, 'error')
+                return
               }
-              fetchData()
+              if (missing.length > 0) {
+                toast(`입사일 없는 ${missing.length}명은 자동 계산에서 제외됩니다`, 'info')
+              }
+              setAutoCalcPreview(preview)
             }}>
               <CalendarPlus className="h-4 w-4 mr-1" /> 연차 자동 계산
             </Button>
@@ -865,6 +868,157 @@ export default function LeaveManagementPage() {
             </Button>
           </div>
         </div>
+      </Dialog>
+
+      {/* 연차 자동 계산 — 미리보기/검토/수정 다이얼로그 */}
+      <Dialog open={!!autoCalcPreview} onClose={() => !autoCalcApplying && setAutoCalcPreview(null)} title="연차 자동 계산 — 검토 후 적용">
+        {autoCalcPreview && (
+          <div className="space-y-3 max-w-5xl">
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-sm text-amber-900">
+              자동 계산 결과를 검토하고 필요시 직접 수정하세요. <strong>"적용" 체크된 직원만</strong> DB에 저장됩니다.
+              <div className="text-xs text-amber-700 mt-1">
+                ※ 입사일 기준 근로기준법 60조 자동 계산. 회사 사규(만 1년 미만 월차/이월/특별휴가 등) 적용 시 수동 보정 필요.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="text-brand-600 hover:underline text-xs"
+                  onClick={() => setAutoCalcPreview((prev) => prev?.map(p => ({ ...p, apply: true })) || null)}
+                >전체 선택</button>
+                <span className="text-gray-300">|</span>
+                <button
+                  type="button"
+                  className="text-gray-500 hover:underline text-xs"
+                  onClick={() => setAutoCalcPreview((prev) => prev?.map(p => ({ ...p, apply: false })) || null)}
+                >전체 해제</button>
+                <span className="text-gray-300">|</span>
+                <button
+                  type="button"
+                  className="text-amber-700 hover:underline text-xs"
+                  onClick={() => setAutoCalcPreview((prev) => prev?.map(p => ({ ...p, apply: p.currentTotal !== p.calcTotal })) || null)}
+                >변경되는 직원만 선택</button>
+              </div>
+              <div className="text-xs text-gray-500">
+                적용 대상: {autoCalcPreview.filter(p => p.apply).length} / {autoCalcPreview.length}명
+              </div>
+            </div>
+
+            <div className="border rounded-md max-h-[60vh] overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr className="text-left text-xs text-gray-600">
+                    <th className="px-3 py-2 w-12">적용</th>
+                    <th className="px-3 py-2">이름</th>
+                    <th className="px-3 py-2">입사일</th>
+                    <th className="px-3 py-2 text-right">현재</th>
+                    <th className="px-3 py-2 text-right">사용</th>
+                    <th className="px-3 py-2 text-right">계산</th>
+                    <th className="px-3 py-2 text-right">최종 (수정)</th>
+                    <th className="px-3 py-2">산정 기준</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {autoCalcPreview.map((row, idx) => {
+                    const isChanged = row.currentTotal !== row.finalTotal
+                    return (
+                      <tr key={row.employeeId} className={row.apply ? 'bg-emerald-50/50' : 'opacity-60'}>
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={row.apply}
+                            onChange={(e) => {
+                              const next = [...autoCalcPreview]
+                              next[idx] = { ...row, apply: e.target.checked }
+                              setAutoCalcPreview(next)
+                            }}
+                            className="h-4 w-4"
+                            disabled={autoCalcApplying}
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-medium">{row.name}</td>
+                        <td className="px-3 py-2 text-gray-600 text-xs">{row.hireDate.replaceAll('-', '.')}</td>
+                        <td className="px-3 py-2 text-right text-gray-600">{row.currentTotal ?? '-'}</td>
+                        <td className="px-3 py-2 text-right text-gray-600">{row.currentUsed}</td>
+                        <td className="px-3 py-2 text-right text-gray-500">{row.calcTotal}</td>
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            value={row.finalTotal}
+                            min={0}
+                            step={0.5}
+                            onChange={(e) => {
+                              const next = [...autoCalcPreview]
+                              next[idx] = { ...row, finalTotal: parseFloat(e.target.value) || 0 }
+                              setAutoCalcPreview(next)
+                            }}
+                            disabled={autoCalcApplying || !row.apply}
+                            className={`w-20 text-right border rounded px-2 py-1 text-sm ${
+                              isChanged ? 'border-amber-400 bg-amber-50 font-semibold' : 'border-gray-200'
+                            }`}
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{row.description}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <Button variant="outline" onClick={() => setAutoCalcPreview(null)} disabled={autoCalcApplying}>
+                취소
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!autoCalcPreview) return
+                  const toApply = autoCalcPreview.filter(p => p.apply)
+                  if (toApply.length === 0) { toast('적용할 직원이 없습니다.', 'error'); return }
+                  if (!confirm(`${toApply.length}명의 연차를 업데이트합니다. 계속하시겠습니까?`)) return
+                  setAutoCalcApplying(true)
+                  let ok = 0, fail = 0
+                  for (const row of toApply) {
+                    try {
+                      const hr = hrDetails.find(h => h.employee_id === row.employeeId)
+                      if (hr) {
+                        const { error } = await supabase.from('employee_hr_details').update({
+                          annual_leave_total: row.finalTotal,
+                          annual_leave_remaining: row.finalTotal - row.currentUsed,
+                          annual_leave_basis: row.description,
+                        }).eq('id', hr.id)
+                        if (error) throw error
+                      } else {
+                        const { error } = await supabase.from('employee_hr_details').insert({
+                          employee_id: row.employeeId,
+                          annual_leave_total: row.finalTotal,
+                          annual_leave_used: 0,
+                          annual_leave_remaining: row.finalTotal,
+                          annual_leave_basis: row.description,
+                        })
+                        if (error) throw error
+                      }
+                      ok++
+                    } catch (err) {
+                      console.error(`[${row.name}] 적용 실패:`, err)
+                      fail++
+                    }
+                  }
+                  setAutoCalcApplying(false)
+                  setAutoCalcPreview(null)
+                  if (fail === 0) toast(`${ok}명 연차 업데이트 완료`, 'success')
+                  else toast(`완료 ${ok}명 / 실패 ${fail}명`, 'error')
+                  fetchData()
+                }}
+                disabled={autoCalcApplying || autoCalcPreview.every(p => !p.apply)}
+              >
+                {autoCalcApplying ? '적용 중...' : `선택한 ${autoCalcPreview.filter(p => p.apply).length}명에 적용`}
+              </Button>
+            </div>
+          </div>
+        )}
       </Dialog>
     </div>
   )
