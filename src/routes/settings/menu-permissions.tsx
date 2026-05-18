@@ -141,14 +141,28 @@ const ROLE_PRESETS: { label: string; paths: string[] }[] = [
   { label: '임원 전체 메뉴', paths: [...ALL_PATHS] },
   {
     label: '직원 기본 메뉴',
+    // 2026-05-18 업데이트: 범주영 (디자인) 직원 기준으로 재구성
     paths: [
+      // 개별 메뉴
       '/self-evaluation',
       '/evaluate',
       '/report',
       '/messenger',
+      // 프로젝트 & 업무 (권한 설정 제외)
+      '/admin/dashboard',
       '/admin/projects',
+      '/admin/projects/new',
       '/admin/work',
       '/admin/work/daily',
+      // 인사노무 (근태/급여/교육 제외)
+      '/admin/leave',
+      '/admin/approval',
+      '/admin/certificates',
+      '/admin/organization',
+      // 인사평가 (설정/AI리포트/AI검증/동기화 제외)
+      '/admin/monthly-checkin',
+      '/admin/peer-review',
+      '/admin/evaluation',
     ],
   },
   {
