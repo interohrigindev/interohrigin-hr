@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -13,6 +13,7 @@ type PageMode = 'login' | 'forgot' | 'forgot-sent'
 export default function Login() {
   const { user, loading, signIn } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -20,8 +21,13 @@ export default function Login() {
   const [mode, setMode] = useState<PageMode>('login')
   const [resetEmail, setResetEmail] = useState('')
 
+  // 보호된 페이지에서 리다이렉트된 경우 원래 경로 복원
+  const returnTo = searchParams.get('returnTo') || '/'
+  // 안전성: 외부 URL 차단 (반드시 / 로 시작하는 internal path 만 허용)
+  const safeReturnTo = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/'
+
   if (!loading && user) {
-    return <Navigate to="/" replace />
+    return <Navigate to={safeReturnTo} replace />
   }
 
   function isEmail(value: string) {
@@ -66,7 +72,7 @@ export default function Login() {
       )
       setSubmitting(false)
     } else {
-      navigate('/')
+      navigate(safeReturnTo)
     }
   }
 
