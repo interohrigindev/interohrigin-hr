@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Sparkles, Loader2, TrendingUp, AlertTriangle, CheckCircle, XCircle, Users, ChevronDown, ChevronUp, Pencil, FileDown } from 'lucide-react'
 import { generateProbationPdf } from '@/lib/pdf-probation'
 import { loadSealDataURL } from '@/lib/seal-stamp'
@@ -701,6 +701,30 @@ ${prevSummary}
     return map
   }, [evaluations, filterEmployee, employees, profile?.role, profile?.department_id])
 
+  // 자동 종합 분석 — 직원 단위 1세션 1회만 발화 (펼친 카드 한정)
+  const autoAnalysisFiredRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (groupedByEmployee.size === 0) return
+    for (const [empId, { name, evals }] of groupedByEmployee.entries()) {
+      if (!expandedEmployees.has(empId)) continue
+      if (overallAnalysis[empId]) continue
+      if (analyzingEmp === empId) continue
+      if (autoAnalysisFiredRef.current.has(empId)) continue
+      // 3회차 모두 fully complete 여부 검사
+      const allStagesComplete = (['round1', 'round2', 'round3'] as const).every((stg) => {
+        const stageEvals = evals.filter((e) => e.stage === stg)
+        if (stageEvals.length === 0) return false
+        const completion = getRoundCompletion(stageEvals, empId)
+        return completion.isComplete
+      })
+      if (!allStagesComplete) continue
+      autoAnalysisFiredRef.current.add(empId)
+      // fire-and-forget; 함수 자체에서 토스트/상태 처리
+      void runOverallAnalysis(empId, name, evals)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupedByEmployee, expandedEmployees, overallAnalysis, analyzingEmp])
+
   // ─── Trend analysis ───────────────────────────────────────────
   async function openTrendDialog(employeeId: string, employeeName: string) {
     setTrendEmployeeId(employeeId)
@@ -908,12 +932,16 @@ ${evalsSummary}
                       </p>
                       <Button
                         size="sm" variant="outline"
-                        onClick={() => runOverallAnalysis(empId, name, evals)}
+                        onClick={() => {
+                          autoAnalysisFiredRef.current.delete(empId)
+                          runOverallAnalysis(empId, name, evals)
+                        }}
                         disabled={analyzingEmp === empId || evals.length < 1}
+                        title={overallAnalysis[empId] ? '기존 분석 결과를 폐기하고 다시 생성합니다' : '강점·약점·조언 분석을 생성합니다'}
                       >
                         {analyzingEmp === empId
                           ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 분석 중...</>
-                          : <><Sparkles className="h-3 w-3 mr-1" /> {overallAnalysis[empId] ? '다시 분석' : '분석 실행'}</>}
+                          : <><Sparkles className="h-3 w-3 mr-1" /> {overallAnalysis[empId] ? '재분석' : '분석 실행'}</>}
                       </Button>
                     </div>
                     {overallAnalysis[empId] ? (

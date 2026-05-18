@@ -94,11 +94,18 @@ export function RoundCompletionSummary({
           size="sm"
           variant="outline"
           onClick={onAnalyze}
-          disabled={!status.isComplete || loading}
+          disabled={loading || status.evaluators.filter((e) => e.done).length === 0}
+          title={status.isComplete ? '모든 평가자 완료 — 최종 요약' : '현재까지 제출된 평가만으로 요약을 생성합니다'}
         >
           {loading
             ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 분석 중...</>
-            : <><Sparkles className="h-3 w-3 mr-1" /> {cached ? '다시 분석' : '종합 요약 생성'}</>}
+            : <><Sparkles className="h-3 w-3 mr-1" /> {
+                cached
+                  ? '다시 분석'
+                  : status.isComplete
+                    ? '종합 요약 생성'
+                    : '현재까지 요약'
+              }</>}
         </Button>
       </div>
 
@@ -166,7 +173,7 @@ export function RoundCompletionSummary({
         )}
 
         {!status.isComplete && (
-          <p className="mt-3 text-xs text-gray-500">모든 평가자가 평가를 완료하면 종합 요약이 활성화됩니다.</p>
+          <p className="mt-3 text-xs text-gray-500">아직 평가가 진행 중입니다. 현재까지 제출된 내용만으로도 요약을 생성할 수 있고, 모든 평가가 완료되면 자동으로 최종 요약이 생성됩니다.</p>
         )}
       </div>
 
