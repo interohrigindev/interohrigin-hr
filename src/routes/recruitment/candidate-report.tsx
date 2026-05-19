@@ -18,6 +18,7 @@ import { formatDate } from '@/lib/utils'
 import { surveyInviteEmail, hiringAcceptEmail, hiringRejectEmail } from '@/lib/email-templates'
 import { Dialog } from '@/components/ui/Dialog'
 import InterviewAnalysis from '@/components/recruitment/InterviewAnalysis'
+import PbdResultView, { type PbdResultRow } from '@/components/recruitment/PbdResultView'
 
 export default function CandidateReport() {
   const { id } = useParams()
@@ -39,6 +40,7 @@ export default function CandidateReport() {
   const [surveyQuestions, setSurveyQuestions] = useState<{ id: string; question: string; type: string; options?: string[]; required?: boolean }[]>([])
   const [resendingSurvey, setResendingSurvey] = useState(false)
   const [surveyReanalyzing, setSurveyReanalyzing] = useState(false)
+  const [pbdResponse, setPbdResponse] = useState<PbdResultRow | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState('')
   const [decisionDialog, setDecisionDialog] = useState<{ open: boolean; decision: 'hired' | 'rejected' | null }>({ open: false, decision: null })
   const [offerConditions, setOfferConditions] = useState({
@@ -120,7 +122,19 @@ export default function CandidateReport() {
       }
       if (analysisRes.data) setAnalysis(analysisRes.data as ResumeAnalysis)
 
-      // 사전질의서 질문 목록 가져오기 (응답이 있는 경우)
+      // v2.0 (PBD) 응답 로딩 — candidate_id 로 가장 최근 응답 1건
+      if (cand?.id) {
+        const { data: pbd } = await supabase
+          .from('survey_test_responses')
+          .select('id, tester_name, tester_email, tester_role, meta, consent, pbd_answers, feedback, created_at')
+          .eq('candidate_id', cand.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (pbd) setPbdResponse(pbd as PbdResultRow)
+      }
+
+      // 사전질의서 v1 질문 목록 가져오기 (응답이 있는 경우)
       if (cand?.pre_survey_data && cand.job_posting_id) {
         const { data: posting } = await supabase
           .from('job_postings')
@@ -1769,8 +1783,8 @@ ${surveyText || '응답 없음'}
             </Card>
           )}
 
-          {/* 발송 완료 but 미응답 상태 — 사전질의서가 옵션 발송된 경우에도 발송 이력만 있고 응답이 없으면 표시 */}
-          {!candidate.pre_survey_data && (
+          {/* 발송 완료 but 미응답 상태 — v2.0(pbd) 미완료 + v1 응답 없음 + (발송 이력 OR survey_sent) */}
+          {!candidate.pre_survey_data && !pbdResponse && (
             candidate.status === 'survey_sent' ||
             ((candidate.survey_send_history as { sent_at: string }[] | undefined)?.length || 0) > 0
           ) && (
@@ -1820,6 +1834,35 @@ ${surveyText || '응답 없음'}
                     <><Send className="h-3 w-3 mr-1" /> 사전 질의서 재발송</>
                   )}
                 </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 사전질의서 v2.0 (PBD) 응답 결과 — 응답 완료 시 표시 */}
+          {pbdResponse && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4 text-emerald-600" />
+                    사전 질의서 v2.0 (PBD) 응답 완료
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5">
+                      ✓ 응답 완료 · {pbdResponse.created_at ? formatDate(pbdResponse.created_at, 'yyyy.MM.dd HH:mm') : ''}
+                    </span>
+                    <Button size="sm" variant="outline" onClick={handleResendSurvey} disabled={resendingSurvey}>
+                      {resendingSurvey ? (
+                        <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> 발송 중...</>
+                      ) : (
+                        <><Send className="h-3 w-3 mr-1" /> 재발송</>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <PbdResultView row={pbdResponse} showHeader={true} />
               </CardContent>
             </Card>
           )}
