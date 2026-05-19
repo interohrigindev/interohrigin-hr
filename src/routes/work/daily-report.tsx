@@ -393,6 +393,9 @@ export default function DailyReportPage() {
       setBlockers(r.blockers || '')
       setWorkMemo(((r as unknown) as { work_memo?: string }).work_memo || '')
       setProjectMemos(((r as unknown) as { project_memos?: Record<string, string> }).project_memos || {})
+      // 099: 해당 보고서에서 제외된 프로젝트 ID 복원
+      const excluded = ((r as unknown) as { excluded_projects?: string[] }).excluded_projects || []
+      setDismissedProjects(new Set(excluded))
       // 기존 보고서가 있어도 오늘 활동을 머지해서 자동 노출 (편집한 내용은 보존)
       autoMergeTodayActivity(r.tasks_completed || [])
     } else {
@@ -402,6 +405,7 @@ export default function DailyReportPage() {
       setBlockers('')
       setWorkMemo('')
       setProjectMemos({})
+      setDismissedProjects(new Set())
       setAiSuggestion(null)
 
       // ─── 금일 프로젝트 활동 자동 수집 ─────────────────
@@ -929,6 +933,7 @@ ${completedText || '아직 없음'}
       blockers: blockers.trim() || null,
       work_memo: workMemo.trim() || null,
       project_memos: projectMemos,
+      excluded_projects: Array.from(dismissedProjects),
     }
 
     if (report?.id) {
@@ -1173,7 +1178,31 @@ ${completedText || '아직 없음'}
                             </div>
                           )}
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* 작업/메모 없는 프로젝트만 '오늘은 작업 없음' 체크 가능 */}
+                          {g.tasks.length === 0 && isMemoEmpty(projectMemos[g.projectId]) && (
+                            <label className={`inline-flex items-center gap-1 text-[11px] ${palette.text} opacity-75 cursor-pointer select-none px-1.5 py-1 rounded hover:bg-white/60`}>
+                              <input
+                                type="checkbox"
+                                checked={false}
+                                onChange={() => {
+                                  setDismissedProjects((prev) => {
+                                    const next = new Set(prev)
+                                    next.add(g.projectId)
+                                    return next
+                                  })
+                                  setProjectMemos((prev) => {
+                                    if (!(g.projectId in prev)) return prev
+                                    const next = { ...prev }
+                                    delete next[g.projectId]
+                                    return next
+                                  })
+                                }}
+                                className="rounded shrink-0"
+                              />
+                              오늘은 작업 없음
+                            </label>
+                          )}
                           <Button
                             size="sm"
                             variant="ghost"
@@ -1181,31 +1210,6 @@ ${completedText || '아직 없음'}
                           >
                             + 항목 추가
                           </Button>
-                          {/* 빈 프로젝트(작업 0건 + 메모 비어 있음) 만 삭제 가능 */}
-                          {g.tasks.length === 0 && isMemoEmpty(projectMemos[g.projectId]) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!confirm(`'${g.projectName}' 을(를) 이 보고서에서 숨길까요? (작성한 내용이 없는 프로젝트만 숨길 수 있습니다)`)) return
-                                setDismissedProjects((prev) => {
-                                  const next = new Set(prev)
-                                  next.add(g.projectId)
-                                  return next
-                                })
-                                // 혹시 남아있을 수 있는 빈 메모 키도 정리
-                                setProjectMemos((prev) => {
-                                  if (!(g.projectId in prev)) return prev
-                                  const next = { ...prev }
-                                  delete next[g.projectId]
-                                  return next
-                                })
-                              }}
-                              className="text-gray-400 hover:text-red-600 text-sm px-1.5 py-1 rounded hover:bg-red-50 transition"
-                              title="이 프로젝트 섹션 숨기기"
-                            >
-                              ✕
-                            </button>
-                          )}
                         </div>
                       </div>
 
@@ -1250,6 +1254,38 @@ ${completedText || '아직 없음'}
                     </div>
                   )
                 })}
+
+                {/* 제외된 프로젝트 — 복원 칩 */}
+                {dismissedProjects.size > 0 && (() => {
+                  const excludedList = Array.from(dismissedProjects)
+                    .filter((pid) => idSet.has(pid))
+                    .map((pid) => ({ pid, name: nameMap.get(pid) || '프로젝트' }))
+                  if (excludedList.length === 0) return null
+                  return (
+                    <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+                      <p className="text-[11px] text-gray-500 mb-2">
+                        이 보고서에서 제외된 프로젝트 ({excludedList.length}건) — 칩 클릭 시 다시 노출
+                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {excludedList.map((p) => (
+                          <button
+                            key={p.pid}
+                            type="button"
+                            onClick={() => setDismissedProjects((prev) => {
+                              const next = new Set(prev)
+                              next.delete(p.pid)
+                              return next
+                            })}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-white border border-gray-200 text-gray-600 hover:bg-brand-50 hover:border-brand-200 hover:text-brand-700 transition"
+                            title={`${p.name} 다시 노출`}
+                          >
+                            ↺ {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* 비프로젝트 항목 — 회색 헤더 */}
                 {otherTasks.length > 0 && (
