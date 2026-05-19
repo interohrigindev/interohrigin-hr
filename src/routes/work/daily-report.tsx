@@ -145,6 +145,8 @@ export default function DailyReportPage() {
   const [workMemo, setWorkMemo] = useState('')
   // 0512: 프로젝트별 추가 메모 — { project_id: html }
   const [projectMemos, setProjectMemos] = useState<Record<string, string>>({})
+  // 2026.05.19: 사용자가 이 보고서에서 숨긴 프로젝트 ID 목록 (내용 없는 프로젝트 숨기기)
+  const [dismissedProjects, setDismissedProjects] = useState<Set<string>>(new Set())
   // 0512: 내가 속한 프로젝트 목록 (오늘 이벤트 유무 무관, 항상 노출)
   // 0513: + 파이프라인 단계 담당자로 지정된 경우도 포함, my_stages 메타로 내 담당 단계 표시
   const [myProjects, setMyProjects] = useState<{
@@ -1104,12 +1106,20 @@ ${completedText || '아직 없음'}
             // 4) 그룹 리스트 — 활동 많은 순으로 정렬, my_stages 포함
             const myStagesByProject = new Map<string, { name: string; status: string }[]>()
             myProjects.forEach((p) => myStagesByProject.set(p.id, p.my_stages))
-            const groups = Array.from(idSet).map((pid) => ({
-              projectId: pid,
-              projectName: nameMap.get(pid) || '프로젝트',
-              tasks: projectTasksMap.get(pid) ?? [],
-              myStages: myStagesByProject.get(pid) ?? [],
-            })).sort((a, b) => b.tasks.length - a.tasks.length || a.projectName.localeCompare(b.projectName))
+            // 빈 메모 판정 (RichEditor 가 빈 상태에 <p></p> 등을 남기는 경우 처리)
+            const isMemoEmpty = (html: string | undefined): boolean => {
+              if (!html) return true
+              const text = html.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim()
+              return text.length === 0
+            }
+            const groups = Array.from(idSet)
+              .filter((pid) => !dismissedProjects.has(pid))
+              .map((pid) => ({
+                projectId: pid,
+                projectName: nameMap.get(pid) || '프로젝트',
+                tasks: projectTasksMap.get(pid) ?? [],
+                myStages: myStagesByProject.get(pid) ?? [],
+              })).sort((a, b) => b.tasks.length - a.tasks.length || a.projectName.localeCompare(b.projectName))
 
             if (groups.length === 0 && otherTasks.length === 0 && !myProjectsLoading) {
               return (
@@ -1163,14 +1173,40 @@ ${completedText || '아직 없음'}
                             </div>
                           )}
                         </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => addTask(setCompleted, g.projectId, g.projectName)}
-                          className="shrink-0"
-                        >
-                          + 항목 추가
-                        </Button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => addTask(setCompleted, g.projectId, g.projectName)}
+                          >
+                            + 항목 추가
+                          </Button>
+                          {/* 빈 프로젝트(작업 0건 + 메모 비어 있음) 만 삭제 가능 */}
+                          {g.tasks.length === 0 && isMemoEmpty(projectMemos[g.projectId]) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!confirm(`'${g.projectName}' 을(를) 이 보고서에서 숨길까요? (작성한 내용이 없는 프로젝트만 숨길 수 있습니다)`)) return
+                                setDismissedProjects((prev) => {
+                                  const next = new Set(prev)
+                                  next.add(g.projectId)
+                                  return next
+                                })
+                                // 혹시 남아있을 수 있는 빈 메모 키도 정리
+                                setProjectMemos((prev) => {
+                                  if (!(g.projectId in prev)) return prev
+                                  const next = { ...prev }
+                                  delete next[g.projectId]
+                                  return next
+                                })
+                              }}
+                              className="text-gray-400 hover:text-red-600 text-sm px-1.5 py-1 rounded hover:bg-red-50 transition"
+                              title="이 프로젝트 섹션 숨기기"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* 바디 */}
