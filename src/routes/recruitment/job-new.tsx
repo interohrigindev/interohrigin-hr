@@ -414,53 +414,36 @@ export default function RecruitmentJobNew() {
         </CardContent>
       </Card>
 
-      {/* 사전질의서 선택 */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <ClipboardList className="h-5 w-5 text-gray-400" />
-            <CardTitle>사전질의서 연결</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-gray-500">
-            이력서 검토 후 지원자에게 발송할 사전질의서를 선택하세요. 질의서 관리 페이지에서 새 템플릿을 만들 수 있습니다.
-          </p>
-          <select
-            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
-            value={selectedSurveyId}
-            onChange={(e) => setSelectedSurveyId(e.target.value)}
-          >
-            <option value="">선택 안 함 (경력 수준 기반 자동 매칭)</option>
-            {surveyTemplates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.experience_type === 'entry' ? '신입' : t.experience_type === 'experienced' ? '경력' : '공통'} · {t.questions?.length || 0}문항)
-              </option>
-            ))}
-          </select>
-
-          {/* 선택된 질의서 미리보기 */}
-          {selectedSurveyId && (() => {
-            const selected = surveyTemplates.find((t) => t.id === selectedSurveyId)
-            if (!selected) return null
-            return (
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                <p className="text-xs text-gray-500 font-medium">질문 미리보기 ({selected.questions?.length || 0}문항)</p>
-                {(selected.questions || []).slice(0, 5).map((q: any, i: number) => (
-                  <div key={q.id || i} className="flex gap-2 text-sm text-gray-700">
-                    <span className="text-gray-400 shrink-0">{i + 1}.</span>
-                    <span>{q.question}</span>
-                    {q.required && <span className="text-red-400 text-xs">필수</span>}
-                  </div>
-                ))}
-                {(selected.questions?.length || 0) > 5 && (
-                  <p className="text-xs text-gray-400">외 {selected.questions.length - 5}문항...</p>
-                )}
-              </div>
-            )
-          })()}
-        </CardContent>
-      </Card>
+      {/* 사전질의서 연결 — v2.0 (PBD 성향 진단) 통합으로 전환되어 숨김
+          기존 v1 템플릿 선택 UI 는 보존 (필요 시 복원 가능), DB 컬럼 survey_template_id 도 유지.
+          v2.0 발송은 지원자 상세 화면에서 관리자가 수동 진행. */}
+      {false && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-gray-400" />
+              <CardTitle>사전질의서 연결</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-500">
+              이력서 검토 후 지원자에게 발송할 사전질의서를 선택하세요.
+            </p>
+            <select
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 outline-none"
+              value={selectedSurveyId}
+              onChange={(e) => setSelectedSurveyId(e.target.value)}
+            >
+              <option value="">선택 안 함</option>
+              {surveyTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.questions?.length || 0}문항)
+                </option>
+              ))}
+            </select>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 유입경로 안내 */}
       <Card>

@@ -3,11 +3,12 @@
 // 클라이언트 의견 반영: "성향 진단/직무 적합도/배치 검토" 라벨은 모두 숨김. 일반 설문처럼 자연스럽게.
 
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { CheckCircle2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { PBD_QUESTIONS, SCALE_LABELS } from '@/lib/pbd-questions'
 
-const DRAFT_KEY = 'iohr-survey-test-draft-v1'
+const DRAFT_KEY_BASE = 'iohr-survey-test-draft-v1'
 
 type Step =
   | { kind: 'intro' }
@@ -93,10 +94,42 @@ const MBTI_OPTIONS = [
 const BLOOD_OPTIONS = ['A', 'B', 'O', 'AB', 'Rh-', '모르겠음']
 
 export default function PublicSurveyTest() {
+  const [searchParams] = useSearchParams()
+  const candidateToken = searchParams.get('candidate') || ''
+  const [candidateInfo, setCandidateInfo] = useState<{
+    id: string; name: string; email: string; completed_at: string | null
+  } | null>(null)
+  const [tokenChecking, setTokenChecking] = useState(!!candidateToken)
+  const [tokenError, setTokenError] = useState<string | null>(null)
+
   const [draft, setDraft] = useState<DraftState>(INITIAL_DRAFT)
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+
+  // 토큰 기반 candidate 정보 로드 (지원자 발송 모드)
+  useEffect(() => {
+    if (!candidateToken) return
+    ;(async () => {
+      const { data, error } = await supabase
+        .rpc('get_candidate_by_pbd_token', { p_token: candidateToken })
+      if (error || !data || (Array.isArray(data) && data.length === 0)) {
+        setTokenError('유효하지 않거나 만료된 링크입니다. 채용 담당자에게 문의해주세요.')
+      } else {
+        const row = Array.isArray(data) ? data[0] : data
+        setCandidateInfo({
+          id: row.id, name: row.name, email: row.email,
+          completed_at: row.completed_at,
+        })
+        // 후보자 이름/이메일 자동 채움
+        setDraft((d) => ({ ...d, tester_name: row.name || '', tester_email: row.email || '' }))
+      }
+      setTokenChecking(false)
+    })()
+  }, [candidateToken])
+
+  // localStorage draft key — 후보자별 분리 (다른 후보자 응답이 섞이지 않도록)
+  const DRAFT_KEY = candidateToken ? `${DRAFT_KEY_BASE}-${candidateToken}` : DRAFT_KEY_BASE
 
   // 단계 구성 — intro(0) + 공통 9 + PBD 20 + feedback(31) = 31 step + done
   const steps: Step[] = useMemo(() => {
@@ -110,16 +143,23 @@ export default function PublicSurveyTest() {
   const current = steps[step]
   const progress = Math.round((step / (totalSteps - 1)) * 100)
 
-  // 자동 저장: localStorage 복원
+  // 자동 저장: localStorage 복원 (토큰 체크 완료 후)
   useEffect(() => {
+    if (tokenChecking) return
     try {
       const raw = localStorage.getItem(DRAFT_KEY)
       if (raw) {
         const restored = JSON.parse(raw)
-        setDraft({ ...INITIAL_DRAFT, ...restored })
+        // 후보자 모드일 때는 tester_name/email 은 candidate 값 유지
+        if (candidateInfo) {
+          setDraft({ ...INITIAL_DRAFT, ...restored, tester_name: candidateInfo.name, tester_email: candidateInfo.email })
+        } else {
+          setDraft({ ...INITIAL_DRAFT, ...restored })
+        }
       }
     } catch {}
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenChecking])
 
   // 자동 저장: 응답 변화마다 localStorage 갱신
   useEffect(() => {
@@ -127,7 +167,7 @@ export default function PublicSurveyTest() {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
     } catch {}
-  }, [draft, submitted])
+  }, [draft, submitted, DRAFT_KEY])
 
   function updateCommon(id: string, value: string) {
     setDraft(d => ({ ...d, common: { ...d.common, [id]: value } }))
@@ -205,8 +245,15 @@ export default function PublicSurveyTest() {
         pbd_answers: draft.pbd,
         feedback: draft.feedback.trim() || null,
         duration_seconds: duration,
+        candidate_id: candidateInfo?.id || null,
       })
       if (error) throw error
+
+      // 후보자 모드: 토큰 기반 RPC 로 candidates 업데이트 (anon RLS 우회 — SECURITY DEFINER)
+      if (candidateToken) {
+        await supabase.rpc('complete_pbd_survey', { p_token: candidateToken })
+      }
+
       localStorage.removeItem(DRAFT_KEY)
       setSubmitted(true)
       setStep(totalSteps - 1)
@@ -219,6 +266,35 @@ export default function PublicSurveyTest() {
 
   // 단계별 본문 렌더
   function renderBody() {
+    if (tokenChecking) {
+      return (
+        <div className="text-center py-16">
+          <Loader2 className="w-10 h-10 text-brand-500 mx-auto mb-4 animate-spin" />
+          <p className="text-slate-600">링크를 확인하는 중...</p>
+        </div>
+      )
+    }
+    if (tokenError) {
+      return (
+        <div className="text-center py-16">
+          <h2 className="text-xl font-bold text-rose-600 mb-3">링크 오류</h2>
+          <p className="text-slate-600 leading-relaxed text-sm">{tokenError}</p>
+        </div>
+      )
+    }
+    // 후보자 모드에서 이미 응답 완료된 경우
+    if (candidateInfo?.completed_at && !submitted) {
+      return (
+        <div className="text-center py-16">
+          <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto mb-5" />
+          <h2 className="text-xl font-bold text-slate-900 mb-2">이미 응답이 완료되었습니다</h2>
+          <p className="text-slate-600 text-sm">
+            {new Date(candidateInfo.completed_at).toLocaleString('ko-KR')} 에 제출 완료.<br />
+            추가 문의는 채용 담당자에게 부탁드립니다.
+          </p>
+        </div>
+      )
+    }
     if (submitted) {
       return (
         <div className="text-center py-16">
@@ -226,7 +302,9 @@ export default function PublicSurveyTest() {
           <h2 className="text-2xl font-bold text-slate-900 mb-3">응답해 주셔서 감사합니다</h2>
           <p className="text-slate-600 leading-relaxed">
             응답 내용이 저장되었습니다.<br />
-            테스트 진행 중 불편하셨던 부분이나 개선 의견이 있으시면 채용 담당자에게 별도로 전달 부탁드립니다.
+            {candidateInfo
+              ? '채용 담당자에게 자동 전달되었습니다. 빠른 시일 내에 다음 단계 안내드리겠습니다.'
+              : '테스트 진행 중 불편하셨던 부분이나 개선 의견이 있으시면 채용 담당자에게 별도로 전달 부탁드립니다.'}
           </p>
         </div>
       )
@@ -242,14 +320,23 @@ export default function PublicSurveyTest() {
             </p>
           </div>
           <div className="space-y-4">
+            {candidateInfo && (
+              <div className="bg-brand-50 border border-brand-200 rounded-lg p-4">
+                <p className="text-sm text-brand-800">
+                  <strong>{candidateInfo.name}</strong> 님, 안녕하세요. 채용 담당자가 보낸 사전질의서 링크로 접속하셨습니다.
+                </p>
+                <p className="text-xs text-brand-600 mt-1">{candidateInfo.email}</p>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">이름 <span className="text-rose-500">*</span></label>
               <input
                 value={draft.tester_name}
                 onChange={e => setDraft(d => ({ ...d, tester_name: e.target.value }))}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none disabled:bg-slate-100 disabled:text-slate-500"
                 placeholder="홍길동"
-                autoFocus
+                autoFocus={!candidateInfo}
+                disabled={!!candidateInfo}
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

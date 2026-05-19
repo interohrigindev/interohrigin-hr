@@ -597,14 +597,22 @@ ${fileInfo}
     }
   }
 
-  // 사전 질의서 별도 발송 — 현재 단계와 무관하게 언제든 발송 가능 (0512 미팅 별건 옵션)
+  // 사전 질의서 v2.0 (PBD) 발송 — 토큰 생성 + 메일 전송
   async function handleSendSurvey() {
     if (!id || !candidate) return
     setResendingSurvey(true)
     try {
+      // 기존 토큰 재사용 (이미 발송된 적 있고 미완료면 같은 토큰), 없으면 새로 생성
+      const candRow = candidate as unknown as { pbd_survey_token?: string | null }
+      let token = candRow.pbd_survey_token || ''
+      if (!token) {
+        token = crypto.randomUUID().replace(/-/g, '')
+      }
+
       const baseUrl = window.location.origin
-      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}?t=${Date.now()}`
-      const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl)
+      const surveyUrl = `${baseUrl}/survey-test?candidate=${token}&t=${Date.now()}`
+      const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl, getJobTitle())
+
       const emailRes = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -616,17 +624,27 @@ ${fileInfo}
         setResendingSurvey(false)
         return
       }
+
       const sentAt = new Date().toISOString()
       const updatedHistory = [
         ...((candidate.survey_send_history as { sent_at: string }[] | undefined) || []),
-        { sent_at: sentAt },
+        { sent_at: sentAt, version: 'v2.0_pbd' as const },
       ]
-      await supabase
+      const { error: updErr } = await supabase
         .from('candidates')
-        .update({ survey_send_history: updatedHistory })
+        .update({
+          pbd_survey_token: token,
+          pbd_survey_sent_at: sentAt,
+          survey_send_history: updatedHistory,
+        })
         .eq('id', id)
-      setCandidate((p) => p ? { ...p, survey_send_history: updatedHistory } : p)
-      toast('사전 질의서가 발송되었습니다.', 'success')
+
+      if (updErr) {
+        toast('발송 이력 저장 실패: ' + updErr.message, 'error')
+      } else {
+        setCandidate((p) => p ? { ...p, survey_send_history: updatedHistory, pbd_survey_token: token, pbd_survey_sent_at: sentAt } as typeof p : p)
+        toast('사전 질의서 v2.0 (PBD) 가 발송되었습니다.', 'success')
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '네트워크 오류'
       toast('발송 실패: ' + message, 'error')
@@ -852,14 +870,16 @@ ${fileInfo}
     toast('링크가 삭제되었습니다.', 'success')
   }
 
-  // 사전질의서 재발송 (상태를 survey_sent로 리셋 + 이메일 재발송)
+  // 사전질의서 v2.0 (PBD) 재발송 — 새 토큰 + 기존 응답 초기화 + 이메일 재발송
   async function handleResendSurvey() {
     if (!candidate) return
     setResendingSurvey(true)
     try {
+      // 새 토큰 생성 (재발송 = 응답 초기화 의도)
+      const newToken = crypto.randomUUID().replace(/-/g, '')
       const baseUrl = window.location.origin
-      const surveyUrl = `${baseUrl}/survey/${candidate.invite_token}?t=${Date.now()}`
-      const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl)
+      const surveyUrl = `${baseUrl}/survey-test?candidate=${newToken}&t=${Date.now()}`
+      const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl, getJobTitle())
 
       const emailRes = await fetch('/api/send-email', {
         method: 'POST',
@@ -873,15 +893,28 @@ ${fileInfo}
         return
       }
 
-      // 상태를 survey_sent로 리셋 + pre_survey_data 초기화 + 발송 이력 push
+      // 기존 v2.0 응답 분리 (candidate_id NULL 처리 — 데이터 자체는 보존)
+      await supabase
+        .from('survey_test_responses')
+        .update({ candidate_id: null })
+        .eq('candidate_id', candidate.id)
+
+      // 상태 리셋 + 새 토큰/타임스탬프 저장
       const sentAt = new Date().toISOString()
       const updatedHistory = [
         ...((candidate.survey_send_history as { sent_at: string }[] | undefined) || []),
-        { sent_at: sentAt },
+        { sent_at: sentAt, version: 'v2.0_pbd' as const, resent: true },
       ]
       await supabase
         .from('candidates')
-        .update({ status: 'survey_sent', pre_survey_data: null, survey_send_history: updatedHistory })
+        .update({
+          status: 'survey_sent',
+          pre_survey_data: null,
+          survey_send_history: updatedHistory,
+          pbd_survey_token: newToken,
+          pbd_survey_sent_at: sentAt,
+          pbd_survey_completed_at: null,
+        })
         .eq('id', candidate.id)
 
       setCandidate((prev) => prev ? {
@@ -968,9 +1001,15 @@ ${fileInfo}
     }
   }
 
-  // 사전질의서 포함 AI 재분석
+  // 사전질의서 포함 AI 재분석 (v2.0 PBD 우선, 없으면 v1 fallback)
   async function runSurveyInclusiveAnalysis() {
-    if (!candidate || !candidate.pre_survey_data) return
+    if (!candidate) return
+    // v2.0 응답 또는 v1 응답 중 하나라도 있어야 진행
+    const candRow = candidate as unknown as { pbd_survey_completed_at?: string | null }
+    if (!candidate.pre_survey_data && !candRow.pbd_survey_completed_at) {
+      toast('사전 질의서 응답이 아직 없습니다.', 'error')
+      return
+    }
     setSurveyReanalyzing(true)
     setAnalysisStatus('AI 설정 확인 중...')
     try {
@@ -1045,28 +1084,111 @@ ${fileInfo}
       }
 
       setAnalysisStatus('사전질의서 응답 분석 준비 중...')
-      // 사전질의서 응답 텍스트 구성
-      const surveyData = candidate.pre_survey_data as { answers?: Record<string, string>; meta?: Record<string, string> }
+
+      // v2.0 (PBD) 응답 우선 조회
+      const { data: pbdRow } = await supabase
+        .from('survey_test_responses')
+        .select('meta, consent, pbd_answers, feedback, created_at')
+        .eq('candidate_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
       let surveyText = ''
-      if (surveyData?.answers) {
-        const answerEntries = Object.entries(surveyData.answers)
-        if (surveyQuestions.length > 0) {
-          surveyText = surveyQuestions.map((q, i) => {
-            const ans = surveyData.answers?.[q.id] || '미응답'
-            return `Q${i + 1}. ${q.question}\nA: ${ans}`
-          }).join('\n\n')
-        } else {
-          surveyText = answerEntries.map(([k, v]) => `질문 ${k}: ${v}`).join('\n')
+      if (pbdRow) {
+        // ─── v2.0 데이터 기반 프롬프트 구성 ───
+        const { PBD_QUESTIONS, AXIS_DETAILS, DOMAIN_PROFILES, scorePbd } =
+          await import('@/lib/pbd-questions')
+
+        const meta = (pbdRow.meta as Record<string, string | null>) || {}
+        const consent = (pbdRow.consent as Record<string, string | null>) || {}
+        const answers = (pbdRow.pbd_answers as Record<string, number>) || {}
+        const scores = scorePbd(answers)
+
+        const metaLines: string[] = []
+        if (meta.birth_date) metaLines.push(`생년월일: ${meta.birth_date}`)
+        if (meta.mbti) metaLines.push(`MBTI: ${meta.mbti}`)
+        if (meta.hanja_name) metaLines.push(`한자이름: ${meta.hanja_name}`)
+        if (meta.blood_type) metaLines.push(`혈액형: ${meta.blood_type}`)
+        if (meta.Q1) metaLines.push(`Q1. 채용공고 접점: ${meta.Q1}`)
+        if (meta.Q2) metaLines.push(`Q2. 지원분야/예상업무: ${meta.Q2}`)
+        if (meta.Q3) metaLines.push(`Q3. 전직장 정보: ${meta.Q3}`)
+        if (meta.Q4) metaLines.push(`Q4. 출근가능일: ${meta.Q4}`)
+        if (meta.Q5) metaLines.push(`Q5. 희망연봉: ${meta.Q5}`)
+
+        const consentLines: string[] = []
+        if (consent.Q6) consentLines.push(`Q6. 필수서류 제출: ${consent.Q6}`)
+        if (consent.Q7) consentLines.push(`Q7. 경업금지 동의: ${consent.Q7}`)
+        if (consent.Q8) consentLines.push(`Q8. 운전능숙도: ${consent.Q8}`)
+        if (consent.Q9) consentLines.push(`Q9. 면접녹화 동의: ${consent.Q9}`)
+
+        const pbdAnswerLines = PBD_QUESTIONS.map((q) => {
+          const v = answers[q.id]
+          const label = typeof v === 'number' ? `${v} (${['', '전혀 아니다', '아니다', '보통', '그렇다', '매우 그렇다'][v]})` : '미응답'
+          const qText = `${q.a_text} ↔ ${q.b_text}`
+          return `${q.id} [${q.axis}${q.reversed ? '/역' : ''}] ${qText} → ${label}`
+        }).join('\n')
+
+        let scoresSection = ''
+        if (scores) {
+          const axes = (['C1', 'C3', 'S1', 'S3'] as const).map((a) => {
+            const detail = AXIS_DETAILS[a]
+            const score = scores[a]
+            const band = scores[`${a.toLowerCase()}_band` as 'c1_band' | 'c3_band' | 's1_band' | 's3_band']
+            const label = scores[`${a.toLowerCase()}_label` as 'c1_label' | 'c3_label' | 's1_label' | 's3_label']
+            return `- ${a} (${detail.title}): ${score}점 / 밴드 ${band} / 해석: ${label}`
+          }).join('\n')
+          const domainInfo = DOMAIN_PROFILES[scores.domain]
+          scoresSection = `
+[PBD 4축 점수]
+${axes}
+- ICI (응답 일관성): ${scores.ici}/100
+
+[도메인 프로파일]
+- 도메인: ${scores.domain}
+- 적합 직무 / 강점: ${(scores.fit_jobs || []).join(', ') || '판정 필요'}
+- 점검 영역: ${(scores.check_jobs || []).join(', ') || '없음'}
+${domainInfo ? `- 프로파일: ${domainInfo.name} — ${domainInfo.summary}\n- 상세: ${domainInfo.detail}\n- 적합 커리어 패스: ${domainInfo.career_path}` : ''}`
         }
-      }
-      if (surveyData?.meta) {
-        const m = surveyData.meta
-        const metaParts = []
-        if (m.birth_date) metaParts.push(`생년월일: ${m.birth_date}`)
-        if (m.mbti) metaParts.push(`MBTI: ${m.mbti}`)
-        if (m.hanja_name) metaParts.push(`한자이름: ${m.hanja_name}`)
-        if (m.blood_type) metaParts.push(`혈액형: ${m.blood_type}`)
-        if (metaParts.length > 0) surveyText += '\n\n[기본 정보]\n' + metaParts.join(' / ')
+
+        surveyText = `[버전: v2.0 PBD 진단]
+
+[기본 정보 및 지원 정보 (Q1~Q5)]
+${metaLines.join('\n') || '응답 없음'}
+
+[동의/필수확인 (Q6~Q9)]
+${consentLines.join('\n') || '응답 없음'}
+${scoresSection}
+
+[PBD 20문항 원응답]
+${pbdAnswerLines}
+
+[지원자 의견/피드백]
+${pbdRow.feedback || '없음'}`
+      } else {
+        // ─── v1 fallback: 기존 candidates.pre_survey_data 사용 ───
+        const surveyData = candidate.pre_survey_data as { answers?: Record<string, string>; meta?: Record<string, string> }
+        if (surveyData?.answers) {
+          const answerEntries = Object.entries(surveyData.answers)
+          if (surveyQuestions.length > 0) {
+            surveyText = surveyQuestions.map((q, i) => {
+              const ans = surveyData.answers?.[q.id] || '미응답'
+              return `Q${i + 1}. ${q.question}\nA: ${ans}`
+            }).join('\n\n')
+          } else {
+            surveyText = answerEntries.map(([k, v]) => `질문 ${k}: ${v}`).join('\n')
+          }
+        }
+        if (surveyData?.meta) {
+          const m = surveyData.meta
+          const metaParts = []
+          if (m.birth_date) metaParts.push(`생년월일: ${m.birth_date}`)
+          if (m.mbti) metaParts.push(`MBTI: ${m.mbti}`)
+          if (m.hanja_name) metaParts.push(`한자이름: ${m.hanja_name}`)
+          if (m.blood_type) metaParts.push(`혈액형: ${m.blood_type}`)
+          if (metaParts.length > 0) surveyText += '\n\n[기본 정보]\n' + metaParts.join(' / ')
+        }
+        if (surveyText) surveyText = '[버전: v1]\n' + surveyText
       }
 
       const fileInfo = files.length > 0
@@ -1722,7 +1844,7 @@ ${surveyText || '응답 없음'}
                       <><Sparkles className="h-4 w-4 mr-1" /> AI 분석 실행</>
                     )}
                   </Button>
-                  {candidate.pre_survey_data && (
+                  {(candidate.pre_survey_data || (candidate as unknown as { pbd_survey_completed_at?: string | null }).pbd_survey_completed_at) && (
                     <Button size="sm" variant="primary" onClick={runSurveyInclusiveAnalysis} disabled={surveyReanalyzing || analyzing}>
                       {surveyReanalyzing ? (
                         <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
