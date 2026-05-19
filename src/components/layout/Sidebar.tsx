@@ -152,7 +152,8 @@ const navGroups: NavGroup[] = [
       { to: '/admin/recruitment', label: '채용 대시보드', icon: <BarChart3 className="h-4 w-4" />, end: true },
       { to: '/admin/recruitment/jobs', label: '채용공고', icon: <FileSearch className="h-4 w-4" /> },
       { to: '/admin/recruitment/schedules', label: '면접 일정', icon: <Calendar className="h-4 w-4" /> },
-      { to: '/admin/recruitment/survey', label: '사전 질의서', icon: <MessageSquare className="h-4 w-4" /> },
+      { to: '/admin/recruitment/survey-test', label: '사전 질의서 v2 (PBD)', icon: <MessageSquare className="h-4 w-4" /> },
+      { to: '/admin/recruitment/survey', label: '사전 질의서 v1 (구버전)', icon: <MessageSquare className="h-4 w-4" /> },
       { to: '/admin/recruitment/talent', label: '인재상 설정', icon: <Star className="h-4 w-4" /> },
       { to: '/admin/recruitment/trust', label: 'AI 신뢰도', icon: <Shield className="h-4 w-4" /> },
     ],
@@ -341,6 +342,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     '/admin/recruitment/jobs': ['/admin/recruitment/postings'],
     '/admin/recruitment/schedules': ['/admin/recruitment/interviews'],
     '/admin/recruitment/trust': ['/admin/recruitment/ai-trust'],
+    // v2 PBD 결과 — v1 사전질의서 권한이 있으면 v2 도 보이도록
+    '/admin/recruitment/survey-test': ['/admin/recruitment/survey'],
     '/admin/probation-results':['/admin/probation-results'],
   }
 

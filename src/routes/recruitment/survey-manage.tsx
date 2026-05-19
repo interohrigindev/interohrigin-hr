@@ -191,8 +191,15 @@ type은 "text", "choice", "scale" 중 하나입니다.`
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">사전 질의서 관리</h1>
-          <p className="text-sm text-gray-500 mt-0.5">경력 구분별 질의서 템플릿을 관리합니다</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">사전 질의서 v1 (구버전)</h1>
+            <span className="text-[11px] font-medium text-slate-500 bg-slate-100 border border-slate-200 rounded px-2 py-0.5">
+              레거시 · 데이터 보존용
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 mt-0.5">
+            과거 직무별 사전 질의서 템플릿. 현재 채용 운영은 v2 (PBD) 로 전환됨 — 이 화면은 과거 응답 조회 / 백업용입니다.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link
@@ -200,7 +207,7 @@ type은 "text", "choice", "scale" 중 하나입니다.`
             className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-brand-700 bg-brand-50 border border-brand-200 rounded-lg hover:bg-brand-100 transition whitespace-nowrap"
           >
             <FlaskConical className="h-4 w-4" />
-            v2.0 테스트 결과
+            v2.0 (현재 운영) →
           </Link>
           <a
             href="/survey-test"

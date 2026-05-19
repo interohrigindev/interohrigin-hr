@@ -103,11 +103,11 @@ export default function SurveyTestResults({ publicMode = false }: { publicMode?:
       <div className="max-w-7xl mx-auto">
         <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">사전질의서 v2.0 — 1차 테스트 결과</h1>
+            <h1 className="text-2xl font-bold text-slate-900">사전 질의서 v2.0 — 응답 결과</h1>
             <p className="text-sm text-slate-500 mt-1">
               {publicMode
                 ? '공유 링크로 접근 중 · 응답 내용과 PBD 채점 결과를 확인할 수 있습니다.'
-                : '관리자/임원이 시범 응답한 내용과 PBD 채점 결과를 확인합니다.'}
+                : 'PBD 성향 진단 응답 내역과 채점 결과 (현재 운영 버전).'}
             </p>
           </div>
           <button
