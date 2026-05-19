@@ -302,7 +302,17 @@ function classifyError(msg: string): { keyError: boolean; quotaError: boolean; r
     lower.includes('quota') ||
     lower.includes('rate limit') ||
     lower.includes('429') ||
-    lower.includes('resource_exhausted')
+    lower.includes('resource_exhausted') ||
+    // 일시적 과부하 / 서비스 불가 — 다른 provider 로 폴백 권장
+    lower.includes('overloaded') ||
+    lower.includes('overload_error') ||
+    lower.includes('service unavailable') ||
+    lower.includes('temporarily unavailable') ||
+    lower.includes('try again later') ||
+    lower.includes('529') ||
+    lower.includes('503') ||
+    lower.includes('502') ||
+    lower.includes('500')
   // 리전 차단 / 키 권한 제한 (HTTP referrer 등) / Permission denied
   // 이런 케이스는 키는 유효하지만 현재 서버에서 호출이 막힘 → 다른 provider 폴백
   const regionError =
