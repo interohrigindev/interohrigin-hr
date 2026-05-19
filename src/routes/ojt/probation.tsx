@@ -467,31 +467,28 @@ ${prevSummary}
       }
     }
 
-    // 기존 평가 존재 여부 확인 (upsert 메시지 구분용)
-    const existing = evaluations.find(
-      (ev) => ev.employee_id === selectedEmployeeId && ev.stage === selectedStage
-        && ev.evaluator_id === (profile?.id || null) && ev.evaluator_role === selectedRole
-    )
-
-    const { error } = await supabase.from('probation_evaluations').upsert({
-      employee_id: selectedEmployeeId,
-      stage: selectedStage,
-      evaluator_id: profile?.id || null,
-      evaluator_role: selectedRole,
-      scores,
-      comments: comments || null,
-      praise: praise || null,
-      improvement: improvement || null,
-      mentor_summary: null,
-      leader_summary: selectedRole === 'leader' ? (leaderSummary || null) : null,
-      exec_one_liner: (selectedRole === 'executive' || selectedRole === 'ceo') ? (execOneLiner || null) : null,
-      strengths: (selectedRole === 'executive' || selectedRole === 'ceo') ? (strengthsText || null) : null,
-      ai_assessment: aiAssessment || null,
-      continuation_recommendation: recommendation,
-    }, { onConflict: 'employee_id,stage,evaluator_id,evaluator_role' })
+    // SECURITY DEFINER RPC 로 저장 (RLS 우회 — 권한 검증은 함수 내부에서 수행)
+    // 배경: 093/094/095 마이그레이션 모두 RLS 정책 변형으로 시도했으나 리더 계정에서
+    //       반복적으로 42501 차단 발생. 098 부터 RPC 우회로 전환하여 변수 제거.
+    const { data: result, error } = await supabase.rpc('save_probation_evaluation', {
+      p_employee_id: selectedEmployeeId,
+      p_stage: selectedStage,
+      p_evaluator_role: selectedRole,
+      p_scores: scores,
+      p_continuation_recommendation: recommendation,
+      p_comments: comments || null,
+      p_praise: praise || null,
+      p_improvement: improvement || null,
+      p_mentor_summary: null,
+      p_leader_summary: selectedRole === 'leader' ? (leaderSummary || null) : null,
+      p_exec_one_liner: (selectedRole === 'executive' || selectedRole === 'ceo') ? (execOneLiner || null) : null,
+      p_strengths: (selectedRole === 'executive' || selectedRole === 'ceo') ? (strengthsText || null) : null,
+      p_ai_assessment: aiAssessment || null,
+    })
 
     if (error) { toast('평가 저장 실패: ' + error.message, 'error'); return }
-    toast(existing ? '평가가 수정되었습니다.' : '수습 평가가 저장되었습니다.', 'success')
+    const existed = (result as { existed?: boolean } | null)?.existed === true
+    toast(existed ? '평가가 수정되었습니다.' : '수습 평가가 저장되었습니다.', 'success')
     setEvalDialogOpen(false)
     fetchData()
   }
