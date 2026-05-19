@@ -467,10 +467,13 @@ ${fileInfo}
         }
       } catch (parseErr: any) {
         console.error('AI 파싱 실패:', parseErr, result.content)
+        const preview = (result.content || '').toString().slice(0, 200).replace(/\s+/g, ' ').trim()
         if (parseErr.message === 'AI_REFUSED') {
           toast('AI가 분석을 거부했습니다. AI 설정에서 다른 모델을 시도해주세요.', 'error')
+        } else if (parseErr.message === '빈 응답') {
+          toast('AI 응답이 비어있습니다. AI 키 또는 모델 설정을 확인해주세요.', 'error')
         } else {
-          toast('AI 응답 파싱 실패. 다시 시도해주세요.', 'error')
+          toast(`AI 응답 파싱 실패: ${preview || '(빈 응답)'}`, 'error')
         }
         setAnalyzing(false)
         return
@@ -1141,10 +1144,11 @@ ${surveyText || '응답 없음'}
         parsed = JSON.parse(jsonMatch[0])
       } catch (parseErr: any) {
         console.error('AI 파싱 실패:', parseErr, result.content)
+        const preview = (result.content || '').toString().slice(0, 200).replace(/\s+/g, ' ').trim()
         if (parseErr.message === 'AI_REFUSED') {
           toast('AI가 분석을 거부했습니다. AI 설정에서 다른 모델을 시도해주세요.', 'error')
         } else {
-          toast('AI 응답 파싱 실패. 다시 시도해주세요.', 'error')
+          toast(`AI 응답 파싱 실패: ${preview || '(빈 응답)'}`, 'error')
         }
         setSurveyReanalyzing(false)
         return
