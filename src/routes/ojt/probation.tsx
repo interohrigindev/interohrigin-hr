@@ -418,13 +418,14 @@ ${prevSummary}
   async function handleSaveEval() {
     if (!selectedEmployeeId) { toast('직원을 선택하세요.', 'error'); return }
 
-    // P0-A: 회차 잠금 / 7일 자동 마감 검증
-    // 강제 가능: admin / ceo / director / division_head (실제 평가자는 임원도 포함됨)
-    const allowForceByAdmin = !!(profile?.role && ['admin','ceo','director','division_head'].includes(profile.role))
+    // P0-A: 회차 검증 (정책 완화 — 2026.05.19)
+    //  - 관리자급: 모든 제약 우회
+    //  - 일반 평가자(리더/임원/대표): 확인 다이얼로그로 우회 가능
+    //  - 7일 자동 마감은 hard block 에서 confirm 으로 완화
+    const isAdminLvl = !!(profile?.role && ['admin','ceo','director','division_head'].includes(profile.role))
     const targetEmp = employees.find((e) => e.id === selectedEmployeeId)
     if (targetEmp) {
       const ROUND_OFFSET = [14, 42, 70] as const
-      const ACTIVE_WINDOW = 7
       const idx = STAGES.indexOf(selectedStage)
       const hire = targetEmp.hire_date ? new Date(targetEmp.hire_date) : null
 
@@ -435,7 +436,7 @@ ${prevSummary}
         .eq('employee_id', selectedEmployeeId)
       const freshClosures: { employee_id: string; stage: string }[] = freshClosuresRaw || []
 
-      // 이전 회차 미완료 체크 — 관리자 마감(closure) 도 완료로 간주
+      // 이전 회차 미완료 체크 — confirm 으로 모든 평가자가 우회 가능
       for (let i = 0; i < idx; i++) {
         const prevDone = evaluations.some(
           (ev) => ev.employee_id === selectedEmployeeId && ev.stage === STAGES[i]
@@ -444,33 +445,24 @@ ${prevSummary}
           (c) => c.employee_id === selectedEmployeeId && c.stage === STAGES[i]
         )
         if (!prevDone && !prevClosed) {
-          if (!allowForceByAdmin) {
-            toast(`${STAGE_LABELS[STAGES[i]]} 평가가 먼저 완료되어야 합니다.`, 'error')
-            return
-          }
-          if (!confirm(`${STAGE_LABELS[STAGES[i]]} 평가가 미완료입니다. 관리자 권한으로 강제 진행할까요?`)) return
+          if (isAdminLvl) break // 관리자급은 통과
+          if (!confirm(`${STAGE_LABELS[STAGES[i]]} 평가가 아직 완료되지 않았습니다. 그래도 ${STAGE_LABELS[selectedStage]} 평가를 진행하시겠습니까?`)) return
           break
         }
       }
-      // 회차 시작일 / 7일 자동 마감 체크
+
+      // 회차 시작일 체크 — 미도래 차수도 confirm 으로 우회 가능
       if (hire) {
         const start = new Date(hire.getTime() + ROUND_OFFSET[idx] * 86400 * 1000).getTime()
-        const end = start + ACTIVE_WINDOW * 86400 * 1000
         const now = Date.now()
-        if (now < start && !allowForceByAdmin) {
-          toast(`${STAGE_LABELS[selectedStage]} 시작일 전입니다.`, 'error')
-          return
+        if (now < start) {
+          if (!isAdminLvl && !confirm(`${STAGE_LABELS[selectedStage]} 예정일이 아직 도래하지 않았습니다. 조기 평가로 진행하시겠습니까?`)) return
         }
-        const alreadyDone = evaluations.some(
-          (ev) => ev.employee_id === selectedEmployeeId && ev.stage === selectedStage
-            && ev.evaluator_id === (profile?.id || null) && ev.evaluator_role === selectedRole
-        )
-        if (now > end && !alreadyDone) {
-          if (!allowForceByAdmin) {
-            toast('평가 가능 기간(7일) 이 경과해 자동 마감되었습니다.', 'error')
-            return
-          }
-          if (!confirm('7일 자동 마감 기간을 지났습니다. 관리자 권한으로 강제 진행할까요?')) return
+        // 7일 자동 마감은 사용성 개선 위해 hard block 제거 (수습 기간 90일 내 언제든 가능)
+        // 평가 예정일 + 30일 이상 경과 시에만 경고 토스트
+        const overdue = (now - start) / 86400000
+        if (overdue > 30) {
+          if (!confirm(`${STAGE_LABELS[selectedStage]} 예정일에서 ${Math.floor(overdue)}일 경과했습니다. 그래도 평가하시겠습니까?`)) return
         }
       }
     }
