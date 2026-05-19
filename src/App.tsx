@@ -146,8 +146,15 @@ function App() {
             <Route path="/exit-survey/:token" element={<PublicExitSurvey />} />
             <Route path="/accept/:token" element={<AcceptOfferPage />} />
             <Route path="/careers" element={<CareersPage />} />
-            <Route path="/share/candidate/:token" element={<CandidateSharePage />} />
-            {/* 수습평가 공유 — 로그인 필수 (RPC 내부에서 권한 체크) */}
+            {/* 공유 링크 — 로그인 필수 (RPC 내부에서 권한 체크) */}
+            <Route
+              path="/share/candidate/:token"
+              element={
+                <ProtectedRoute>
+                  <CandidateSharePage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/share/probation/:token"
               element={
