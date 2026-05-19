@@ -159,9 +159,42 @@ async function callOpenAI(apiKey: string, model: string, body: AIRequestBody): P
 async function callClaude(apiKey: string, model: string, body: AIRequestBody): Promise<string> {
   const systemMsg = body.systemPrompt || '당신은 인사평가 전문 분석가입니다. 한국어로 응답하며, 구조화된 마크다운 형식으로 분석 리포트를 작성합니다.'
 
-  const messages = body.action === 'chat' && body.messages
-    ? body.messages.map((m) => ({ role: m.role, content: m.content }))
-    : [{ role: 'user' as const, content: body.prompt || '' }]
+  // 멀티모달 처리: prompt + files → Claude content blocks
+  // 지원: image/* (image block), application/pdf (document block), text/* (text 로 인라인)
+  let messages: any[]
+  if (body.action === 'chat' && body.messages) {
+    messages = body.messages.map((m) => ({ role: m.role, content: m.content }))
+  } else {
+    const content: any[] = []
+    let promptText = body.prompt || ''
+
+    if (body.files && body.files.length > 0) {
+      for (const f of body.files) {
+        if (f.mimeType.startsWith('image/')) {
+          content.push({
+            type: 'image',
+            source: { type: 'base64', media_type: f.mimeType, data: f.base64 },
+          })
+        } else if (f.mimeType === 'application/pdf') {
+          content.push({
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: f.base64 },
+          })
+        } else if (f.mimeType.startsWith('text/')) {
+          // base64 디코드 후 prompt 에 인라인
+          try {
+            const decoded = atob(f.base64)
+            const label = f.name ? `[${f.name}]` : '[첨부 텍스트]'
+            promptText += `\n\n${label}\n${decoded}`
+          } catch { /* 디코드 실패는 무시 */ }
+        }
+        // 기타 MIME 은 Claude 가 직접 처리 불가 — 프론트에서 텍스트 추출 후 text/plain 으로 전달해야 함
+      }
+    }
+
+    content.push({ type: 'text', text: promptText })
+    messages = [{ role: 'user', content }]
+  }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -179,5 +212,7 @@ async function callClaude(apiKey: string, model: string, body: AIRequestBody): P
   }
 
   const data: any = await res.json()
-  return data.content?.[0]?.text ?? ''
+  // content blocks 중 첫 번째 text 블록 찾아 반환
+  const blocks = data.content as Array<{ type: string; text?: string }> | undefined
+  return blocks?.find((b) => b.type === 'text')?.text ?? blocks?.[0]?.text ?? ''
 }
