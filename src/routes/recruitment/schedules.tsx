@@ -17,7 +17,7 @@ import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import { useAllSchedules, useInterviewScheduleMutations } from '@/hooks/useInterviewSchedules'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS } from '@/lib/recruitment-constants'
 import { interviewInviteEmail, interviewerNotificationEmail } from '@/lib/email-templates'
-import { format, addDays, startOfWeek, isToday as isDateToday } from 'date-fns'
+import { format, addDays, startOfWeek, startOfMonth, endOfMonth, endOfWeek, isToday as isDateToday, isSameMonth, eachDayOfInterval } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import type { Candidate, CandidateStatus } from '@/types/recruitment'
 
@@ -54,7 +54,7 @@ export default function InterviewSchedules() {
   const [generatingMeet, setGeneratingMeet] = useState(false)
 
   /* 캘린더 state */
-  const [viewMode, setViewMode] = useState<'3day' | 'week'>('3day')
+  const [viewMode, setViewMode] = useState<'3day' | 'week' | 'month'>('3day')
   const [viewStartDate, setViewStartDate] = useState(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
@@ -112,6 +112,14 @@ export default function InterviewSchedules() {
   /* ─── 캘린더 계산값 ───────────────────────────────── */
 
   const viewDays = useMemo(() => {
+    if (viewMode === 'month') {
+      // 월간: 해당 월의 1일이 속한 주 일요일~마지막 주 토요일 (6주 또는 5주)
+      const monthStart = startOfMonth(viewStartDate)
+      const monthEnd = endOfMonth(viewStartDate)
+      const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 })
+      const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 })
+      return eachDayOfInterval({ start: gridStart, end: gridEnd })
+    }
     const count = viewMode === '3day' ? 3 : 7
     return Array.from({ length: count }, (_, i) => addDays(viewStartDate, i))
   }, [viewMode, viewStartDate])
@@ -147,14 +155,22 @@ export default function InterviewSchedules() {
 
   /* ─── 캘린더 네비게이션 ───────────────────────────── */
 
-  function handleViewModeChange(mode: '3day' | 'week') {
+  function handleViewModeChange(mode: '3day' | 'week' | 'month') {
     setViewMode(mode)
     if (mode === 'week') {
       setViewStartDate(startOfWeek(viewStartDate, { weekStartsOn: 1 }))
+    } else if (mode === 'month') {
+      setViewStartDate(startOfMonth(viewStartDate))
     }
   }
 
   function navigateDates(direction: 'prev' | 'next') {
+    if (viewMode === 'month') {
+      const next = new Date(viewStartDate)
+      next.setMonth(next.getMonth() + (direction === 'next' ? 1 : -1))
+      setViewStartDate(startOfMonth(next))
+      return
+    }
     const step = viewMode === '3day' ? 3 : 7
     setViewStartDate((prev) => addDays(prev, direction === 'next' ? step : -step))
   }
@@ -164,6 +180,8 @@ export default function InterviewSchedules() {
     today.setHours(0, 0, 0, 0)
     if (viewMode === 'week') {
       setViewStartDate(startOfWeek(today, { weekStartsOn: 1 }))
+    } else if (viewMode === 'month') {
+      setViewStartDate(startOfMonth(today))
     } else {
       setViewStartDate(today)
     }
@@ -722,6 +740,16 @@ ${candidateList}
                 >
                   주간
                 </button>
+                <button
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    viewMode === 'month'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                  onClick={() => handleViewModeChange('month')}
+                >
+                  월간
+                </button>
               </div>
 
               {/* 날짜 네비게이션 */}
@@ -733,9 +761,10 @@ ${candidateList}
                   <ChevronLeft className="h-4 w-4 text-gray-600" />
                 </button>
                 <span className="text-sm font-medium text-gray-700 min-w-[80px] text-center select-none">
-                  {format(viewDays[0], 'M/d', { locale: ko })}
-                  {' ~ '}
-                  {format(viewDays[viewDays.length - 1], 'M/d', { locale: ko })}
+                  {viewMode === 'month'
+                    ? format(viewStartDate, 'yyyy년 M월', { locale: ko })
+                    : `${format(viewDays[0], 'M/d', { locale: ko })} ~ ${format(viewDays[viewDays.length - 1], 'M/d', { locale: ko })}`
+                  }
                 </span>
                 <button
                   onClick={() => navigateDates('next')}
@@ -756,6 +785,70 @@ ${candidateList}
         </CardHeader>
 
         <CardContent>
+          {viewMode === 'month' ? (
+            /* 월간 뷰 — 6주 × 7일 그리드 */
+            <div className="space-y-2">
+              {/* 요일 헤더 */}
+              <div className="grid grid-cols-7 gap-1">
+                {['일','월','화','수','목','금','토'].map((d, i) => (
+                  <div key={d} className={`text-center text-[11px] font-semibold py-1 ${i === 0 ? 'text-rose-500' : i === 6 ? 'text-blue-500' : 'text-gray-600'}`}>
+                    {d}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {viewDays.map((day) => {
+                  const dateKey = format(day, 'yyyy-MM-dd')
+                  const daySchedules = schedulesByDate.get(dateKey) || []
+                  const today = isDateToday(day)
+                  const inMonth = isSameMonth(day, viewStartDate)
+                  const dow = day.getDay()
+                  return (
+                    <div
+                      key={dateKey}
+                      className={`border rounded-lg p-1.5 min-h-[100px] ${
+                        !inMonth ? 'bg-gray-50/50 border-gray-100 opacity-50'
+                        : today ? 'bg-blue-50 border-blue-300'
+                        : 'bg-white border-gray-200'
+                      }`}
+                    >
+                      <div className={`flex items-center justify-between mb-1`}>
+                        <span className={`text-xs font-semibold ${
+                          today ? 'text-blue-700'
+                          : dow === 0 ? 'text-rose-500'
+                          : dow === 6 ? 'text-blue-500'
+                          : 'text-gray-700'
+                        }`}>{format(day, 'd')}</span>
+                        {daySchedules.length > 0 && (
+                          <span className="text-[10px] px-1 rounded bg-brand-100 text-brand-700 font-semibold">
+                            {daySchedules.length}
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-0.5">
+                        {daySchedules.slice(0, 3).map((s: any) => {
+                          const cand = candidates.find((c) => c.id === s.candidate_id)
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => navigate(`/admin/recruitment/candidates/${s.candidate_id}`)}
+                              className="block w-full text-left text-[10px] px-1 py-0.5 rounded bg-brand-50 text-brand-700 truncate hover:bg-brand-100"
+                              title={`${format(new Date(s.scheduled_at), 'HH:mm')} ${cand?.name || ''}`}
+                            >
+                              {format(new Date(s.scheduled_at), 'HH:mm')} {cand?.name || '?'}
+                            </button>
+                          )
+                        })}
+                        {daySchedules.length > 3 && (
+                          <div className="text-[10px] text-gray-400 px-1">+ {daySchedules.length - 3}건 더</div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
           <div className="overflow-x-auto -mx-4 px-4 pb-2">
             <div
               className={`grid gap-3 ${
@@ -826,6 +919,7 @@ ${candidateList}
               })}
             </div>
           </div>
+          )}
         </CardContent>
       </Card>
 

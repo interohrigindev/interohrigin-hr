@@ -89,7 +89,7 @@ const DOC_TYPE_CONFIG: Record<string, { label: string; icon: string; hasAmount: 
   leave:         { label: '연차/반차/조퇴 신청', icon: '🗓', hasAmount: false, category: '근태', desc: '연차·반차·조퇴' },
   overtime:      { label: '연장/야간/휴일 근무', icon: '🌙', hasAmount: false, category: '근태', desc: '추가 근무 승인' },
   business_trip: { label: '출장 신청',           icon: '✈', hasAmount: false, category: '근태', desc: '국내·해외 출장' },
-  expense:       { label: '경비 청구',           icon: '💰', hasAmount: true,  category: '비용', desc: '사용 경비 정산' },
+  expense:       { label: '지출결의서',           icon: '💰', hasAmount: true,  category: '비용', desc: '사용 경비 정산' },
   purchase:      { label: '사무용품 요청',         icon: '🛒', hasAmount: true,  category: '비용', desc: '사무용품·자재·기기 구매' },
   daily_report:  { label: '일일 업무보고',       icon: '📝', hasAmount: false, category: '업무', desc: '일일 보고서 결재' },
   general:       { label: '일반 결재',           icon: '📄', hasAmount: false, category: '기타', desc: '자유 양식' },
@@ -1673,6 +1673,9 @@ export default function ApprovalManagementPage() {
                     completed?: { title: string }[]
                     in_progress?: { title: string }[]
                     planned?: { title: string }[]
+                    satisfaction_score?: number
+                    satisfaction_comment?: string
+                    blockers?: string
                   }
                   return (
                     <div className="space-y-3">
@@ -1737,6 +1740,35 @@ export default function ApprovalManagementPage() {
                        (!content.in_progress || content.in_progress.length === 0) &&
                        (!content.planned || content.planned.length === 0) && (
                         <p className="text-sm text-gray-400 text-center py-4">작성된 업무가 없습니다</p>
+                      )}
+
+                      {/* P1-#8 #9: 업무 만족도 + 한 줄 총평 */}
+                      {(content.satisfaction_score != null || content.satisfaction_comment || content.blockers) && (
+                        <div className="border border-purple-200 rounded-lg overflow-hidden">
+                          <div className="bg-purple-50 px-3 py-2 border-b border-purple-100">
+                            <p className="text-xs font-semibold text-purple-800">💭 회고</p>
+                          </div>
+                          <div className="bg-white px-3 py-2 space-y-1.5">
+                            {content.satisfaction_score != null && (
+                              <p className="text-sm">
+                                <span className="text-gray-500">업무 만족도:</span>{' '}
+                                <span className="font-semibold text-brand-700">{content.satisfaction_score}/10</span>
+                              </p>
+                            )}
+                            {content.satisfaction_comment && (
+                              <p className="text-sm">
+                                <span className="text-gray-500">한 줄 총평:</span>{' '}
+                                <span className="text-gray-900">{content.satisfaction_comment}</span>
+                              </p>
+                            )}
+                            {content.blockers && (
+                              <p className="text-sm">
+                                <span className="text-gray-500">이슈/블로커:</span>{' '}
+                                <span className="text-gray-900">{content.blockers}</span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
                   )
@@ -2505,7 +2537,7 @@ function ApprovalTemplateManager({
                   <option value="daily_report">📝 일일 업무보고</option>
                   <option value="leave">연차/휴가</option>
                   <option value="overtime">야간/휴일 근무</option>
-                  <option value="expense">경비 청구</option>
+                  <option value="expense">지출결의서</option>
                   <option value="business_trip">출장 신청</option>
                   <option value="purchase">사무용품 요청</option>
                   <option value="personnel">인사 결재</option>
@@ -2518,7 +2550,7 @@ function ApprovalTemplateManager({
                   type="text"
                   value={newTmplName}
                   onChange={(e) => setNewTmplName(e.target.value)}
-                  placeholder="예: 경비 청구 (50만원 미만)"
+                  placeholder="예: 지출결의서 (50만원 미만)"
                   className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2"
                 />
               </div>

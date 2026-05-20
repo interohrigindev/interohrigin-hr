@@ -11,6 +11,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useRecruitmentStats, useCandidates, useJobPostings } from '@/hooks/useRecruitment'
 import { CandidateAddDialog } from '@/components/recruitment/CandidateAddDialog'
+import { CandidateSearchBar } from '@/components/recruitment/CandidateSearchBar'
 import { supabase } from '@/lib/supabase'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, POSTING_STATUS_LABELS, POSTING_STATUS_COLORS } from '@/lib/recruitment-constants'
 import type { CandidateStatus, PostingStatus } from '@/types/recruitment'
@@ -188,6 +189,9 @@ export default function RecruitmentDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* P1-#5: 지원자 검색 */}
+      <CandidateSearchBar candidates={candidates} postings={postings} onSelect={(id) => navigate(`/admin/recruitment/candidates/${id}`)} />
 
       {/* 외부 이력서 업로드 모달 */}
       <CandidateAddDialog

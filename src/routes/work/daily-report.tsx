@@ -1504,6 +1504,9 @@ ${completedText || '아직 없음'}
                       completed,
                       in_progress: inProgress,
                       planned,
+                      // P1-#8 #9: 업무 만족도 + 한 줄 총평 누락 보강
+                      satisfaction_score: satisfaction,
+                      satisfaction_comment: satisfactionComment.trim() || null,
                       ...ojtContext,
                     },
                     requester_id: profile.id,
