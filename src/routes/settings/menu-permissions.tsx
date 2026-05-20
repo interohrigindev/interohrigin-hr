@@ -52,6 +52,8 @@ const STANDALONE_ITEMS: MenuItem[] = [
   { label: '평가하기', path: '/evaluate' },
   { label: '내 결과', path: '/report' },
   { label: '메신저', path: '/messenger' },
+  // 법적 리스크 대응 P1-1: 직원 셀프서비스
+  { label: '내 연장근로 (직원용)', path: '/my/overtime' },
 ]
 
 const MENU_GROUPS: MenuGroup[] = [
@@ -125,6 +127,26 @@ const MENU_GROUPS: MenuGroup[] = [
       { label: 'AI 평가 리포트', path: '/admin/evaluation/ai-report' },
       { label: 'AI 검증', path: '/admin/evaluation/ai-verify' },
       { label: '데이터 동기화', path: '/admin/evaluation/sync' },
+    ],
+  },
+  // 법적 리스크 대응 P1+ — 모듈별 feature toggle ON 후, 이 카탈로그에서 직원에게 권한 부여 필요
+  {
+    label: '법적 리스크 대응 (관리자용)',
+    items: [
+      { label: '연장근로 승인', path: '/admin/overtime' },
+      { label: '52시간 경고', path: '/admin/hours-warning' },
+      { label: '연차 촉진', path: '/admin/leave-promotion' },
+      { label: '징계/면담', path: '/admin/disciplinary' },
+      { label: '수습 컴플라이언스', path: '/admin/probation-compliance' },
+    ],
+  },
+  {
+    label: '시스템 관리',
+    items: [
+      { label: '기능 토글', path: '/admin/system/feature-rollouts' },
+      { label: '감사 로그', path: '/admin/system/audit-logs' },
+      { label: '익명 신고 처리', path: '/admin/system/anonymous-reports' },
+      { label: '법령 파라미터', path: '/admin/system/legal-params' },
     ],
   },
 ]

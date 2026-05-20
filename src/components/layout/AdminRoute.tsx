@@ -5,7 +5,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { supabase } from '@/lib/supabase'
 import { ShieldX } from 'lucide-react'
 
-const ADMIN_ROLES = ['director', 'division_head', 'ceo', 'admin']
+const ADMIN_ROLES = ['director', 'division_head', 'ceo', 'admin', 'hr_admin']
 
 export function AdminRoute({ children }: { children: React.ReactNode }) {
   const { profile, loading } = useAuth()

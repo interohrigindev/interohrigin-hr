@@ -406,13 +406,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       return false
     }
     // 법적 리스크 대응 P1+: feature toggle 미활성 메뉴 숨김 (admin/ceo 도 동일하게 숨김 — 기능 토글 화면에서 활성화 후 노출)
+    // featureKey 활성 후에도 menu_permissions 권한이 있는 직원에게만 노출 (admin/ceo 는 항상 우회)
     if (item.featureKey && !enabledFeatures.has(item.featureKey)) {
       return false
-    }
-    // featureKey 활성 = menu_permissions 우회 (feature toggle 자체가 노출 제어 역할)
-    // minRole 만 충족하면 노출 — 별도 메뉴 권한 등록 불필요
-    if (item.featureKey && enabledFeatures.has(item.featureKey)) {
-      return !item.minRole || hasRole(item.minRole)
     }
     if (!item.minRole || hasRole(item.minRole)) {
       // 메뉴 권한이 설정되어 있으면 허용 목록에 있는지 확인
@@ -437,15 +433,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     const meetsRole = !group.minRole || hasRole(group.minRole)
     if (meetsRole) return group.items.some(isItemVisible)
     // minRole 미충족 — 명시적 menu_permissions 권한 보유 항목이 있으면 노출
-    // 또는 featureKey 활성된 하위 항목이 있으면 노출 (P1+ compliance 모듈)
-    const hasActiveFeatureItem = group.items.some((item) =>
-      !!item.featureKey && enabledFeatures.has(item.featureKey)
-      && (!item.hideForRoles || !profile?.role || !item.hideForRoles.includes(profile.role as EmployeeRole))
-    )
-    if (hasActiveFeatureItem) return true
     if (!allowedMenus) return false
     return group.items.some((item) => {
       if (item.hideForRoles && profile?.role && item.hideForRoles.includes(profile.role as EmployeeRole)) return false
+      // featureKey 미활성 메뉴는 그룹 가시성 계산에서 제외 (feature OFF 면 권한 보유해도 노출 X)
+      if (item.featureKey && !enabledFeatures.has(item.featureKey)) return false
       const path = typeof item.to === 'string' ? item.to : ''
       if (!path) return false
       if (allowedMenus.includes(path)) return true
