@@ -2,6 +2,9 @@
  * 이메일 HTML 템플릿 — 인터오리진 HR
  */
 
+// 이메일 본문 내 절대 링크용 베이스 URL (VITE_APP_URL 우선, 미설정 시 운영 도메인)
+const APP_URL = (import.meta.env.VITE_APP_URL as string | undefined) || 'https://hr.interohrigin.com'
+
 export function surveyInviteEmail(
   candidateName: string,
   surveyUrl: string,
@@ -478,7 +481,7 @@ export function annualLeavePromotionEmail(
       </ul>
 
       <div style="text-align:center;margin:28px 0;">
-        <a href="https://interohrigin-hr2.pages.dev/admin/leave"
+        <a href="${APP_URL}/admin/leave"
            style="display:inline-block;background:#6B3FA0;color:#ffffff;padding:14px 36px;
                   border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">
           연차 신청하러 가기
@@ -669,7 +672,7 @@ export function probationReminderEmail(params: {
       </ul>
 
       <div style="text-align:center;margin:28px 0;">
-        <a href="https://interohrigin-hr2.pages.dev/admin/probation"
+        <a href="${APP_URL}/admin/probation"
            style="display:inline-block;background:#6B3FA0;color:#ffffff;padding:14px 36px;
                   border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">
           수습 평가 진행하기
