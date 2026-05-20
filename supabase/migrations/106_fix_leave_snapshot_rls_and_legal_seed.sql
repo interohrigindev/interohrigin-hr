@@ -26,9 +26,12 @@ WITH CHECK (
 -- ============================================================
 -- 2. 안전한 일괄 스냅샷 RPC (RLS 신뢰성 우회용)
 --    클라이언트에서 호출 시 admin/hr_admin/ceo 만 통과
+--    DROP 후 재생성 — 시그니처 변경 시에도 안전 (107 마이그레이션에서 컬럼명 변경됨)
 -- ============================================================
+DROP FUNCTION IF EXISTS public.snapshot_all_leave_balances();
+
 CREATE OR REPLACE FUNCTION public.snapshot_all_leave_balances()
-RETURNS TABLE(employee_count integer, snapshot_date date)
+RETURNS TABLE(employee_count integer, as_of_date date)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -43,7 +46,7 @@ BEGIN
     RAISE EXCEPTION 'forbidden: admin/hr_admin/ceo/director/division_head only';
   END IF;
 
-  INSERT INTO public.leave_balance_snapshots
+  INSERT INTO public.leave_balance_snapshots AS lbs
     (employee_id, snapshot_date, total_days, used_days, remaining_days, estimated_liability_krw)
   SELECT
     d.employee_id,
