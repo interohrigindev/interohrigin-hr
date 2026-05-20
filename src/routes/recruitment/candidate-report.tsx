@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast'
 import { FileRetentionBadge } from '@/components/ui/FileRetentionBadge'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { getCandidateFileUrl } from '@/lib/candidate-storage'
 import { generateAIContent, getAIConfigForFeature, type AIFileAttachment } from '@/lib/ai-client'
 import { runComprehensiveAnalysis } from '@/lib/recruitment-ai'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
@@ -90,35 +91,10 @@ export default function CandidateReport() {
       const cand = candRes.data as Candidate | null
       if (cand) {
         setCandidate(cand)
-        // 레거시 데이터 처리: getPublicUrl 로 저장된 recruitment-files 깨진 URL 자동 복구
-        // 패턴: ".../storage/v1/object/public/recruitment-files/<path>" → <path> 추출 + recruitment-files signed URL
-        const resolveCandidateFileUrl = async (raw: string | null | undefined): Promise<string | null> => {
-          if (!raw) return null
-          // 1) http URL 인 경우
-          if (raw.startsWith('http')) {
-            // recruitment-files 공개 URL → 그 버킷의 signed URL 로 복구
-            const m = raw.match(/\/storage\/v1\/object\/(?:public|sign)\/recruitment-files\/(.+?)(?:\?.*)?$/)
-            if (m) {
-              const { data: s } = await supabase.storage.from('recruitment-files').createSignedUrl(m[1], 3600)
-              return s?.signedUrl || raw
-            }
-            // resumes 공개 URL → 마찬가지로 signed URL 로 복구
-            const m2 = raw.match(/\/storage\/v1\/object\/(?:public|sign)\/resumes\/(.+?)(?:\?.*)?$/)
-            if (m2) {
-              const { data: s } = await supabase.storage.from('resumes').createSignedUrl(m2[1], 3600)
-              return s?.signedUrl || raw
-            }
-            // 그 외 외부 URL → 그대로 사용
-            return raw
-          }
-          // 2) 상대 PATH (현행) → resumes 버킷의 signed URL
-          const { data: s } = await supabase.storage.from('resumes').createSignedUrl(raw, 3600)
-          return s?.signedUrl || null
-        }
-
-        const resumeUrl = await resolveCandidateFileUrl(cand.resume_url)
+        // 단일 진입점 사용 — resumes / recruitment-files / 외부 URL 모두 자동 분기
+        const resumeUrl = await getCandidateFileUrl(cand.resume_url)
         if (resumeUrl) setResumeSignedUrl(resumeUrl)
-        const coverUrl = await resolveCandidateFileUrl(cand.cover_letter_url)
+        const coverUrl = await getCandidateFileUrl(cand.cover_letter_url)
         if (coverUrl) setCoverLetterSignedUrl(coverUrl)
 
         // 포트폴리오 파일별 signed URL 일괄 생성

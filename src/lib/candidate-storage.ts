@@ -1,0 +1,128 @@
+/**
+ * 지원자 파일 단일 진입점 — 업로드/다운로드 모두 이 모듈만 사용
+ *
+ * 핵심 원칙:
+ *  1. 업로드는 항상 'resumes' 버킷 + 상대 path
+ *  2. 다운로드는 어떤 형식이든 자동 분기 (resumes / recruitment-files / 외부 URL)
+ *  3. 새 화면 추가 시 이 함수만 호출하면 됨
+ *
+ * Storage 경로 정책:
+ *  - resume:        {candidate_id}/resume_{timestamp}.{ext}
+ *  - cover_letter:  {candidate_id}/cover_letter_{timestamp}.{ext}
+ *  - portfolio:     {candidate_id}/portfolio_{timestamp}_{n}.{ext}
+ */
+import { supabase } from './supabase'
+
+export type CandidateFileKind = 'resume' | 'cover_letter' | 'portfolio'
+
+const PRIMARY_BUCKET = 'resumes'
+const FALLBACK_BUCKETS = ['recruitment-files']  // 레거시 fallback (방어용)
+
+/**
+ * 업로드 — 신규 업로드는 모두 이 함수만 사용
+ * @returns 저장된 상대 path (DB candidates.resume_url 등에 그대로 저장)
+ */
+export async function uploadCandidateFile(
+  candidateId: string,
+  kind: CandidateFileKind,
+  file: File,
+  options?: { index?: number },
+): Promise<{ path: string; error?: string }> {
+  const ext = file.name.split('.').pop() || 'bin'
+  const ts = Date.now()
+  const idx = options?.index ?? 0
+  const fname = kind === 'portfolio' ? `portfolio_${ts}_${idx}.${ext}` : `${kind}_${ts}.${ext}`
+  const path = `${candidateId}/${fname}`
+
+  const { error } = await supabase.storage.from(PRIMARY_BUCKET).upload(path, file, { upsert: false })
+  if (error) return { path: '', error: error.message }
+  return { path }
+}
+
+/**
+ * 다운로드 URL 생성 — 어떤 형식이든 자동 해석
+ *
+ * 지원 형식:
+ *  - 상대 path: '{id}/resume.pdf'      → resumes 버킷 시도, 실패 시 recruitment-files
+ *  - public/sign URL: bucket 추출 후 재서명
+ *  - 외부 URL (다른 ATS 등): 그대로 반환
+ */
+export async function getCandidateFileUrl(raw: string | null | undefined): Promise<string | null> {
+  if (!raw) return null
+
+  // 1) http(s) URL 인 경우 — Supabase storage URL 패턴 시도
+  if (raw.startsWith('http')) {
+    const m = raw.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/?]+)\/(.+?)(?:\?.*)?$/)
+    if (m) {
+      const bucket = m[1]
+      const innerPath = m[2]
+      const signed = await signInBucket(bucket, innerPath)
+      if (signed) return signed
+      // bucket 명시되었으나 서명 실패 시 fallback 다른 버킷도 시도
+      for (const b of [PRIMARY_BUCKET, ...FALLBACK_BUCKETS]) {
+        if (b === bucket) continue
+        const s = await signInBucket(b, innerPath)
+        if (s) return s
+      }
+      // 그래도 실패하면 원본 그대로 (public URL 이면 작동할 수 있음)
+      return raw
+    }
+    // Supabase 외부 URL (다른 ATS 등) — 그대로 반환
+    return raw
+  }
+
+  // 2) 상대 path — PRIMARY 시도 후 fallback
+  for (const bucket of [PRIMARY_BUCKET, ...FALLBACK_BUCKETS]) {
+    const url = await signInBucket(bucket, raw)
+    if (url) return url
+  }
+  return null
+}
+
+async function signInBucket(bucket: string, path: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600)
+    if (error || !data?.signedUrl) return null
+    return data.signedUrl
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 여러 파일을 한 번에 해석 (포트폴리오 등)
+ */
+export async function getCandidateFileUrls(
+  rawList: (string | null | undefined)[],
+): Promise<(string | null)[]> {
+  return Promise.all(rawList.map((r) => getCandidateFileUrl(r)))
+}
+
+/**
+ * 삭제 — 상대 path 만 지원 (외부 URL 은 삭제 불가)
+ */
+export async function deleteCandidateFile(path: string): Promise<{ ok: boolean; error?: string }> {
+  if (!path || path.startsWith('http')) return { ok: false, error: '상대 path 만 삭제 가능' }
+  // 양쪽 버킷에서 모두 삭제 시도 (어디에 있든 정리)
+  for (const bucket of [PRIMARY_BUCKET, ...FALLBACK_BUCKETS]) {
+    await supabase.storage.from(bucket).remove([path]).catch(() => {})
+  }
+  return { ok: true }
+}
+
+/**
+ * URL/path 가 어느 버킷의 파일인지 진단 (디버그용)
+ */
+export function diagnoseFilePath(raw: string | null | undefined): {
+  kind: 'null' | 'relative' | 'supabase_url' | 'external_url'
+  bucket?: string
+  innerPath?: string
+} {
+  if (!raw) return { kind: 'null' }
+  if (raw.startsWith('http')) {
+    const m = raw.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/?]+)\/(.+?)(?:\?.*)?$/)
+    if (m) return { kind: 'supabase_url', bucket: m[1], innerPath: m[2] }
+    return { kind: 'external_url' }
+  }
+  return { kind: 'relative', bucket: PRIMARY_BUCKET, innerPath: raw }
+}

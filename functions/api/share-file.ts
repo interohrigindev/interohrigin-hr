@@ -10,7 +10,9 @@
  *   SUPABASE_SERVICE_ROLE_KEY   — service_role key (storage 서명 권한)
  */
 
-interface Env {
+import { resolveSignedUrl, type CandidateStorageEnv } from './_candidate-storage'
+
+interface Env extends CandidateStorageEnv {
   SUPABASE_URL: string
   SUPABASE_SERVICE_ROLE_KEY: string
 }
@@ -86,46 +88,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   }
   if (!path) return json({ error: '파일이 없습니다' }, 404)
 
-  // 외부 URL 처리
-  if (path.startsWith('http')) {
-    // Supabase storage public/sign URL 패턴 — bucket + path 추출 후 service role 로 재서명
-    const mPublic = path.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/?]+)\/(.+?)(?:\?.*)?$/)
-    if (mPublic) {
-      const bucket = mPublic[1]
-      const innerPath = mPublic[2]
-      const r = await signInBucket(env, headers, bucket, innerPath)
-      if (r) return json({ url: r, filename: filename || innerPath.split('/').pop() })
-    }
-    // 그 외 외부 URL 은 그대로
-    return json({ url: path, filename })
-  }
-
-  // 3) 상대 path — resumes / recruitment-files 순서로 시도
-  for (const bucket of ['resumes', 'recruitment-files']) {
-    const r = await signInBucket(env, headers, bucket, path)
-    if (r) return json({ url: r, filename })
-  }
-
-  return json({ error: '파일을 찾을 수 없습니다 (resumes / recruitment-files 모두 시도)' }, 404)
-}
-
-async function signInBucket(
-  env: Env,
-  headers: Record<string, string>,
-  bucket: string,
-  path: string,
-): Promise<string | null> {
-  try {
-    const r = await fetch(`${env.SUPABASE_URL}/storage/v1/object/sign/${bucket}/${path}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ expiresIn: 3600 }),
-    })
-    if (!r.ok) return null
-    const s: { signedURL?: string } = await r.json()
-    if (!s.signedURL) return null
-    return `${env.SUPABASE_URL}/storage/v1${s.signedURL}`
-  } catch {
-    return null
-  }
+  // 3) 단일 진입점으로 위임 — resolveSignedUrl 이 형식 분기 + 버킷 fallback 자동 처리
+  const url = await resolveSignedUrl(env, path)
+  if (!url) return json({ error: '파일을 찾을 수 없습니다' }, 404)
+  return json({ url, filename })
 }

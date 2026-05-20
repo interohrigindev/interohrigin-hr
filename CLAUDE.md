@@ -11,6 +11,7 @@ Tech: React + TypeScript + Tailwind / Supabase PRO / Cloudflare Pages
 - 한국어 UI, 날짜 YYYY.MM.DD, 모바일 반응형 필수
 - Phase 자동 전환 금지 (관리자 수동 승인)
 - 코드 수정 시 파일 전체를 덮어쓰지 말고 변경 부분만 수정(Edit), 수정 후 반드시 빌드 검증
+- 지원자 파일(이력서/자기소개서/포트폴리오) 업/다운로드는 반드시 `src/lib/candidate-storage.ts` 진입점 사용. 직접 `supabase.storage.from('resumes')` / `from('recruitment-files')` 호출 금지. 서버(Cloudflare Function)는 `functions/api/_candidate-storage.ts` 의 `resolveSignedUrl` 사용.
 
 ## 문서 맵 (필요 시 참조)
 작업 주제에 맞는 문서를 읽어서 컨텍스트를 확보할 것.
