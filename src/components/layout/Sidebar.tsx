@@ -217,6 +217,14 @@ const navGroups: NavGroup[] = [
       { to: '/admin/leave', label: '연차 관리', icon: <CalendarPlus className="h-4 w-4" />, end: true },
       // 법적 리스크 대응 P1-1: 연장근로 사전 승인제 (feature toggle 로 노출)
       { to: '/admin/overtime', label: '연장근로 승인', icon: <Clock className="h-4 w-4" />, featureKey: 'overtime_approval' },
+      // P1-2: 주 52시간 사전 경고
+      { to: '/admin/hours-warning', label: '52시간 경고', icon: <Clock className="h-4 w-4" />, featureKey: 'weekly_52h_warning' },
+      // P1-3: 연차 촉진
+      { to: '/admin/leave-promotion', label: '연차 촉진', icon: <CalendarPlus className="h-4 w-4" />, featureKey: 'leave_promotion' },
+      // P2-1: 징계
+      { to: '/admin/disciplinary', label: '징계/면담', icon: <AlertCircle className="h-4 w-4" />, featureKey: 'disciplinary_case' },
+      // P2-2: 수습 컴플라이언스
+      { to: '/admin/probation-compliance', label: '수습 컴플라이언스', icon: <GraduationCap className="h-4 w-4" />, featureKey: 'probation_compliance' },
       // { to: '/admin/attendance', label: '근태 관리', icon: <Clock className="h-4 w-4" /> }, // Sprint 0: 이번 배포 제외
       // D2-1: 전자결재는 상위 standalone 으로 승격
       { to: '/admin/certificates', label: '증명서 발급', icon: <Award className="h-4 w-4" /> },
@@ -253,6 +261,10 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/admin/system/feature-rollouts', label: '기능 토글', icon: <ToggleRight className="h-4 w-4" /> },
       { to: '/admin/system/audit-logs',       label: '감사 로그', icon: <ScrollText className="h-4 w-4" /> },
+      // P2-3 익명 신고
+      { to: '/admin/system/anonymous-reports', label: '익명 신고 처리', icon: <ShieldCheck className="h-4 w-4" />, featureKey: 'anonymous_report' },
+      // P3-1 법령 파라미터
+      { to: '/admin/system/legal-params',     label: '법령 파라미터', icon: <ToggleRight className="h-4 w-4" />, featureKey: 'legal_params_sync' },
     ],
   },
 ]

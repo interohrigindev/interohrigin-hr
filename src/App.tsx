@@ -11,6 +11,13 @@ import FeatureRolloutsPage from '@/routes/admin/feature-rollouts'
 import AuditLogsPage from '@/routes/admin/audit-logs'
 import MyOvertimePage from '@/routes/my/overtime'
 import OvertimeApprovalsPage from '@/routes/admin/overtime-approvals'
+import WeeklyHoursPage from '@/routes/admin/weekly-hours'
+import LeavePromotionPage from '@/routes/admin/leave-promotion'
+import DisciplinaryPage from '@/routes/admin/disciplinary'
+import ProbationCompliancePage from '@/routes/admin/probation-compliance'
+import AnonymousReportsPage from '@/routes/admin/anonymous-reports'
+import LegalParamsPage from '@/routes/admin/legal-params'
+import ReportAnonymousPage from '@/routes/public/report-anonymous'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AdminRoute } from '@/components/layout/AdminRoute'
 import Login from '@/routes/login'
@@ -143,6 +150,8 @@ function App() {
 
             {/* 외부 페이지 (로그인 불필요) */}
             <Route path="/apply/:postingId" element={<PublicApply />} />
+            {/* 법적 리스크 대응 P2-3: 익명 신고 핫라인 (공개) */}
+            <Route path="/report-anonymous" element={<ReportAnonymousPage />} />
             <Route path="/survey/:token" element={<PublicSurvey />} />
             <Route path="/survey-test" element={<PublicSurveyTest />} />
             <Route path="/survey-test-results" element={<PublicSurveyTestResults />} />
@@ -340,6 +349,14 @@ function App() {
               {/* 연장근로 사전 승인제 — P1-1 (feature toggle 로 메뉴 노출 제어) */}
               <Route path="my/overtime"       element={<MyOvertimePage />} />
               <Route path="admin/overtime"    element={<OvertimeApprovalsPage />} />
+
+              {/* 법적 리스크 대응 P1-2 ~ P3-1 */}
+              <Route path="admin/hours-warning"         element={<AdminRoute><WeeklyHoursPage /></AdminRoute>} />
+              <Route path="admin/leave-promotion"       element={<AdminRoute><LeavePromotionPage /></AdminRoute>} />
+              <Route path="admin/disciplinary"          element={<AdminRoute><DisciplinaryPage /></AdminRoute>} />
+              <Route path="admin/probation-compliance"  element={<AdminRoute><ProbationCompliancePage /></AdminRoute>} />
+              <Route path="admin/system/anonymous-reports" element={<AdminRoute><AnonymousReportsPage /></AdminRoute>} />
+              <Route path="admin/system/legal-params"   element={<AdminRoute><LegalParamsPage /></AdminRoute>} />
             </Route>
           </Routes>
           <FloatingAIAgent />
