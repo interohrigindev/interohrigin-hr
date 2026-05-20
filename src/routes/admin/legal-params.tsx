@@ -301,6 +301,49 @@ export default function LegalParamsPage() {
         </Card>
       )}
 
+      {/* 현재 활성 파라미터 요약 — 오늘 기준 effective_from 가 가장 최근인 active row */}
+      <Card className="border-emerald-200 bg-emerald-50/30">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Check className="h-4 w-4 text-emerald-600" /> 현재 적용 중 파라미터 (오늘 기준)
+          </CardTitle>
+          <p className="text-xs text-gray-500 mt-1">
+            상태=active 이고 시행일이 오늘 이전인 row 중 키별 최신값. 향후 시급/4대보험 계산 코드는 여기 값을 참조해야 합니다.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {(() => {
+            const today = new Date().toISOString().slice(0, 10)
+            const activeMap = new Map<string, ParamRow>()
+            rows
+              .filter((r) => r.status === 'active' && r.effective_from <= today)
+              .forEach((r) => {
+                const prev = activeMap.get(r.param_key)
+                if (!prev || r.effective_from > prev.effective_from) activeMap.set(r.param_key, r)
+              })
+            const activeList = Array.from(activeMap.values()).sort((a, b) => a.param_key.localeCompare(b.param_key))
+            if (activeList.length === 0) {
+              return (
+                <div className="text-center text-rose-600 text-sm py-4">
+                  ⚠️ 현재 active 상태인 파라미터가 없습니다. 아래 목록에서 필요한 row 를 active 로 복구하세요.
+                </div>
+              )
+            }
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {activeList.map((r) => (
+                  <div key={r.id} className="bg-white rounded p-2 border border-emerald-100 text-xs">
+                    <div className="font-semibold text-gray-800">{r.param_key}</div>
+                    <div className="text-gray-600 font-mono break-all">{JSON.stringify(r.param_value)}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">시행: {formatDate(r.effective_from, 'yyyy.MM.dd')}</div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">등록된 파라미터 ({rows.length})</CardTitle></CardHeader>
         <CardContent className="p-0">
@@ -340,6 +383,12 @@ export default function LegalParamsPage() {
                       )}
                       {canManage && r.status === 'active' && (
                         <Button size="sm" variant="outline" onClick={() => changeStatus(r, 'archived')}>아카이브</Button>
+                      )}
+                      {canManage && r.status === 'archived' && (
+                        <Button size="sm" variant="outline" onClick={() => changeStatus(r, 'active')}
+                          className="text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+                          active 로 복구
+                        </Button>
                       )}
                     </td>
                   </tr>

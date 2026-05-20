@@ -106,6 +106,28 @@ export async function fetchLawArticle(
 }
 
 /**
+ * 현재 적용 중인 법령 파라미터 조회 — 시급/4대보험 등 계산 코드는 이 함수만 호출
+ *  - status='active' AND effective_from <= today
+ *  - 같은 key 가 여러 개면 가장 최근 effective_from 채택
+ */
+export async function getActiveLegalParam<T = unknown>(
+  paramKey: string,
+  asOf?: string,
+): Promise<T | null> {
+  const today = asOf || new Date().toISOString().slice(0, 10)
+  const { data } = await supabase
+    .from('legal_params')
+    .select('param_value')
+    .eq('param_key', paramKey)
+    .eq('status', 'active')
+    .lte('effective_from', today)
+    .order('effective_from', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data?.param_value as T) ?? null
+}
+
+/**
  * 정부 발표 알려진 값 시드 — 이미 마이그레이션 106 에서 DB 등록됨
  * UI 에서 '재시드' 가 필요한 경우 사용
  */

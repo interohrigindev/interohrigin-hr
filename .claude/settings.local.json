@@ -56,7 +56,10 @@
       "Bash(wc -l \"/Users/project.adv/Library/CloudStorage/GoogleDrive-interohrigin.dev@gmail.com/내 드라이브/Interohrigin-hr/supabase/migrations\"/*.sql)",
       "Bash(grep -h \"storage.buckets\\\\|CREATE POLICY\" \"/Users/project.adv/Library/CloudStorage/GoogleDrive-interohrigin.dev@gmail.com/내 드라이브/Interohrigin-hr/supabase/migrations/\"*.sql)",
       "Bash(grep -l \"storage.buckets\\\\|INSERT INTO storage\" supabase/migrations/*.sql)",
-      "Bash(ls -lhS /Users/project.adv/Library/CloudStorage/GoogleDrive-interohrigin.dev@gmail.com/*/Interohrigin-hr/supabase/migrations/*.sql)"
+      "Bash(ls -lhS /Users/project.adv/Library/CloudStorage/GoogleDrive-interohrigin.dev@gmail.com/*/Interohrigin-hr/supabase/migrations/*.sql)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }
