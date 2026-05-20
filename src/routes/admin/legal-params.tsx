@@ -20,6 +20,7 @@ import { FEATURE_KEYS } from '@/types/compliance'
 import { logAudit } from '@/lib/audit-logger'
 import { formatDate } from '@/lib/utils'
 import { loadApiKeys, saveApiKeys, fetchKoreanHolidays, type ApiKeys } from '@/lib/legal-params-api'
+import { getParamMeta, CATEGORY_COLORS } from '@/lib/legal-params-format'
 
 interface ParamRow {
   id: string
@@ -331,13 +332,24 @@ export default function LegalParamsPage() {
             }
             return (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {activeList.map((r) => (
-                  <div key={r.id} className="bg-white rounded p-2 border border-emerald-100 text-xs">
-                    <div className="font-semibold text-gray-800">{r.param_key}</div>
-                    <div className="text-gray-600 font-mono break-all">{JSON.stringify(r.param_value)}</div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">시행: {formatDate(r.effective_from, 'yyyy.MM.dd')}</div>
-                  </div>
-                ))}
+                {activeList.map((r) => {
+                  const meta = getParamMeta(r.param_key)
+                  return (
+                    <div key={r.id} className="bg-white rounded-lg p-3 border border-emerald-100">
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[meta.category]}`}>
+                          {meta.category}
+                        </span>
+                        <span className="font-semibold text-sm text-gray-900">{meta.label}</span>
+                      </div>
+                      <div className="text-sm text-gray-800 leading-relaxed">{meta.format(r.param_value)}</div>
+                      <div className="text-[10px] text-gray-400 mt-1">
+                        시행 {formatDate(r.effective_from, 'yyyy.MM.dd')}
+                        {meta.legalRef && ` · ${meta.legalRef}`}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )
           })()}
@@ -345,14 +357,19 @@ export default function LegalParamsPage() {
       </Card>
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">등록된 파라미터 ({rows.length})</CardTitle></CardHeader>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">전체 등록 이력 ({rows.length}건)</CardTitle>
+          <p className="text-xs text-gray-500 mt-1">
+            과거값(archived)과 미래 시행값(approved/draft)을 모두 포함합니다. 현재 적용값은 위 카드에서 확인.
+          </p>
+        </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr className="text-gray-600">
-                  <th className="text-left px-3 py-2 font-semibold">키</th>
-                  <th className="text-left px-3 py-2 font-semibold">값</th>
+                  <th className="text-left px-3 py-2 font-semibold">항목</th>
+                  <th className="text-left px-3 py-2 font-semibold">내용</th>
                   <th className="text-left px-3 py-2 font-semibold">시행일</th>
                   <th className="text-center px-3 py-2 font-semibold">상태</th>
                   <th className="text-right px-3 py-2 font-semibold">액션</th>
@@ -360,39 +377,59 @@ export default function LegalParamsPage() {
               </thead>
               <tbody>
                 {rows.length === 0 && <tr><td colSpan={5} className="text-center text-gray-400 py-8">등록된 파라미터 없음</td></tr>}
-                {rows.map((r) => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
-                    <td className="px-3 py-2"><code className="text-xs">{r.param_key}</code></td>
-                    <td className="px-3 py-2 text-gray-700 text-xs font-mono break-all max-w-xs">{JSON.stringify(r.param_value)}</td>
-                    <td className="px-3 py-2 text-gray-600">{formatDate(r.effective_from, 'yyyy.MM.dd')}</td>
-                    <td className="px-3 py-2 text-center">
+                {rows.map((r) => {
+                  const meta = getParamMeta(r.param_key)
+                  return (
+                  <tr key={r.id} className={`border-b hover:bg-gray-50 ${r.status === 'archived' ? 'opacity-60' : ''}`}>
+                    <td className="px-3 py-2 align-top">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[meta.category]}`}>
+                          {meta.category}
+                        </span>
+                      </div>
+                      <div className="font-semibold text-gray-900 text-sm mt-0.5">{meta.label}</div>
+                      <div className="text-[10px] text-gray-400 font-mono mt-0.5">{r.param_key}</div>
+                      {meta.legalRef && <div className="text-[10px] text-gray-500 mt-0.5">근거: {meta.legalRef}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-800 align-top max-w-md">
+                      <div className="text-sm leading-relaxed break-keep">{meta.format(r.param_value)}</div>
+                      {r.notes && <div className="text-[11px] text-gray-500 mt-1 italic break-keep">{r.notes}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-600 align-top whitespace-nowrap">{formatDate(r.effective_from, 'yyyy.MM.dd')}</td>
+                    <td className="px-3 py-2 text-center align-top">
                       <Badge variant={
                         r.status === 'active' ? 'success' :
                         r.status === 'approved' ? 'info' :
                         r.status === 'archived' ? 'default' : 'warning'
-                      }>{r.status}</Badge>
+                      }>
+                        {r.status === 'active' ? '적용중'
+                          : r.status === 'approved' ? '승인됨'
+                          : r.status === 'archived' ? '폐기'
+                          : '검토중'}
+                      </Badge>
                     </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       {canManage && r.status === 'draft' && (
                         <Button size="sm" variant="outline" onClick={() => changeStatus(r, 'approved')}>
-                          <Check className="h-3 w-3 mr-0.5" /> 승인
+                          <Check className="h-3 w-3 mr-0.5" /> 승인하기
                         </Button>
                       )}
                       {canManage && r.status === 'approved' && (
-                        <Button size="sm" onClick={() => changeStatus(r, 'active')}>적용</Button>
+                        <Button size="sm" onClick={() => changeStatus(r, 'active')}>지금 적용</Button>
                       )}
                       {canManage && r.status === 'active' && (
-                        <Button size="sm" variant="outline" onClick={() => changeStatus(r, 'archived')}>아카이브</Button>
+                        <Button size="sm" variant="outline" onClick={() => changeStatus(r, 'archived')}>폐기</Button>
                       )}
                       {canManage && r.status === 'archived' && (
                         <Button size="sm" variant="outline" onClick={() => changeStatus(r, 'active')}
                           className="text-emerald-600 border-emerald-200 hover:bg-emerald-50">
-                          active 로 복구
+                          다시 적용
                         </Button>
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
