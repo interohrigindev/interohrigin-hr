@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Loader2, FileText, Mail, Phone, Briefcase, Calendar, AlertCircle, CheckCircle2, Download, ExternalLink } from 'lucide-react'
+import {
+  Loader2, FileText, Mail, Phone, Briefcase, Calendar, AlertCircle, CheckCircle2,
+  Download, ExternalLink, MessageCircle, Sparkles, Link2, FolderOpen,
+} from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
+
+interface PortfolioFile { path: string; filename: string; size?: number }
+interface PortfolioLink { url: string; label: string }
+interface InterviewerComment { author_id?: string; author_name?: string; content?: string; created_at?: string; text?: string; comment?: string }
 
 type ShareData = {
   candidate: {
@@ -15,12 +22,26 @@ type ShareData = {
     resume_url: string | null
     cover_letter_text: string | null
     cover_letter_url: string | null
-    pre_survey_data: any
+    portfolio_files: PortfolioFile[] | null
+    portfolio_links: PortfolioLink[] | null
+    pre_survey_data: { answers?: Record<string, string>; meta?: Record<string, string>; completed_at?: string } | null
+    pre_survey_analysis: { survey_insights?: string } | null
     metadata: any
-    interviewer_comments: any
+    interviewer_comments: InterviewerComment[] | null
+    talent_match_score: number | null
+    pbd_survey_sent_at: string | null
+    pbd_survey_completed_at: string | null
     created_at: string
   }
-  job: { id: string; title: string; department: string | null; job_type: string | null } | null
+  job: {
+    id: string
+    title: string
+    department: string | null
+    job_type: string | null
+    ai_questions: string[] | null
+  } | null
+  survey_template: { questions?: { id: string; question: string; type: string; required?: boolean }[] } | null
+  pbd_response: any
   resume_analysis: {
     ai_summary: string | null
     strengths: any
@@ -45,6 +66,7 @@ const STATUS_LABELS: Record<string, string> = {
   survey_done: '사전 질의서 완료',
   interview_scheduled: '면접 예정',
   video_done: '화상 면접 완료',
+  face_to_face_scheduled: '대면 면접 예정',
   face_to_face_done: '대면 면접 완료',
   processing: '검토 중',
   analyzed: 'AI 분석 완료',
@@ -62,6 +84,8 @@ export default function CandidateSharePage() {
   const [data, setData] = useState<ShareData | null>(null)
   const [resumeFile, setResumeFile] = useState<FileInfo | null>(null)
   const [coverLetterFile, setCoverLetterFile] = useState<FileInfo | null>(null)
+  const [portfolioSignedUrls, setPortfolioSignedUrls] = useState<Record<number, FileInfo>>({})
+  const [surveyQuestions, setSurveyQuestions] = useState<{ id: string; question: string }[]>([])
 
   useEffect(() => {
     if (!token) {
@@ -80,18 +104,51 @@ export default function CandidateSharePage() {
       setData(sd)
       setLoading(false)
 
-      // 이력서/자기소개서 signed URL 가져오기 (있는 경우만)
+      // 이력서/자기소개서
       if (sd?.candidate?.resume_url) {
         try {
           const r = await fetch(`/api/share-file?token=${encodeURIComponent(token)}&kind=resume`)
           if (r.ok) setResumeFile(await r.json())
-        } catch { /* 무시 */ }
+        } catch { /* ignore */ }
       }
       if (sd?.candidate?.cover_letter_url) {
         try {
           const r = await fetch(`/api/share-file?token=${encodeURIComponent(token)}&kind=cover_letter`)
           if (r.ok) setCoverLetterFile(await r.json())
-        } catch { /* 무시 */ }
+        } catch { /* ignore */ }
+      }
+      // 포트폴리오 파일 — 각 index 별 signed URL
+      const pfList = sd?.candidate?.portfolio_files || []
+      if (pfList.length > 0) {
+        const urls: Record<number, FileInfo> = {}
+        for (let i = 0; i < pfList.length; i++) {
+          try {
+            const r = await fetch(`/api/share-file?token=${encodeURIComponent(token)}&kind=portfolio&index=${i}`)
+            if (r.ok) urls[i] = await r.json()
+          } catch { /* ignore */ }
+        }
+        setPortfolioSignedUrls(urls)
+      }
+
+      // 사전질의서 질문 — survey_template 우선, 누락 시 전체 템플릿 fallback
+      const answerIds = Object.keys(sd?.candidate?.pre_survey_data?.answers || {})
+      if (answerIds.length > 0) {
+        let qs = (sd.survey_template?.questions || []) as { id: string; question: string }[]
+        const matched = new Set(qs.map((q) => q.id))
+        const missing = answerIds.filter((id) => !matched.has(id))
+        if (missing.length > 0) {
+          const { data: allTmpls } = await supabase.from('pre_survey_templates').select('questions')
+          if (allTmpls) {
+            const extra: { id: string; question: string }[] = []
+            for (const t of allTmpls as { questions: { id: string; question: string }[] }[]) {
+              for (const q of (t.questions || [])) {
+                if (missing.includes(q.id) && !extra.find((x) => x.id === q.id)) extra.push(q)
+              }
+            }
+            qs = [...qs, ...extra]
+          }
+        }
+        setSurveyQuestions(qs)
       }
     })()
   }, [token])
@@ -117,6 +174,12 @@ export default function CandidateSharePage() {
   }
 
   const { candidate, job, resume_analysis, interview_schedules } = data
+  const portfolioFiles = candidate.portfolio_files || []
+  const portfolioLinks = candidate.portfolio_links || []
+  const surveyAnswers = candidate.pre_survey_data?.answers || {}
+  const surveyMeta = candidate.pre_survey_data?.meta || {}
+  const interviewerComments = candidate.interviewer_comments || []
+  const aiQuestions = job?.ai_questions || []
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -213,25 +276,15 @@ export default function CandidateSharePage() {
           </div>
         )}
 
-        {/* 이력서 (인라인 미리보기) */}
+        {/* 이력서 */}
         {(candidate.resume_url || resumeFile) && (
           <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <FileText className="h-4 w-4 text-brand-500" />
-                이력서
+                <FileText className="h-4 w-4 text-brand-500" /> 이력서
               </h2>
               {resumeFile && (
-                <div className="flex items-center gap-2">
-                  <a href={resumeFile.url} download={resumeFile.filename}
-                     className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline">
-                    <Download className="h-3.5 w-3.5" /> 다운로드
-                  </a>
-                  <a href={resumeFile.url} target="_blank" rel="noopener noreferrer"
-                     className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600">
-                    <ExternalLink className="h-3.5 w-3.5" /> 새 탭
-                  </a>
-                </div>
+                <FileActions file={resumeFile} />
               )}
             </div>
             <FilePreview file={resumeFile} />
@@ -243,21 +296,9 @@ export default function CandidateSharePage() {
           <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <FileText className="h-4 w-4 text-brand-500" />
-                자기소개
+                <FileText className="h-4 w-4 text-brand-500" /> 자기소개
               </h2>
-              {coverLetterFile && (
-                <div className="flex items-center gap-2">
-                  <a href={coverLetterFile.url} download={coverLetterFile.filename}
-                     className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline">
-                    <Download className="h-3.5 w-3.5" /> 다운로드
-                  </a>
-                  <a href={coverLetterFile.url} target="_blank" rel="noopener noreferrer"
-                     className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600">
-                    <ExternalLink className="h-3.5 w-3.5" /> 새 탭
-                  </a>
-                </div>
-              )}
+              {coverLetterFile && <FileActions file={coverLetterFile} />}
             </div>
             {candidate.cover_letter_text && (
               <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed mb-3">{candidate.cover_letter_text}</p>
@@ -266,21 +307,128 @@ export default function CandidateSharePage() {
           </div>
         )}
 
+        {/* 포트폴리오 */}
+        {(portfolioFiles.length > 0 || portfolioLinks.length > 0) && (
+          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <FolderOpen className="h-4 w-4 text-brand-500" /> 포트폴리오
+            </h2>
+            {portfolioFiles.length > 0 && (
+              <div className="space-y-2 mb-3">
+                <p className="text-xs font-semibold text-gray-500">파일 ({portfolioFiles.length}개)</p>
+                {portfolioFiles.map((pf, idx) => {
+                  const signed = portfolioSignedUrls[idx]
+                  return (
+                    <div key={idx} className="border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="h-4 w-4 text-gray-400 shrink-0" />
+                          <span className="text-sm text-gray-700 truncate">{pf.filename}</span>
+                          {pf.size && <span className="text-[10px] text-gray-400">{Math.round(pf.size / 1024)}KB</span>}
+                        </div>
+                        {signed && <FileActions file={signed} />}
+                      </div>
+                      {signed && <div className="mt-2"><FilePreview file={signed} /></div>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {portfolioLinks.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-gray-500">링크 ({portfolioLinks.length}개)</p>
+                {portfolioLinks.map((pl, i) => (
+                  <a key={i} href={pl.url} target="_blank" rel="noopener noreferrer"
+                     className="flex items-center gap-2 text-sm text-brand-600 hover:underline">
+                    <Link2 className="h-3.5 w-3.5" />
+                    {pl.label || pl.url}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 사전질의서 응답 */}
+        {(Object.keys(surveyAnswers).length > 0 || Object.keys(surveyMeta).length > 0) && (
+          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <FileText className="h-4 w-4 text-brand-500" /> 사전질의서 응답
+            </h2>
+            {Object.keys(surveyMeta).length > 0 && (
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {surveyMeta.birth_date && <MetaItem label="생년월일" value={surveyMeta.birth_date} />}
+                {surveyMeta.mbti && <MetaItem label="MBTI" value={surveyMeta.mbti} />}
+                {surveyMeta.hanja_name && <MetaItem label="한자 이름" value={surveyMeta.hanja_name} />}
+                {surveyMeta.blood_type && <MetaItem label="혈액형" value={`${surveyMeta.blood_type}형`} />}
+              </div>
+            )}
+            {Object.keys(surveyAnswers).length > 0 && (
+              <div className="space-y-3">
+                {surveyQuestions.length > 0 ? (
+                  surveyQuestions.map((q, i) => (
+                    <div key={q.id} className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-xs font-medium text-gray-600 mb-1">Q{i + 1}. {q.question}</p>
+                      <p className="text-sm text-gray-900 whitespace-pre-line">
+                        {surveyAnswers[q.id] || <span className="text-gray-400 italic">미응답</span>}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  Object.entries(surveyAnswers).map(([qid, ans], i) => (
+                    <div key={qid} className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-xs font-medium text-gray-600 mb-1">질문 {i + 1}</p>
+                      <p className="text-sm text-gray-900 whitespace-pre-line">{ans}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            {candidate.pre_survey_analysis?.survey_insights && (
+              <div className="mt-3 p-3 bg-brand-50/50 border border-brand-100 rounded-lg">
+                <p className="text-xs font-semibold text-brand-700 mb-1 flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" /> AI 인사이트
+                </p>
+                <p className="text-sm text-gray-700 whitespace-pre-line">{candidate.pre_survey_analysis.survey_insights}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 권장 면접 질문 — 1차/2차 모두에서 항상 보임 */}
+        {aiQuestions.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-brand-500" />
+              권장 면접 질문 ({aiQuestions.length}개)
+            </h2>
+            <p className="text-xs text-gray-500 mb-3">면접 시 활용할 수 있는 AI 추천 질문입니다.</p>
+            <ol className="space-y-2">
+              {aiQuestions.map((q, i) => (
+                <li key={i} className="flex gap-3 text-sm">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
+                  <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
         {/* 면접 일정 */}
         {interview_schedules.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
             <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
               <Calendar className="h-4 w-4 text-brand-500" />
-              면접 일정
+              면접 일정 ({interview_schedules.length}건)
             </h2>
             <ul className="space-y-2">
               {interview_schedules.map((s) => (
                 <li key={s.id} className="border border-gray-100 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-1">
                     <span className="text-sm font-semibold text-gray-900">
                       {s.interview_type === 'video' ? '화상 면접' : '대면 면접'}
                     </span>
-                    <span className="text-xs text-gray-500">{formatDate(s.scheduled_at)}</span>
+                    <span className="text-xs text-gray-500">{formatDate(s.scheduled_at, 'yyyy.MM.dd HH:mm')}</span>
                   </div>
                   {s.notes && <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{s.notes}</p>}
                 </li>
@@ -289,16 +437,29 @@ export default function CandidateSharePage() {
           </div>
         )}
 
-        {/* 면접관 코멘트 */}
-        {Array.isArray(candidate.interviewer_comments) && candidate.interviewer_comments.length > 0 && (
+        {/* 면접관 코멘트 — 필드 정확 매칭: { author_name, content, created_at } */}
+        {interviewerComments.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
-            <h2 className="text-base font-bold text-gray-900 mb-3">면접관 코멘트</h2>
+            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <MessageCircle className="h-4 w-4 text-brand-500" />
+              면접관 코멘트 ({interviewerComments.length}건)
+            </h2>
             <ul className="space-y-2">
-              {candidate.interviewer_comments.map((c: any, i: number) => (
-                <li key={i} className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3">
-                  {c?.text || c?.comment || JSON.stringify(c)}
-                </li>
-              ))}
+              {interviewerComments.map((c, i) => {
+                // 신규 구조 우선, 레거시 text/comment 폴백
+                const body = c.content || c.text || c.comment || ''
+                const authorName = c.author_name || '익명'
+                const ts = c.created_at
+                return (
+                  <li key={i} className="bg-gray-50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                      <span className="text-sm font-semibold text-gray-800">{authorName}</span>
+                      {ts && <span className="text-[11px] text-gray-400">{formatDate(ts, 'yyyy.MM.dd HH:mm')}</span>}
+                    </div>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{body}</p>
+                  </li>
+                )
+              })}
             </ul>
           </div>
         )}
@@ -311,7 +472,30 @@ export default function CandidateSharePage() {
   )
 }
 
-// 파일 인라인 미리보기 — PDF iframe / 이미지 / 그 외 다운로드 안내
+function MetaItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-gray-50 rounded p-2">
+      <p className="text-[10px] text-gray-500">{label}</p>
+      <p className="text-sm font-medium">{value}</p>
+    </div>
+  )
+}
+
+function FileActions({ file }: { file: FileInfo }) {
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      <a href={file.url} download={file.filename}
+         className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline">
+        <Download className="h-3.5 w-3.5" /> 다운로드
+      </a>
+      <a href={file.url} target="_blank" rel="noopener noreferrer"
+         className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600">
+        <ExternalLink className="h-3.5 w-3.5" /> 새 탭
+      </a>
+    </div>
+  )
+}
+
 function FilePreview({ file }: { file: FileInfo | null }) {
   if (!file) {
     return (
@@ -338,7 +522,6 @@ function FilePreview({ file }: { file: FileInfo | null }) {
       </div>
     )
   }
-  // 미리보기 불가 (HWP/DOC/etc)
   return (
     <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
       <FileText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
