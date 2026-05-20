@@ -35,7 +35,7 @@ import {
   Columns3,
   Plus,
   CalendarPlus,
-  // Clock, // 근태 메뉴 숨김으로 미사용
+  Clock,
   FileCheck,
   Award,
   // Wallet, // 급여관리 숨김으로 미사용
@@ -69,6 +69,8 @@ interface NavItem {
   minRole?: EmployeeRole
   hideForRoles?: EmployeeRole[]
   end?: boolean
+  /** 법적 리스크 대응 P1+: feature_rollouts 키 — 미지정이면 항상 노출 / 지정되면 토글 ON 시에만 노출 */
+  featureKey?: string
 }
 
 interface NavGroup {
@@ -117,6 +119,13 @@ const standaloneItems: NavItem[] = [
     to: '/my/ojt',
     label: '내 OJT',
     icon: <GraduationCap className="h-5 w-5" />,
+  },
+  // 법적 리스크 대응 P1-1: 직원 본인의 연장근로 신청 (feature toggle 로 노출)
+  {
+    to: '/my/overtime',
+    label: '내 연장근로',
+    icon: <Clock className="h-5 w-5" />,
+    featureKey: 'overtime_approval',
   },
   // D2-1: '나의 인수인계' → 프로젝트 그룹 하위로 이동
 ]
@@ -206,6 +215,8 @@ const navGroups: NavGroup[] = [
     icon: <Building className="h-5 w-5" />,
     items: [
       { to: '/admin/leave', label: '연차 관리', icon: <CalendarPlus className="h-4 w-4" />, end: true },
+      // 법적 리스크 대응 P1-1: 연장근로 사전 승인제 (feature toggle 로 노출)
+      { to: '/admin/overtime', label: '연장근로 승인', icon: <Clock className="h-4 w-4" />, featureKey: 'overtime_approval' },
       // { to: '/admin/attendance', label: '근태 관리', icon: <Clock className="h-4 w-4" /> }, // Sprint 0: 이번 배포 제외
       // D2-1: 전자결재는 상위 standalone 으로 승격
       { to: '/admin/certificates', label: '증명서 발급', icon: <Award className="h-4 w-4" /> },
@@ -255,6 +266,23 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const [allowedMenus, setAllowedMenus] = useState<string[] | null>(null) // null = 로딩중 또는 권한 미설정 (전체 허용)
   const [hasOjtEnrollment, setHasOjtEnrollment] = useState(false)
   const [isResigning, setIsResigning] = useState(false)
+  // 법적 리스크 대응 P1+ : 활성화된 feature_rollouts 키 집합 (메뉴 표시 제어)
+  const [enabledFeatures, setEnabledFeatures] = useState<Set<string>>(new Set())
+
+  // feature_rollouts 로드
+  useEffect(() => {
+    if (!profile?.id) return
+    ;(async () => {
+      const { data } = await supabase
+        .from('feature_rollouts')
+        .select('feature_key, is_enabled')
+      const set = new Set<string>()
+      ;(data || []).forEach((r: { feature_key: string; is_enabled: boolean }) => {
+        if (r.is_enabled) set.add(r.feature_key)
+      })
+      setEnabledFeatures(set)
+    })()
+  }, [profile?.id])
 
   // Fetch menu permissions
   useEffect(() => {
@@ -363,6 +391,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   function isItemVisible(item: NavItem): boolean {
     if (item.hideForRoles && profile?.role && item.hideForRoles.includes(profile.role as EmployeeRole)) {
+      return false
+    }
+    // 법적 리스크 대응 P1+: feature toggle 미활성 메뉴 숨김 (admin/ceo 도 동일하게 숨김 — 기능 토글 화면에서 활성화 후 노출)
+    if (item.featureKey && !enabledFeatures.has(item.featureKey)) {
       return false
     }
     if (!item.minRole || hasRole(item.minRole)) {

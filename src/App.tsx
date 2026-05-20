@@ -9,6 +9,8 @@ import MonitoringDashboard from '@/routes/admin/monitoring'
 import SurveyTestResults from '@/routes/admin/survey-test-results'
 import FeatureRolloutsPage from '@/routes/admin/feature-rollouts'
 import AuditLogsPage from '@/routes/admin/audit-logs'
+import MyOvertimePage from '@/routes/my/overtime'
+import OvertimeApprovalsPage from '@/routes/admin/overtime-approvals'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AdminRoute } from '@/components/layout/AdminRoute'
 import Login from '@/routes/login'
@@ -334,6 +336,10 @@ function App() {
               {/* 시스템 관리 — 법적 리스크 대응 P0 인프라 */}
               <Route path="admin/system/feature-rollouts" element={<AdminRoute><FeatureRolloutsPage /></AdminRoute>} />
               <Route path="admin/system/audit-logs"       element={<AdminRoute><AuditLogsPage /></AdminRoute>} />
+
+              {/* 연장근로 사전 승인제 — P1-1 (feature toggle 로 메뉴 노출 제어) */}
+              <Route path="my/overtime"       element={<MyOvertimePage />} />
+              <Route path="admin/overtime"    element={<OvertimeApprovalsPage />} />
             </Route>
           </Routes>
           <FloatingAIAgent />
