@@ -44,6 +44,8 @@ import {
   // Mic, // D2-1: 회의록 메뉴 숨김으로 미사용
   DollarSign,
   Package,
+  ScrollText,
+  ToggleRight,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -228,6 +230,18 @@ const navGroups: NavGroup[] = [
       { to: '/admin/hr/ai-report', label: 'AI 평가 리포트', icon: <FileBarChart className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
       { to: '/admin/hr/verification', label: 'AI 검증', icon: <ShieldCheck className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
       { to: '/admin/hr/sync', label: '데이터 동기화', icon: <RefreshCw className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
+    ],
+  },
+  // 시스템 관리 — 법적 리스크 대응 P0 인프라 (감사 로그 / 기능 토글)
+  // CEO/admin/hr_admin 등 상위 권한만 노출
+  {
+    id: 'system',
+    label: '시스템 관리',
+    icon: <Shield className="h-5 w-5" />,
+    minRole: 'hr_admin' as EmployeeRole,
+    items: [
+      { to: '/admin/system/feature-rollouts', label: '기능 토글', icon: <ToggleRight className="h-4 w-4" /> },
+      { to: '/admin/system/audit-logs',       label: '감사 로그', icon: <ScrollText className="h-4 w-4" /> },
     ],
   },
 ]

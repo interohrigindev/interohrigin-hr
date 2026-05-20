@@ -7,6 +7,8 @@ import { PwaInit } from '@/components/PwaInit'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 import MonitoringDashboard from '@/routes/admin/monitoring'
 import SurveyTestResults from '@/routes/admin/survey-test-results'
+import FeatureRolloutsPage from '@/routes/admin/feature-rollouts'
+import AuditLogsPage from '@/routes/admin/audit-logs'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { AdminRoute } from '@/components/layout/AdminRoute'
 import Login from '@/routes/login'
@@ -328,6 +330,10 @@ function App() {
 
               {/* 시스템 모니터링 — admin/ceo 전용 */}
               <Route path="admin/monitoring" element={<AdminRoute><MonitoringDashboard /></AdminRoute>} />
+
+              {/* 시스템 관리 — 법적 리스크 대응 P0 인프라 */}
+              <Route path="admin/system/feature-rollouts" element={<AdminRoute><FeatureRolloutsPage /></AdminRoute>} />
+              <Route path="admin/system/audit-logs"       element={<AdminRoute><AuditLogsPage /></AdminRoute>} />
             </Route>
           </Routes>
           <FloatingAIAgent />
