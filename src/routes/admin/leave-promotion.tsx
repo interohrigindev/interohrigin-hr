@@ -91,31 +91,15 @@ export default function LeavePromotionPage() {
   useEffect(() => { if (featureOn) load() }, [featureOn])
 
   async function snapshotAll() {
-    // employee_hr_details 의 annual_leave_remaining 으로 일괄 스냅샷
-    const { data: details } = await supabase
-      .from('employee_hr_details')
-      .select('employee_id, annual_leave_total, annual_leave_used, annual_leave_remaining, base_salary')
-    if (!details) { toast('잔여 정보 조회 실패', 'error'); return }
-    const today = new Date().toISOString().slice(0, 10)
-    const rows = details.map((d: {
-      employee_id: string
-      annual_leave_total: number
-      annual_leave_used: number
-      annual_leave_remaining: number
-      base_salary: number | null
-    }) => ({
-      employee_id: d.employee_id,
-      snapshot_date: today,
-      total_days: d.annual_leave_total || 0,
-      used_days: d.annual_leave_used || 0,
-      remaining_days: d.annual_leave_remaining || 0,
-      // 1일 수당 추정: 월급여 / 209 * 8 (주 40시간 기준)
-      estimated_liability_krw: Math.round(((d.base_salary || 0) / 209 * 8) * (d.annual_leave_remaining || 0)),
-    }))
-    const { error } = await supabase.from('leave_balance_snapshots').upsert(rows, { onConflict: 'employee_id,snapshot_date' })
+    // SECURITY DEFINER RPC 호출 — RLS 우회 + 권한 체크 서버측 처리 (마이그레이션 106)
+    const { data, error } = await supabase.rpc('snapshot_all_leave_balances')
     if (error) { toast('스냅샷 실패: ' + error.message, 'error'); return }
-    await logAudit({ action: 'create', entity: 'leave_balance_snapshot', diff: `${rows.length}건 스냅샷` })
-    toast(`${rows.length}명 잔여 연차 스냅샷 완료`, 'success')
+    const result = Array.isArray(data) && data[0] ? data[0] : { employee_count: 0 }
+    await logAudit({
+      action: 'create', entity: 'leave_balance_snapshot',
+      diff: `${result.employee_count}건 스냅샷 (RPC)`,
+    })
+    toast(`${result.employee_count}명 잔여 연차 스냅샷 완료`, 'success')
     load()
   }
 

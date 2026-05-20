@@ -14,11 +14,12 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { Scale, AlertCircle, Plus, Check } from 'lucide-react'
+import { Scale, AlertCircle, Plus, Check, Download, Key, Globe, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react'
 import { isFeatureEnabled } from '@/lib/feature-flags'
 import { FEATURE_KEYS } from '@/types/compliance'
 import { logAudit } from '@/lib/audit-logger'
 import { formatDate } from '@/lib/utils'
+import { loadApiKeys, saveApiKeys, fetchKoreanHolidays, type ApiKeys } from '@/lib/legal-params-api'
 
 interface ParamRow {
   id: string
@@ -50,8 +51,49 @@ export default function LegalParamsPage() {
   })
 
   const canManage = !!profile?.role && ['admin','hr_admin','ceo'].includes(profile.role)
+  const [showApiSection, setShowApiSection] = useState(false)
+  const [apiKeys, setApiKeys] = useState<ApiKeys>({})
+  const [savingKeys, setSavingKeys] = useState(false)
+  const [holidayYear, setHolidayYear] = useState(new Date().getFullYear())
+  const [fetchingHolidays, setFetchingHolidays] = useState(false)
 
   useEffect(() => { isFeatureEnabled(FEATURE_KEYS.LEGAL_PARAMS_SYNC).then(setFeatureOn) }, [])
+  useEffect(() => { if (featureOn) loadApiKeys().then(setApiKeys) }, [featureOn])
+
+  async function handleSaveKeys() {
+    setSavingKeys(true)
+    const result = await saveApiKeys(apiKeys)
+    setSavingKeys(false)
+    if (!result.ok) { toast('저장 실패: ' + result.error, 'error'); return }
+    toast('API 키 저장 완료', 'success')
+    await logAudit({ action: 'update', entity: 'legal_param_api_keys', diff: 'API 키 갱신' })
+  }
+
+  async function handleFetchHolidays() {
+    if (!apiKeys.data_go_kr) { toast('공공데이터포털 인증키를 먼저 등록하세요', 'error'); return }
+    setFetchingHolidays(true)
+    const result = await fetchKoreanHolidays(holidayYear, apiKeys.data_go_kr)
+    setFetchingHolidays(false)
+    if (!result.ok) { toast('공휴일 조회 실패: ' + result.error, 'error'); return }
+    const holidayList = (result.holidays || []).filter((h) => h.isHoliday)
+    if (holidayList.length === 0) { toast('해당 연도 공휴일 데이터 없음', 'error'); return }
+
+    const { error } = await supabase.from('legal_params').insert({
+      param_key: `public_holidays_${holidayYear}`,
+      param_value: { year: holidayYear, holidays: holidayList } as any,
+      effective_from: `${holidayYear}-01-01`,
+      source: '한국천문연구원 특일정보 API (data.go.kr)',
+      status: 'active',
+      notes: `${holidayList.length}일 등록 — 자동 동기화`,
+    } as any)
+    if (error) { toast('DB 저장 실패: ' + error.message, 'error'); return }
+    await logAudit({
+      action: 'create', entity: 'legal_param',
+      diff: `${holidayYear} 공휴일 자동 동기화 — ${holidayList.length}일`,
+    })
+    toast(`${holidayYear}년 공휴일 ${holidayList.length}일 등록 완료`, 'success')
+    load()
+  }
 
   async function load() {
     setLoading(true)
@@ -128,12 +170,113 @@ export default function LegalParamsPage() {
             최저임금·4대보험 요율·공휴일 등. draft → approved → active 단계 승인.
           </p>
         </div>
-        {canManage && (
-          <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-            <Plus className="h-4 w-4 mr-1" /> 신규 등록
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canManage && (
+            <Button size="sm" variant="outline" onClick={() => setShowApiSection((v) => !v)}>
+              <Globe className="h-4 w-4 mr-1" /> 공공 API 연동
+              {showApiSection ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
+            </Button>
+          )}
+          {canManage && (
+            <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+              <Plus className="h-4 w-4 mr-1" /> 신규 등록
+            </Button>
+          )}
+        </div>
       </div>
+
+      {showApiSection && canManage && (
+        <Card className="border-brand-200 bg-brand-50/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Globe className="h-4 w-4 text-brand-500" /> 정부 공공 API 연동
+            </CardTitle>
+            <p className="text-xs text-gray-500 mt-1">
+              인증키 발급은 무료입니다. 키 입력 후 자동 동기화 버튼을 누르세요.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+
+            {/* API 1: 한국천문연구원 공휴일 */}
+            <div className="bg-white rounded-lg p-3 border border-gray-200 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">① 한국천문연구원 — 공휴일/특일 정보</h3>
+                  <p className="text-[11px] text-gray-500">공공데이터포털 일반 인증키 필요. 회원가입 후 즉시 발급.</p>
+                </div>
+                <a
+                  href="https://www.data.go.kr/data/15012690/openapi.do"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-brand-600 hover:underline flex items-center gap-0.5"
+                >
+                  키 발급 <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+              <Input
+                label="data.go.kr 일반 인증키 (Decoding)"
+                value={apiKeys.data_go_kr || ''}
+                onChange={(e) => setApiKeys({ ...apiKeys, data_go_kr: e.target.value })}
+                placeholder="발급받은 인증키 붙여넣기"
+              />
+              <div className="flex items-center gap-2 flex-wrap">
+                <Input
+                  type="number"
+                  value={String(holidayYear)}
+                  onChange={(e) => setHolidayYear(Number(e.target.value))}
+                  className="w-28"
+                />
+                <Button size="sm" onClick={handleFetchHolidays} disabled={fetchingHolidays || !apiKeys.data_go_kr}>
+                  <Download className="h-3 w-3 mr-1" />
+                  {fetchingHolidays ? '조회 중...' : `${holidayYear}년 공휴일 자동 등록`}
+                </Button>
+              </div>
+            </div>
+
+            {/* API 2: 국가법령정보센터 */}
+            <div className="bg-white rounded-lg p-3 border border-gray-200 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800">② 국가법령정보센터 — 법령 본문</h3>
+                  <p className="text-[11px] text-gray-500">law.go.kr OPEN API. OC(이메일 아이디) 필요. CORS 제약으로 수동 등록 권장.</p>
+                </div>
+                <a
+                  href="https://open.law.go.kr/LSO/openApi/cuAskList.do"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-brand-600 hover:underline flex items-center gap-0.5"
+                >
+                  키 발급 <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+              <Input
+                label="law.go.kr OC (이메일 아이디 부분)"
+                value={apiKeys.law_go_kr_oc || ''}
+                onChange={(e) => setApiKeys({ ...apiKeys, law_go_kr_oc: e.target.value })}
+                placeholder="예) interohrigin"
+              />
+            </div>
+
+            {/* API 미지원 항목 안내 */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900 space-y-1">
+              <p className="font-semibold flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /> 자동 API 미제공 항목 (정부 공식 API 부재)</p>
+              <ul className="ml-5 list-disc space-y-0.5 text-amber-800">
+                <li>최저임금 — 마이그레이션 106 에서 2024/2025/2026 시드 자동 등록됨</li>
+                <li>4대보험 요율 — 2026년 시드 자동 등록 (변경 시 신규 등록 + 시행일 명시)</li>
+                <li>주 52시간/연차 부여 기준 — 근로기준법 §50,53,60 — 시드 등록됨</li>
+                <li>업종별 산재요율 — 근로복지공단 PDF 공시 → 수동 등록 필요</li>
+              </ul>
+              <p className="mt-1">매년 7월 최저임금 발표 / 12월 4대보험 요율 변경 시 신규 등록 + 이전 row 는 archived 처리.</p>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button size="sm" onClick={handleSaveKeys} disabled={savingKeys}>
+                <Key className="h-3 w-3 mr-1" /> {savingKeys ? '저장 중...' : 'API 키 저장'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {showForm && (
         <Card>
