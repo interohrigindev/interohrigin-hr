@@ -739,6 +739,28 @@ export default function ApprovalManagementPage() {
     fetchData()
   }
 
+  /* ── 결재 회수 (신청자 본인 + 어떤 결재자도 액션 안 한 경우) ── */
+  async function handleWithdraw(docId: string) {
+    const reason = prompt('회수 사유를 입력하세요 (선택)') ?? null
+    if (!confirm('결재를 회수하시겠습니까? 회수 후에는 재상신해야 합니다.')) return
+    setProcessing(true)
+    const { data, error } = await supabase.rpc('withdraw_approval', {
+      p_doc_id: docId,
+      p_reason: reason,
+    })
+    setProcessing(false)
+    if (error) { toast('회수 실패: ' + error.message, 'error'); return }
+    const result = Array.isArray(data) && data[0] ? data[0] : null
+    if (!result?.ok) {
+      toast(result?.message || '회수 실패', 'error')
+      return
+    }
+    toast('회수 완료', 'success')
+    setSelectedDoc(null)
+    if (isDetailPage) navigate('/admin/approval')
+    fetchData()
+  }
+
   /* ── 반려 후 재상신 ── */
   async function handleResubmit(docId: string) {
     const doc = documents.find((d) => d.id === docId)
@@ -1325,6 +1347,19 @@ export default function ApprovalManagementPage() {
                 </Button>
               </div>
             )}
+
+            {/* P1-#3: 신청자 본인 + 결재자 액션 없음 + status submitted/in_review/draft 시 회수 가능 */}
+            {doc.requester_id === profile?.id
+              && ['submitted', 'in_review', 'draft'].includes(doc.status)
+              && (stepsMap[doc.id] || []).every((s) => !s.action || s.action === 'pending') && (
+              <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm text-amber-700 mb-2">아직 결재자가 처리하지 않았습니다. 회수 후 수정·재상신할 수 있습니다.</p>
+                <Button size="sm" variant="outline" onClick={() => handleWithdraw(doc.id)} disabled={processing}
+                  className="text-amber-700 border-amber-300 hover:bg-amber-100">
+                  {processing ? '처리중...' : '결재 회수'}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -1894,6 +1929,19 @@ export default function ApprovalManagementPage() {
                   <p className="text-sm text-red-700 mb-2">이 결재가 반려되었습니다. 내용을 확인 후 재상신할 수 있습니다.</p>
                   <Button size="sm" onClick={() => handleResubmit(doc.id)} disabled={processing}>
                     {processing ? '처리중...' : '재상신'}
+                  </Button>
+                </div>
+              )}
+
+              {/* P1-#3: 결재 회수 (신청자 본인 + 결재자 액션 없음) */}
+              {doc.requester_id === profile?.id
+                && ['submitted', 'in_review', 'draft'].includes(doc.status)
+                && (stepsMap[doc.id] || []).every((s) => !s.action || s.action === 'pending') && (
+                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-700 mb-2">아직 결재자가 처리하지 않았습니다. 회수 후 수정·재상신할 수 있습니다.</p>
+                  <Button size="sm" variant="outline" onClick={() => handleWithdraw(doc.id)} disabled={processing}
+                    className="text-amber-700 border-amber-300 hover:bg-amber-100">
+                    {processing ? '처리중...' : '결재 회수'}
                   </Button>
                 </div>
               )}

@@ -59,7 +59,9 @@
       "Bash(ls -lhS /Users/project.adv/Library/CloudStorage/GoogleDrive-interohrigin.dev@gmail.com/*/Interohrigin-hr/supabase/migrations/*.sql)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(\" | head -30)",
+      "Bash(grep -v \"console\\\\|html\\\\|html\\\\|HTML\\\\|`\" | head -30)"
     ]
   }
 }

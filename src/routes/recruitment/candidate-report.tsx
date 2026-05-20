@@ -152,20 +152,46 @@ export default function CandidateReport() {
       }
 
       // 사전질의서 v1 질문 목록 가져오기 (응답이 있는 경우)
-      if (cand?.pre_survey_data && cand.job_posting_id) {
-        const { data: posting } = await supabase
-          .from('job_postings')
-          .select('survey_template_id')
-          .eq('id', cand.job_posting_id)
-          .single()
-        if (posting?.survey_template_id) {
-          const { data: tmpl } = await supabase
+      if (cand?.pre_survey_data) {
+        // 우선 채용공고의 지정 템플릿에서 시도
+        let loadedQuestions: typeof surveyQuestions = []
+        if (cand.job_posting_id) {
+          const { data: posting } = await supabase
+            .from('job_postings')
+            .select('survey_template_id')
+            .eq('id', cand.job_posting_id)
+            .single()
+          if (posting?.survey_template_id) {
+            const { data: tmpl } = await supabase
+              .from('pre_survey_templates')
+              .select('questions')
+              .eq('id', posting.survey_template_id)
+              .single()
+            if (tmpl?.questions) loadedQuestions = tmpl.questions as typeof surveyQuestions
+          }
+        }
+        // P1-#4: 채용공고 매칭 실패 또는 일부 question id 누락 시 — 전 템플릿에서 id 매칭 fallback
+        const surveyData = cand.pre_survey_data as { answers?: Record<string, string> }
+        const answerIds = Object.keys(surveyData?.answers || {})
+        const matched = new Set(loadedQuestions.map((q) => q.id))
+        const missing = answerIds.filter((id) => !matched.has(id))
+        if (missing.length > 0) {
+          const { data: allTmpls } = await supabase
             .from('pre_survey_templates')
             .select('questions')
-            .eq('id', posting.survey_template_id)
-            .single()
-          if (tmpl?.questions) setSurveyQuestions(tmpl.questions as typeof surveyQuestions)
+          if (allTmpls) {
+            const all: typeof surveyQuestions = []
+            for (const t of allTmpls as { questions: typeof surveyQuestions }[]) {
+              for (const q of (t.questions || [])) {
+                if (missing.includes(q.id) && !all.find((x) => x.id === q.id)) {
+                  all.push(q)
+                }
+              }
+            }
+            loadedQuestions = [...loadedQuestions, ...all]
+          }
         }
+        if (loadedQuestions.length > 0) setSurveyQuestions(loadedQuestions)
       }
 
       // AI 면접 질문 + 직무명 로딩
