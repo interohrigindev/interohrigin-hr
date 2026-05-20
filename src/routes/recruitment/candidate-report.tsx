@@ -90,19 +90,36 @@ export default function CandidateReport() {
       const cand = candRes.data as Candidate | null
       if (cand) {
         setCandidate(cand)
-        // private 버킷 → signed URL 생성 (1시간 유효)
-        if (cand.resume_url && !cand.resume_url.startsWith('http')) {
-          const { data: sUrl } = await supabase.storage.from('resumes').createSignedUrl(cand.resume_url, 3600)
-          if (sUrl?.signedUrl) setResumeSignedUrl(sUrl.signedUrl)
-        } else if (cand.resume_url) {
-          setResumeSignedUrl(cand.resume_url)
+        // 레거시 데이터 처리: getPublicUrl 로 저장된 recruitment-files 깨진 URL 자동 복구
+        // 패턴: ".../storage/v1/object/public/recruitment-files/<path>" → <path> 추출 + recruitment-files signed URL
+        const resolveCandidateFileUrl = async (raw: string | null | undefined): Promise<string | null> => {
+          if (!raw) return null
+          // 1) http URL 인 경우
+          if (raw.startsWith('http')) {
+            // recruitment-files 공개 URL → 그 버킷의 signed URL 로 복구
+            const m = raw.match(/\/storage\/v1\/object\/(?:public|sign)\/recruitment-files\/(.+?)(?:\?.*)?$/)
+            if (m) {
+              const { data: s } = await supabase.storage.from('recruitment-files').createSignedUrl(m[1], 3600)
+              return s?.signedUrl || raw
+            }
+            // resumes 공개 URL → 마찬가지로 signed URL 로 복구
+            const m2 = raw.match(/\/storage\/v1\/object\/(?:public|sign)\/resumes\/(.+?)(?:\?.*)?$/)
+            if (m2) {
+              const { data: s } = await supabase.storage.from('resumes').createSignedUrl(m2[1], 3600)
+              return s?.signedUrl || raw
+            }
+            // 그 외 외부 URL → 그대로 사용
+            return raw
+          }
+          // 2) 상대 PATH (현행) → resumes 버킷의 signed URL
+          const { data: s } = await supabase.storage.from('resumes').createSignedUrl(raw, 3600)
+          return s?.signedUrl || null
         }
-        if (cand.cover_letter_url && !cand.cover_letter_url.startsWith('http')) {
-          const { data: sUrl } = await supabase.storage.from('resumes').createSignedUrl(cand.cover_letter_url, 3600)
-          if (sUrl?.signedUrl) setCoverLetterSignedUrl(sUrl.signedUrl)
-        } else if (cand.cover_letter_url) {
-          setCoverLetterSignedUrl(cand.cover_letter_url)
-        }
+
+        const resumeUrl = await resolveCandidateFileUrl(cand.resume_url)
+        if (resumeUrl) setResumeSignedUrl(resumeUrl)
+        const coverUrl = await resolveCandidateFileUrl(cand.cover_letter_url)
+        if (coverUrl) setCoverLetterSignedUrl(coverUrl)
 
         // 포트폴리오 파일별 signed URL 일괄 생성
         const pfList = (cand as unknown as { portfolio_files?: { path: string; filename: string; size: number }[] }).portfolio_files || []

@@ -137,35 +137,34 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
         .single()
       if (insertErr || !candidate) throw new Error(insertErr?.message || '지원자 등록 실패')
 
-      // 3) Storage 업로드 (이력서)
+      // 3) Storage 업로드 (이력서) — resumes 버킷 (공개 지원 흐름과 동일하게 통일)
+      //    저장 형식: 상대 PATH 만 candidates.resume_url 에 저장.
+      //    candidate-report.tsx 가 자동으로 createSignedUrl 로 변환해서 표시.
       const resumeExt = resumeFile.name.split('.').pop() || 'pdf'
       const resumePath = `${jobPostingId}/${candidate.id}/resume.${resumeExt}`
       const { error: resumeErr } = await supabase.storage
-        .from('recruitment-files')
+        .from('resumes')
         .upload(resumePath, resumeFile, { upsert: true, contentType: resumeFile.type })
       if (resumeErr) throw new Error('이력서 업로드 실패: ' + resumeErr.message)
-      const { data: resumeUrl } = supabase.storage.from('recruitment-files').getPublicUrl(resumePath)
 
       // 4) Storage 업로드 (자소서, 선택)
-      let coverUrl: string | null = null
+      let coverPath: string | null = null
       let coverFilename: string | null = null
       if (coverFile) {
         const coverExt = coverFile.name.split('.').pop() || 'pdf'
-        const coverPath = `${jobPostingId}/${candidate.id}/cover-letter.${coverExt}`
+        coverPath = `${jobPostingId}/${candidate.id}/cover-letter.${coverExt}`
         const { error: coverErr } = await supabase.storage
-          .from('recruitment-files')
+          .from('resumes')
           .upload(coverPath, coverFile, { upsert: true, contentType: coverFile.type })
         if (coverErr) throw new Error('자기소개서 업로드 실패: ' + coverErr.message)
-        const { data: cu } = supabase.storage.from('recruitment-files').getPublicUrl(coverPath)
-        coverUrl = cu.publicUrl
         coverFilename = coverFile.name
       }
 
-      // 5) candidates 행에 URL/filename 업데이트
+      // 5) candidates 행에 PATH/filename 업데이트
       await supabase.from('candidates').update({
-        resume_url: resumeUrl.publicUrl,
+        resume_url: resumePath,
         resume_filename: resumeFile.name,
-        cover_letter_url: coverUrl,
+        cover_letter_url: coverPath,
         cover_letter_filename: coverFilename,
       }).eq('id', candidate.id)
 
