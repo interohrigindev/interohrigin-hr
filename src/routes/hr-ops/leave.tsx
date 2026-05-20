@@ -115,7 +115,8 @@ export default function LeaveManagementPage() {
   const [reqDays, setReqDays] = useState(1)
   const [reqReason, setReqReason] = useState('')
   // 결재라인 (D1-4: 자동 지정 — 수동 선택 제거)
-  const [, setLeaveTemplate] = useState<{ steps: { role: string; label: string }[] } | null>(null)
+  // approval_templates(doc_type='leave').steps 를 우선 사용 — role 별 모든 매칭 직원 자동 배정
+  const [leaveTemplate, setLeaveTemplate] = useState<{ steps: { role: string; label: string }[] } | null>(null)
   const [saving, setSaving] = useState(false)
   const [sendingPromotionId, setSendingPromotionId] = useState<string | null>(null)
 
@@ -258,44 +259,94 @@ export default function LeaveManagementPage() {
   const pendingRequests = leaveRequests.filter((r) => r.approval_status === 'pending' || r.approval_status === 'in_review').length
   const deptNames = useMemo(() => [...new Set(employees.map((e) => getDeptName(e.department_id)).filter((n) => n !== '-'))], [employees, departments])
 
-  // ─── 연차 신청 (D1-4: 자동 결재라인 리더 → 인사담당 → 임원 → 대표) ─────────────────────
+  // ─── 연차 신청 (P0-#1: approval_templates(doc_type='leave').steps 우선 사용) ─────────
   async function handleSubmitRequest() {
     if (!profile?.id || !reqStartDate || !reqEndDate) { toast('필수 항목을 입력하세요', 'error'); return }
-    if (!autoLeader) { toast('결재할 리더가 지정되지 않았습니다. 관리자에게 문의하세요.', 'error'); return }
     setSaving(true)
 
-    // 결재라인 구성: 리더 → 인사담당 → 임원 → 대표 (모두 자동 배정)
+    // 결재라인 구성 — 템플릿이 있으면 템플릿 기반, 없으면 legacy 4단계 fallback
     const approvalLine: ApprovalStep[] = []
     let step = 0
 
-    approvalLine.push({
-      step: step++, role_label: '리더',
-      approver_id: autoLeader.id, approver_name: autoLeader.name,
-      status: 'pending', acted_at: null,
-    })
+    if (leaveTemplate && leaveTemplate.steps && leaveTemplate.steps.length > 0) {
+      // 템플릿 step.role 별로 매칭되는 모든 직원을 결재단계로 추가
+      // role 예시: 'hr_admin' | 'leader' | 'executive' | 'director' | 'division_head' | 'ceo' | 'finance'
+      // 신청자 본인은 제외 + 중복 방지
+      const usedIds = new Set<string>([profile.id])
 
-    if (hrAdmin && hrAdmin.id !== autoLeader.id) {
+      for (const tplStep of leaveTemplate.steps) {
+        let candidates: typeof allEmployees = []
+
+        if (tplStep.role === 'leader') {
+          // 신청자 부서의 리더 우선, 없으면 전사 리더
+          candidates = autoLeader ? [autoLeader] : leaders
+        } else if (tplStep.role === 'executive' || tplStep.role === 'director' || tplStep.role === 'division_head') {
+          // 모든 이사/임원 (executive는 director+division_head 통칭)
+          candidates = allEmployees.filter((e) => e.role &&
+            ['director', 'division_head', 'executive'].includes(e.role))
+        } else if (tplStep.role === 'hr_admin') {
+          candidates = hrAdmin ? [hrAdmin] : []
+        } else if (tplStep.role === 'ceo') {
+          candidates = ceo ? [ceo] : []
+        } else if (tplStep.role === 'finance') {
+          candidates = allEmployees.filter((e) => e.role === 'finance')
+        } else {
+          // 알 수 없는 role — 같은 role 의 모든 직원
+          candidates = allEmployees.filter((e) => e.role === tplStep.role)
+        }
+
+        for (const c of candidates) {
+          if (usedIds.has(c.id)) continue
+          usedIds.add(c.id)
+          approvalLine.push({
+            step: step++,
+            role_label: tplStep.label || tplStep.role,
+            approver_id: c.id,
+            approver_name: c.name,
+            status: 'pending',
+            acted_at: null,
+          })
+        }
+      }
+    } else {
+      // Fallback: legacy 4단계 (리더 → 인사담당 → 임원 → 대표)
+      if (!autoLeader) { toast('결재할 리더가 지정되지 않았습니다. 관리자에게 문의하세요.', 'error'); setSaving(false); return }
+
       approvalLine.push({
-        step: step++, role_label: '인사담당',
-        approver_id: hrAdmin.id, approver_name: hrAdmin.name,
+        step: step++, role_label: '리더',
+        approver_id: autoLeader.id, approver_name: autoLeader.name,
         status: 'pending', acted_at: null,
       })
+
+      if (hrAdmin && hrAdmin.id !== autoLeader.id) {
+        approvalLine.push({
+          step: step++, role_label: '인사담당',
+          approver_id: hrAdmin.id, approver_name: hrAdmin.name,
+          status: 'pending', acted_at: null,
+        })
+      }
+
+      if (autoDirector && autoDirector.id !== autoLeader.id && autoDirector.id !== hrAdmin?.id) {
+        approvalLine.push({
+          step: step++, role_label: '임원',
+          approver_id: autoDirector.id, approver_name: autoDirector.name,
+          status: 'pending', acted_at: null,
+        })
+      }
+
+      if (ceo && ceo.id !== profile.id) {
+        approvalLine.push({
+          step: step++, role_label: '대표',
+          approver_id: ceo.id, approver_name: ceo.name,
+          status: 'pending', acted_at: null,
+        })
+      }
     }
 
-    if (autoDirector && autoDirector.id !== autoLeader.id && autoDirector.id !== hrAdmin?.id) {
-      approvalLine.push({
-        step: step++, role_label: '임원',
-        approver_id: autoDirector.id, approver_name: autoDirector.name,
-        status: 'pending', acted_at: null,
-      })
-    }
-
-    if (ceo && ceo.id !== profile.id) {
-      approvalLine.push({
-        step: step++, role_label: '대표',
-        approver_id: ceo.id, approver_name: ceo.name,
-        status: 'pending', acted_at: null,
-      })
+    if (approvalLine.length === 0) {
+      toast('결재라인을 구성할 수 없습니다. 관리자에게 문의하세요.', 'error')
+      setSaving(false)
+      return
     }
 
     const { error } = await supabase.from('leave_requests').insert({
@@ -816,7 +867,7 @@ export default function LeaveManagementPage() {
           <Input label="일수" type="number" value={String(reqDays)} onChange={(e) => setReqDays(Number(e.target.value))} min="0.5" step="0.5" />
           <Input label="사유 (선택)" value={reqReason} onChange={(e) => setReqReason(e.target.value)} placeholder="사유를 입력하세요" />
 
-          {/* 결재라인 — 자동 결정 (리더 → 인사담당 → 임원 → 대표) */}
+          {/* 결재라인 — approval_templates(doc_type='leave') 기반 미리보기 */}
           <div className="border border-blue-200 rounded-lg p-4 space-y-2 bg-blue-50/30">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-bold text-blue-800">🔒 결재라인 (자동 지정)</h4>
@@ -827,36 +878,55 @@ export default function LeaveManagementPage() {
                 <span className="text-[10px] font-bold text-blue-400 w-5 text-center">0</span>
                 <span className="text-xs font-medium text-gray-700">본인 (신청)</span>
               </div>
-              {autoLeader && (
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
-                  <span className="text-[10px] font-bold text-blue-500 w-5 text-center">1</span>
-                  <span className="text-xs font-medium text-blue-800">{autoLeader.name}</span>
-                  <span className="text-[10px] text-blue-400 ml-auto">리더</span>
-                </div>
-              )}
-              {hrAdmin && hrAdmin.id !== autoLeader?.id && (
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
-                  <span className="text-[10px] font-bold text-blue-500 w-5 text-center">2</span>
-                  <span className="text-xs font-medium text-blue-800">{hrAdmin.name}</span>
-                  <span className="text-[10px] text-blue-400 ml-auto">인사담당</span>
-                </div>
-              )}
-              {autoDirector && autoDirector.id !== autoLeader?.id && autoDirector.id !== hrAdmin?.id && (
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
-                  <span className="text-[10px] font-bold text-blue-500 w-5 text-center">3</span>
-                  <span className="text-xs font-medium text-blue-800">{autoDirector.name}</span>
-                  <span className="text-[10px] text-blue-400 ml-auto">임원</span>
-                </div>
-              )}
-              {ceo && (
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
-                  <span className="text-[10px] font-bold text-blue-500 w-5 text-center">4</span>
-                  <span className="text-xs font-medium text-blue-800">{ceo.name}</span>
-                  <span className="text-[10px] text-blue-400 ml-auto">대표</span>
-                </div>
-              )}
+              {(() => {
+                // 템플릿 기반 미리보기 — 실제 handleSubmitRequest 와 동일 로직
+                if (leaveTemplate && leaveTemplate.steps && leaveTemplate.steps.length > 0) {
+                  const used = new Set<string>([profile?.id || ''])
+                  const rows: { idx: number; name: string; label: string }[] = []
+                  let idx = 1
+                  for (const ts of leaveTemplate.steps) {
+                    let candidates: typeof allEmployees = []
+                    if (ts.role === 'leader') candidates = autoLeader ? [autoLeader] : leaders
+                    else if (ts.role === 'executive' || ts.role === 'director' || ts.role === 'division_head')
+                      candidates = allEmployees.filter((e) => e.role && ['director','division_head','executive'].includes(e.role))
+                    else if (ts.role === 'hr_admin') candidates = hrAdmin ? [hrAdmin] : []
+                    else if (ts.role === 'ceo') candidates = ceo ? [ceo] : []
+                    else if (ts.role === 'finance') candidates = allEmployees.filter((e) => e.role === 'finance')
+                    else candidates = allEmployees.filter((e) => e.role === ts.role)
+                    for (const c of candidates) {
+                      if (used.has(c.id)) continue
+                      used.add(c.id)
+                      rows.push({ idx: idx++, name: c.name, label: ts.label || ts.role })
+                    }
+                  }
+                  if (rows.length === 0) {
+                    return <p className="text-[11px] text-red-600 font-medium">⚠️ 결재 대상자가 없습니다.</p>
+                  }
+                  return rows.map((r) => (
+                    <div key={r.idx} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
+                      <span className="text-[10px] font-bold text-blue-500 w-5 text-center">{r.idx}</span>
+                      <span className="text-xs font-medium text-blue-800">{r.name}</span>
+                      <span className="text-[10px] text-blue-400 ml-auto">{r.label}</span>
+                    </div>
+                  ))
+                }
+                // Legacy fallback (템플릿 없음)
+                const items: { name: string; label: string }[] = []
+                if (autoLeader) items.push({ name: autoLeader.name, label: '리더' })
+                if (hrAdmin && hrAdmin.id !== autoLeader?.id) items.push({ name: hrAdmin.name, label: '인사담당' })
+                if (autoDirector && autoDirector.id !== autoLeader?.id && autoDirector.id !== hrAdmin?.id)
+                  items.push({ name: autoDirector.name, label: '임원' })
+                if (ceo) items.push({ name: ceo.name, label: '대표' })
+                return items.map((it, i) => (
+                  <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
+                    <span className="text-[10px] font-bold text-blue-500 w-5 text-center">{i + 1}</span>
+                    <span className="text-xs font-medium text-blue-800">{it.name}</span>
+                    <span className="text-[10px] text-blue-400 ml-auto">{it.label}</span>
+                  </div>
+                ))
+              })()}
             </div>
-            {!autoLeader && (
+            {!leaveTemplate && !autoLeader && (
               <p className="text-[11px] text-red-600 font-medium mt-2">⚠️ 결재할 리더가 지정되지 않았습니다. 관리자가 부서별 리더를 설정해야 합니다.</p>
             )}
           </div>

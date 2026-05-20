@@ -90,6 +90,28 @@ export default function LeavePromotionPage() {
 
   useEffect(() => { if (featureOn) load() }, [featureOn])
 
+  async function runAutomation(dryRun: boolean) {
+    const label = dryRun ? '시뮬레이션' : '실행'
+    if (!dryRun && !confirm('연차 촉진 자동화를 지금 실행하시겠습니까?\n\n- 소멸 6개월 전 직원 → 1차 자동 발송\n- 1차 발송 후 30일+회신없음+2개월 전 → 강제 사용일 지정 통보')) return
+
+    const { data, error } = await supabase.rpc('run_leave_promotion_automation', { p_dry_run: dryRun })
+    if (error) { toast(`${label} 실패: ${error.message}`, 'error'); return }
+    const rows = (data || []) as any[]
+    const sent6m = rows.filter((r) => r.stage === '6m').length
+    const forced2m = rows.filter((r) => r.stage === '2m').length
+    toast(`${label} 완료 — 6개월 통지: ${sent6m}건 · 강제지정: ${forced2m}건`, 'success')
+    if (rows.length > 0) {
+      console.log('[연차 촉진 자동화]', rows)
+    }
+    if (!dryRun) {
+      await logAudit({
+        action: 'send', entity: 'leave_promotion_automation',
+        diff: `자동화 실행 — 6m=${sent6m}, 2m=${forced2m}`,
+      })
+      load()
+    }
+  }
+
   async function snapshotAll() {
     // SECURITY DEFINER RPC 호출 — RLS 우회 + 권한 체크 서버측 처리 (마이그레이션 106)
     const { data, error } = await supabase.rpc('snapshot_all_leave_balances')
@@ -182,9 +204,17 @@ export default function LeavePromotionPage() {
             미사용 연차 현황 + 잠재 수당 부채 + 촉진서 발송
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={snapshotAll}>
-          <RefreshCw className="h-4 w-4 mr-1" /> 잔여 연차 스냅샷
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={snapshotAll}>
+            <RefreshCw className="h-4 w-4 mr-1" /> 잔여 연차 스냅샷
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => runAutomation(true)}>
+            자동화 미리보기 (dry-run)
+          </Button>
+          <Button size="sm" onClick={() => runAutomation(false)}>
+            지금 자동화 실행
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

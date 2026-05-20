@@ -421,8 +421,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     }
     if (!item.minRole || hasRole(item.minRole)) {
       // 메뉴 권한이 설정되어 있으면 허용 목록에 있는지 확인
-      // CEO/admin은 항상 전체 접근, 권한 미설정(null)이면 전체 허용
-      if (allowedMenus === null || profile?.role === 'ceo' || profile?.role === 'admin') {
+      // ceo/admin/director/division_head/hr_admin 은 항상 전체 접근 (조직 의사결정 권한자)
+      // 권한 미설정(null)이면 전체 허용
+      const AUTO_BYPASS_ROLES = ['ceo', 'admin', 'director', 'division_head', 'hr_admin']
+      if (allowedMenus === null || (profile?.role && AUTO_BYPASS_ROLES.includes(profile.role))) {
         return true
       }
       const path = typeof item.to === 'string' ? item.to : ''
