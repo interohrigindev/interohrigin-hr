@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useParams, useNavigate } from 'react-router-dom'
 import {
   FileCheck, Clock, CheckCircle, XCircle,
-  Plus, Search, ChevronRight, User,
+  Plus, Search, User,
   Send, Paperclip, Download, ArrowLeft, ChevronDown,
 } from 'lucide-react'
 import jsPDF from 'jspdf'
@@ -19,6 +19,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { ApprovalLineViewer } from '@/components/approval/ApprovalLineViewer'
 
 /* ────── Types ────── */
 
@@ -967,58 +968,32 @@ export default function ApprovalManagementPage() {
     const steps = stepsMap[docId] || []
     if (steps.length === 0) return null
 
+    const viewerSteps = steps.map((step) => {
+      let status: 'pending' | 'approved' | 'rejected' | 'in_progress' | 'cancelled' = 'pending'
+      if (step.action === 'approved') status = 'approved'
+      else if (step.action === 'rejected') status = 'rejected'
+      else if ((step.action as string) === 'cancelled') status = 'cancelled'
+      else if (
+        step.step_order === doc.current_step
+        && (doc.status === 'submitted' || doc.status === 'in_review')
+        && step.action === 'pending'
+      ) status = 'in_progress'
+      return {
+        role_label: ROLE_LABELS[step.approver_role] || step.approver_role,
+        approver_name: getEmpName(step.approver_id),
+        status,
+        action_type: (step as any).action_type as 'approve' | 'consult' | 'reference' | undefined,
+        acted_at: step.acted_at,
+        comment: step.comment,
+      }
+    })
+
     return (
-      <div className="flex items-center gap-1 flex-wrap">
-        {/* Requester pill */}
-        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-[11px] text-gray-600">
-          <div className="w-4 h-4 rounded-full bg-gray-300 flex items-center justify-center text-[8px] font-bold text-white">
-            {getEmpName(doc.requester_id)[0]}
-          </div>
-          신청
-        </div>
-
-        {steps.map((step) => {
-          const isCurrent =
-            step.step_order === doc.current_step &&
-            (doc.status === 'submitted' || doc.status === 'in_review') &&
-            step.action === 'pending'
-          const isDone = step.action === 'approved'
-          const isRejected = step.action === 'rejected'
-
-          return (
-            <div key={step.id} className="flex items-center gap-1">
-              <ChevronRight className="h-3 w-3 text-gray-300" />
-              <div
-                className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium ${
-                  isRejected
-                    ? 'bg-red-100 text-red-700'
-                    : isDone
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : isCurrent
-                        ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-300'
-                        : 'bg-gray-100 text-gray-500'
-                }`}
-              >
-                <div
-                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${
-                    isRejected
-                      ? 'bg-red-500'
-                      : isDone
-                        ? 'bg-emerald-500'
-                        : isCurrent
-                          ? 'bg-blue-500'
-                          : 'bg-gray-300'
-                  }`}
-                >
-                  {isRejected ? '✕' : isDone ? '✓' : step.step_order}
-                </div>
-                {getEmpName(step.approver_id)}
-                <span className="text-[9px] opacity-70">({ROLE_LABELS[step.approver_role] || step.approver_role})</span>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      <ApprovalLineViewer
+        requesterName={getEmpName(doc.requester_id)}
+        steps={viewerSteps}
+        compact
+      />
     )
   }
 
@@ -1273,43 +1248,6 @@ export default function ApprovalManagementPage() {
                 결재 흐름 ({doc.current_step}/{doc.total_steps}단계)
               </p>
               {renderStepPills(doc.id, doc)}
-
-              {steps.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {steps.map((step) => {
-                    const stepCfg =
-                      step.action === 'approved' ? { badge: 'success' as const, label: '승인' } :
-                      step.action === 'rejected' ? { badge: 'danger' as const, label: '반려' } :
-                      { badge: 'default' as const, label: '대기' }
-                    return (
-                      <div key={step.id} className="flex items-start gap-2 text-sm border-l-2 pl-2"
-                           style={{ borderColor: step.action === 'approved' ? '#10b981' : step.action === 'rejected' ? '#ef4444' : '#d1d5db' }}>
-                        <Badge variant={stepCfg.badge} className="text-[10px] mt-0.5 shrink-0">
-                          {step.step_order}. {stepCfg.label}
-                        </Badge>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            <span className="text-gray-700 font-medium">
-                              {getEmpName(step.approver_id)}
-                            </span>
-                            <span className="text-[10px] text-gray-400">
-                              ({ROLE_LABELS[step.approver_role] || step.approver_role})
-                            </span>
-                            {step.acted_at && (
-                              <span className="text-[10px] text-gray-400">· {fmtDate(step.acted_at)}</span>
-                            )}
-                          </div>
-                          {step.comment && (
-                            <div className="mt-1 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 italic">
-                              💬 {step.comment}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
             </div>
 
             {/* 결재 액션 */}
@@ -1849,43 +1787,6 @@ export default function ApprovalManagementPage() {
                   결재 흐름 ({doc.current_step}/{doc.total_steps}단계)
                 </p>
                 {renderStepPills(doc.id, doc)}
-
-                {/* Detailed step history */}
-                {steps.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {steps.map((step) => {
-                      const stepCfg =
-                        step.action === 'approved' ? { badge: 'success' as const, label: '승인' } :
-                        step.action === 'rejected' ? { badge: 'danger' as const, label: '반려' } :
-                        { badge: 'default' as const, label: '대기' }
-                      return (
-                        <div key={step.id} className="flex items-start gap-2 text-sm border-l-2 pl-2" style={{ borderColor: step.action === 'approved' ? '#10b981' : step.action === 'rejected' ? '#ef4444' : '#d1d5db' }}>
-                          <Badge variant={stepCfg.badge} className="text-[10px] mt-0.5 shrink-0">
-                            {step.step_order}. {stepCfg.label}
-                          </Badge>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <span className="text-gray-700 font-medium">
-                                {getEmpName(step.approver_id)}
-                              </span>
-                              <span className="text-[10px] text-gray-400">
-                                ({ROLE_LABELS[step.approver_role] || step.approver_role})
-                              </span>
-                              {step.acted_at && (
-                                <span className="text-[10px] text-gray-400">· {fmtDate(step.acted_at)}</span>
-                              )}
-                            </div>
-                            {step.comment && (
-                              <div className="mt-1 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 italic">
-                                💬 {step.comment}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
               </div>
 
               {/* Action Area */}
@@ -2292,98 +2193,89 @@ export default function ApprovalManagementPage() {
                   return null
                 })()}
 
-                {/* Flow preview */}
-                {selectedTemplate && (
-                  <div className="flex items-center gap-1 text-[11px] text-gray-500 flex-wrap">
-                    <span className="px-2 py-1 bg-white rounded-full border border-gray-200 font-medium text-gray-700">본인</span>
-                    {selectedTemplate.steps.map((step, idx) => {
-                      const roleLabel = ROLE_LABELS[step.role] || step.label
-                      const colors: Record<string, string> = {
-                        leader: 'bg-blue-50 border-blue-200 text-blue-700',
-                        executive: 'bg-violet-50 border-violet-200 text-violet-700',
-                        ceo: 'bg-amber-50 border-amber-200 text-amber-700',
-                        hr_admin: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-                      }
-                      return (
-                        <span key={idx} className="flex items-center gap-1">
-                          <ChevronRight className="h-3 w-3 text-gray-300" />
-                          <span className={`px-2 py-1 rounded-full border font-medium ${colors[step.role] || 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                            {roleLabel}
-                          </span>
-                        </span>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Approver selects */}
+                {/* Approver selects — 세로 타임라인 (옵션 B) */}
                 {selectedTemplate ? (
                   <>
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
-                      <p className="text-xs font-semibold text-gray-600">결재라인 (자동 설정 · 변경 불가)</p>
-                      {selectedTemplate.steps.map((step, idx) => {
-                        const roleLabel = ROLE_LABELS[step.role] || step.label
-                        const stepKey = `${step.role}__${idx}` // 단계 고유 key (같은 role 반복 대응)
-                        const approverIds = (step as { approver_ids?: string[] }).approver_ids || []
+                    <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-700">결재 진행 흐름 (자동 설정)</p>
+                        <span className="text-[10px] text-gray-400">변경 불가</span>
+                      </div>
+                      {(() => {
+                        // 각 단계의 담당자를 미리 계산해 ApprovalLineViewer 의 step 으로 변환
+                        const viewerSteps: { role_label: string; approver_name: string; status?: 'pending'; action_type?: 'approve' | 'consult' | 'reference' }[] = []
+                        const stepCandidatesMap: Record<string, { value: string; label: string }[]> = {}
+                        const stepCurrentMap: Record<string, string> = {}
 
-                        // 1순위: 템플릿에 지정된 담당자 (관리자가 결재선 관리에서 설정)
-                        // 2순위: role에 맞는 역할의 첫 번째 직원
-                        let defaultApproverId = ''
-                        if (approverIds.length > 0) {
-                          defaultApproverId = approverIds[0]
-                        } else if (step.role === 'ceo' && ceo) {
-                          defaultApproverId = ceo.id
-                        } else {
-                          const options = getApproverOptions(step.role)
-                          if (options.length > 0) defaultApproverId = options[0].value
+                        for (let idx = 0; idx < selectedTemplate.steps.length; idx++) {
+                          const step = selectedTemplate.steps[idx]
+                          const roleLabel = ROLE_LABELS[step.role] || step.label
+                          const stepKey = `${step.role}__${idx}`
+                          const approverIds = (step as { approver_ids?: string[] }).approver_ids || []
+                          const actionType = ((step as { action_type?: 'approve' | 'consult' | 'reference' }).action_type) || 'approve'
+
+                          let defaultApproverId = ''
+                          if (approverIds.length > 0) defaultApproverId = approverIds[0]
+                          else if (step.role === 'ceo' && ceo) defaultApproverId = ceo.id
+                          else {
+                            const opts = getApproverOptions(step.role)
+                            if (opts.length > 0) defaultApproverId = opts[0].value
+                          }
+                          if (!newApprovers[stepKey] && defaultApproverId) {
+                            setTimeout(() => setNewApprovers((prev) => ({ ...prev, [stepKey]: defaultApproverId })), 0)
+                          }
+                          const currentId = newApprovers[stepKey] || defaultApproverId
+                          const selectedEmp = allEmployees.find((e) => e.id === currentId)
+                          const selectedName = selectedEmp?.name || roleLabel
+
+                          const options = approverIds.length > 0
+                            ? approverIds
+                                .map((id) => allEmployees.find((e) => e.id === id))
+                                .filter(Boolean)
+                                .map((e) => ({ value: e!.id, label: `${e!.name}${e!.position ? ` (${e!.position})` : ''}` }))
+                            : getApproverOptions(step.role)
+
+                          viewerSteps.push({
+                            role_label: roleLabel,
+                            approver_name: selectedName,
+                            status: 'pending',
+                            action_type: actionType,
+                          })
+                          stepCandidatesMap[stepKey] = options
+                          stepCurrentMap[stepKey] = currentId
                         }
-
-                        // 자동 배정 (초기 렌더 시)
-                        if (!newApprovers[stepKey] && defaultApproverId) {
-                          setTimeout(() => setNewApprovers((prev) => ({ ...prev, [stepKey]: defaultApproverId })), 0)
-                        }
-
-                        const currentId = newApprovers[stepKey] || defaultApproverId
-                        const selectedName = allEmployees.find((e) => e.id === currentId)?.name || roleLabel
-
-                        // 선택 가능한 옵션: 템플릿 지정 직원 OR 역할 풀
-                        const options = approverIds.length > 0
-                          ? approverIds.map(id => {
-                              const emp = allEmployees.find(e => e.id === id)
-                              return emp ? { value: id, label: `${emp.name} (${emp.position || emp.role || ''})` } : null
-                            }).filter(Boolean) as { value: string; label: string }[]
-                          : getApproverOptions(step.role)
-
-                        const specifiedNames = approverIds.map(id => allEmployees.find(e => e.id === id)?.name).filter(Boolean)
 
                         return (
-                          <div key={stepKey} className="flex items-center gap-2 text-sm flex-wrap">
-                            <span className="w-5 h-5 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">{idx + 1}</span>
-                            <span className="text-gray-700">{selectedName}</span>
-                            <span className="text-xs text-gray-400">({roleLabel})</span>
-                            {specifiedNames.length > 0 ? (
-                              <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                                ✓ 지정: {specifiedNames.join(', ')}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                                ⚠️ 담당자 미지정 (역할 기본값)
-                              </span>
-                            )}
-                            {options.length > 1 && (
-                              <select
-                                value={currentId}
-                                onChange={(e) => setNewApprovers((prev) => ({ ...prev, [stepKey]: e.target.value }))}
-                                className="ml-auto text-xs border rounded px-2 py-1"
-                              >
-                                {options.map((o) => (
-                                  <option key={o.value} value={o.value}>{o.label}</option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
+                          <>
+                            <ApprovalLineViewer
+                              requesterName={profile?.name || '본인'}
+                              steps={viewerSteps}
+                              currentStepIndex={-1}
+                              showStatus={false}
+                            />
+                            {/* 다중 후보가 있는 단계의 선택 UI는 아래에 별도 노출 */}
+                            {Object.entries(stepCandidatesMap).map(([stepKey, opts]) => {
+                              if (opts.length <= 1) return null
+                              const [roleKey, idxStr] = stepKey.split('__')
+                              const idx = parseInt(idxStr)
+                              return (
+                                <div key={stepKey} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-2 py-1.5">
+                                  <span className="text-gray-500">단계 {idx + 1} ({ROLE_LABELS[roleKey] || roleKey}) 결재자 선택:</span>
+                                  <select
+                                    value={stepCurrentMap[stepKey]}
+                                    onChange={(e) => setNewApprovers((prev) => ({ ...prev, [stepKey]: e.target.value }))}
+                                    className="ml-auto text-xs border rounded px-2 py-1"
+                                  >
+                                    {opts.map((o) => (
+                                      <option key={o.value} value={o.value}>{o.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )
+                            })}
+                          </>
                         )
-                      })}
+                      })()}
                     </div>
                     <p className="text-xs text-gray-400">결재라인은 양식에 따라 자동 설정되며, 신청 후 변경할 수 없습니다.</p>
                   </>

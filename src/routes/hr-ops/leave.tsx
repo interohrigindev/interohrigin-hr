@@ -3,7 +3,6 @@ import * as XLSX from 'xlsx'
 import {
   CalendarPlus, Download, Search,
   AlertTriangle, CheckCircle, Clock, Plus,
-  ChevronRight,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -17,6 +16,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { calculateAnnualLeave } from '@/lib/leave-calculator'
 import { annualLeavePromotionEmail } from '@/lib/email-templates'
+import { ApprovalLineViewer } from '@/components/approval/ApprovalLineViewer'
 
 /* ─── Types ─────────────────────────────────────────── */
 
@@ -117,6 +117,7 @@ export default function LeaveManagementPage() {
   // 결재라인 (D1-4: 자동 지정 — 수동 선택 제거)
   // approval_templates(doc_type='leave').steps 를 우선 사용 — role 별 모든 매칭 직원 자동 배정
   const [leaveTemplate, setLeaveTemplate] = useState<{ steps: { role: string; label: string }[] } | null>(null)
+  // ApprovalLineViewer 사용
   const [saving, setSaving] = useState(false)
   const [sendingPromotionId, setSendingPromotionId] = useState<string | null>(null)
 
@@ -800,39 +801,19 @@ export default function LeaveManagementPage() {
 
                   {req.reason && <p className="text-xs text-gray-500 mb-3 pl-11">사유: {req.reason}</p>}
 
-                  {/* 결재라인 시각화 */}
+                  {/* 결재라인 시각화 — 세로 타임라인 */}
                   {line.length > 0 && (
-                    <div className="flex items-center gap-1 pl-11 mb-3 flex-wrap">
-                      {/* 신청자 */}
-                      <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-[11px] text-gray-600">
-                        <div className="w-4 h-4 rounded-full bg-gray-300 flex items-center justify-center text-[8px] font-bold text-white">{getEmpName(req.employee_id)[0]}</div>
-                        본인
-                      </div>
-
-                      {line.map((step, i) => {
-                        const isCurrent = i === currentStep && (req.approval_status === 'in_review' || req.approval_status === 'pending')
-                        const isDone = step.status === 'approved'
-                        const isRejected = step.status === 'rejected'
-                        return (
-                          <div key={i} className="flex items-center gap-1">
-                            <ChevronRight className="h-3 w-3 text-gray-300" />
-                            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium ${
-                              isRejected ? 'bg-red-100 text-red-700' :
-                              isDone ? 'bg-emerald-100 text-emerald-700' :
-                              isCurrent ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-300' :
-                              'bg-gray-100 text-gray-500'
-                            }`}>
-                              <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${
-                                isRejected ? 'bg-red-500' : isDone ? 'bg-emerald-500' : isCurrent ? 'bg-blue-500' : 'bg-gray-300'
-                              }`}>
-                                {isRejected ? '✕' : isDone ? '✓' : (i + 1)}
-                              </div>
-                              {step.approver_name}
-                              <span className="text-[9px] opacity-70">({step.role_label})</span>
-                            </div>
-                          </div>
-                        )
-                      })}
+                    <div className="pl-11 mb-3">
+                      <ApprovalLineViewer
+                        steps={line.map((step) => ({
+                          role_label: step.role_label,
+                          approver_name: step.approver_name,
+                          status: step.status,
+                          acted_at: step.acted_at,
+                        }))}
+                        currentStepIndex={(req.approval_status === 'in_review' || req.approval_status === 'pending') ? currentStep : -1}
+                        compact
+                      />
                     </div>
                   )}
 
@@ -867,68 +848,50 @@ export default function LeaveManagementPage() {
           <Input label="일수" type="number" value={String(reqDays)} onChange={(e) => setReqDays(Number(e.target.value))} min="0.5" step="0.5" />
           <Input label="사유 (선택)" value={reqReason} onChange={(e) => setReqReason(e.target.value)} placeholder="사유를 입력하세요" />
 
-          {/* 결재라인 — approval_templates(doc_type='leave') 기반 미리보기 */}
-          <div className="border border-blue-200 rounded-lg p-4 space-y-2 bg-blue-50/30">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-blue-800">🔒 결재라인 (자동 지정)</h4>
-              <span className="text-[10px] text-blue-500">변경 불가</span>
+          {/* 결재라인 — approval_templates(doc_type='leave') 기반 세로 타임라인 미리보기 */}
+          <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold text-gray-800">결재 진행 흐름 (자동 지정)</h4>
+              <span className="text-[10px] text-gray-500 px-1.5 py-0.5 rounded bg-white border border-gray-200">변경 불가</span>
             </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white border border-blue-200">
-                <span className="text-[10px] font-bold text-blue-400 w-5 text-center">0</span>
-                <span className="text-xs font-medium text-gray-700">본인 (신청)</span>
-              </div>
-              {(() => {
-                // 템플릿 기반 미리보기 — 실제 handleSubmitRequest 와 동일 로직
-                if (leaveTemplate && leaveTemplate.steps && leaveTemplate.steps.length > 0) {
-                  const used = new Set<string>([profile?.id || ''])
-                  const rows: { idx: number; name: string; label: string }[] = []
-                  let idx = 1
-                  for (const ts of leaveTemplate.steps) {
-                    let candidates: typeof allEmployees = []
-                    if (ts.role === 'leader') candidates = autoLeader ? [autoLeader] : leaders
-                    else if (ts.role === 'executive' || ts.role === 'director' || ts.role === 'division_head')
-                      candidates = allEmployees.filter((e) => e.role && ['director','division_head','executive'].includes(e.role))
-                    else if (ts.role === 'hr_admin') candidates = hrAdmin ? [hrAdmin] : []
-                    else if (ts.role === 'ceo') candidates = ceo ? [ceo] : []
-                    else if (ts.role === 'finance') candidates = allEmployees.filter((e) => e.role === 'finance')
-                    else candidates = allEmployees.filter((e) => e.role === ts.role)
-                    for (const c of candidates) {
-                      if (used.has(c.id)) continue
-                      used.add(c.id)
-                      rows.push({ idx: idx++, name: c.name, label: ts.label || ts.role })
-                    }
+            {(() => {
+              const steps: { role_label: string; approver_name: string; status: 'pending' }[] = []
+              if (leaveTemplate && leaveTemplate.steps && leaveTemplate.steps.length > 0) {
+                const used = new Set<string>([profile?.id || ''])
+                for (const ts of leaveTemplate.steps) {
+                  let candidates: typeof allEmployees = []
+                  if (ts.role === 'leader') candidates = autoLeader ? [autoLeader] : leaders
+                  else if (ts.role === 'executive' || ts.role === 'director' || ts.role === 'division_head')
+                    candidates = allEmployees.filter((e) => e.role && ['director','division_head','executive'].includes(e.role))
+                  else if (ts.role === 'hr_admin') candidates = hrAdmin ? [hrAdmin] : []
+                  else if (ts.role === 'ceo') candidates = ceo ? [ceo] : []
+                  else if (ts.role === 'finance') candidates = allEmployees.filter((e) => e.role === 'finance')
+                  else candidates = allEmployees.filter((e) => e.role === ts.role)
+                  for (const c of candidates) {
+                    if (used.has(c.id)) continue
+                    used.add(c.id)
+                    steps.push({ role_label: ts.label || ts.role, approver_name: c.name, status: 'pending' })
                   }
-                  if (rows.length === 0) {
-                    return <p className="text-[11px] text-red-600 font-medium">⚠️ 결재 대상자가 없습니다.</p>
-                  }
-                  return rows.map((r) => (
-                    <div key={r.idx} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
-                      <span className="text-[10px] font-bold text-blue-500 w-5 text-center">{r.idx}</span>
-                      <span className="text-xs font-medium text-blue-800">{r.name}</span>
-                      <span className="text-[10px] text-blue-400 ml-auto">{r.label}</span>
-                    </div>
-                  ))
                 }
-                // Legacy fallback (템플릿 없음)
-                const items: { name: string; label: string }[] = []
-                if (autoLeader) items.push({ name: autoLeader.name, label: '리더' })
-                if (hrAdmin && hrAdmin.id !== autoLeader?.id) items.push({ name: hrAdmin.name, label: '인사담당' })
+              } else {
+                if (autoLeader) steps.push({ role_label: '리더', approver_name: autoLeader.name, status: 'pending' })
+                if (hrAdmin && hrAdmin.id !== autoLeader?.id) steps.push({ role_label: '인사담당', approver_name: hrAdmin.name, status: 'pending' })
                 if (autoDirector && autoDirector.id !== autoLeader?.id && autoDirector.id !== hrAdmin?.id)
-                  items.push({ name: autoDirector.name, label: '임원' })
-                if (ceo) items.push({ name: ceo.name, label: '대표' })
-                return items.map((it, i) => (
-                  <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-100 border-l-2 border-blue-500">
-                    <span className="text-[10px] font-bold text-blue-500 w-5 text-center">{i + 1}</span>
-                    <span className="text-xs font-medium text-blue-800">{it.name}</span>
-                    <span className="text-[10px] text-blue-400 ml-auto">{it.label}</span>
-                  </div>
-                ))
-              })()}
-            </div>
-            {!leaveTemplate && !autoLeader && (
-              <p className="text-[11px] text-red-600 font-medium mt-2">⚠️ 결재할 리더가 지정되지 않았습니다. 관리자가 부서별 리더를 설정해야 합니다.</p>
-            )}
+                  steps.push({ role_label: '임원', approver_name: autoDirector.name, status: 'pending' })
+                if (ceo) steps.push({ role_label: '대표', approver_name: ceo.name, status: 'pending' })
+              }
+              if (steps.length === 0) {
+                return <p className="text-[11px] text-red-600 font-medium">⚠️ 결재 대상자가 없습니다. 관리자에게 문의하세요.</p>
+              }
+              return (
+                <ApprovalLineViewer
+                  requesterName={profile?.name || '본인'}
+                  steps={steps}
+                  currentStepIndex={-1}
+                  showStatus={false}
+                />
+              )
+            })()}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
