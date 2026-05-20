@@ -86,6 +86,7 @@ export default function CandidateSharePage() {
   const [coverLetterFile, setCoverLetterFile] = useState<FileInfo | null>(null)
   const [portfolioSignedUrls, setPortfolioSignedUrls] = useState<Record<number, FileInfo>>({})
   const [surveyQuestions, setSurveyQuestions] = useState<{ id: string; question: string }[]>([])
+  const [fallbackAiQuestions, setFallbackAiQuestions] = useState<string[]>([])
 
   useEffect(() => {
     if (!token) {
@@ -128,6 +129,22 @@ export default function CandidateSharePage() {
           } catch { /* ignore */ }
         }
         setPortfolioSignedUrls(urls)
+      }
+
+      // AI 면접 질문 fallback — RPC 가 113 마이그레이션 미실행으로 ai_questions 를 안 줄 때
+      // job_postings 를 직접 조회 (RLS 통과: 임원/대표/관리자만 RPC 통과했으므로 이미 인증됨)
+      const aiQs = (sd?.job as any)?.ai_questions
+      if ((!Array.isArray(aiQs) || aiQs.length === 0) && sd?.job?.id) {
+        try {
+          const { data: jp } = await supabase
+            .from('job_postings')
+            .select('ai_questions')
+            .eq('id', sd.job.id)
+            .maybeSingle()
+          if (jp?.ai_questions && Array.isArray(jp.ai_questions)) {
+            setFallbackAiQuestions(jp.ai_questions as string[])
+          }
+        } catch { /* ignore */ }
       }
 
       // 사전질의서 질문 — survey_template 우선, 누락 시 전체 템플릿 fallback
@@ -179,7 +196,10 @@ export default function CandidateSharePage() {
   const surveyAnswers = candidate.pre_survey_data?.answers || {}
   const surveyMeta = candidate.pre_survey_data?.meta || {}
   const interviewerComments = candidate.interviewer_comments || []
-  const aiQuestions = job?.ai_questions || []
+  // RPC 응답에 ai_questions 가 있으면 우선, 없으면 fallback (직접 조회) 사용
+  const aiQuestions = (job?.ai_questions && job.ai_questions.length > 0)
+    ? job.ai_questions
+    : fallbackAiQuestions
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -395,24 +415,30 @@ export default function CandidateSharePage() {
           </div>
         )}
 
-        {/* 권장 면접 질문 — 1차/2차 모두에서 항상 보임 */}
-        {aiQuestions.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
-            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-brand-500" />
-              권장 면접 질문 ({aiQuestions.length}개)
-            </h2>
-            <p className="text-xs text-gray-500 mb-3">면접 시 활용할 수 있는 AI 추천 질문입니다.</p>
-            <ol className="space-y-2">
-              {aiQuestions.map((q, i) => (
-                <li key={i} className="flex gap-3 text-sm">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
-                  <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
+        {/* 권장 면접 질문 — 1차/2차 모두에서 항상 보임. 미생성 시 안내 표시 */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+          <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-brand-500" />
+            AI 권장 면접 질문 {aiQuestions.length > 0 && `(${aiQuestions.length}개)`}
+          </h2>
+          {aiQuestions.length > 0 ? (
+            <>
+              <p className="text-xs text-gray-500 mb-3">면접 시 활용할 수 있는 AI 추천 질문입니다.</p>
+              <ol className="space-y-2">
+                {aiQuestions.map((q, i) => (
+                  <li key={i} className="flex gap-3 text-sm">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
+                    <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : (
+            <p className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+              아직 AI 면접 질문이 생성되지 않았습니다. 관리자가 채용공고 상세 페이지에서 AI 질문을 생성하면 여기에 표시됩니다.
+            </p>
+          )}
+        </div>
 
         {/* 면접 일정 */}
         {interview_schedules.length > 0 && (
