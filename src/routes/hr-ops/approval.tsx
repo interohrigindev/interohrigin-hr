@@ -20,6 +20,7 @@ import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { ApprovalLineViewer } from '@/components/approval/ApprovalLineViewer'
+import { ApprovalLineEditor, type EditableStep } from '@/components/approval/ApprovalLineEditor'
 
 /* ────── Types ────── */
 
@@ -2312,43 +2313,9 @@ export default function ApprovalManagementPage() {
    결재선 관리 컴포넌트 (관리자 전용)
    ═══════════════════════════════════════════════════════════ */
 
-const ROLE_OPTIONS = [
-  { value: 'leader', label: '팀장/리더' },
-  { value: 'division', label: '본부' },
-  { value: 'executive', label: '이사/임원' },
-  { value: 'ceo', label: '대표' },
-  { value: 'hr_admin', label: '인사/경영지원' },
-  { value: 'finance', label: '재무회계' },
-]
-
-// 역할 → 자동 매칭할 직원 role 값 (참고용. 실제 UI는 모든 직원에서 선택)
-const ROLE_EMPLOYEE_MATCH: Record<string, string[]> = {
-  leader: ['leader'],
-  division: ['division_head', 'director'],
-  executive: ['director', 'division_head'],
-  ceo: ['ceo'],
-  hr_admin: ['hr_admin', 'admin'],
-  finance: ['admin'],
-}
-
-// D1-6: 1단계 역할 선택 시 2단계 자동 권장 체인
-const ROLE_NEXT_CHAIN: Record<string, string[]> = {
-  leader:    ['executive', 'ceo'],
-  division:  ['executive', 'ceo'],
-  executive: ['ceo'],
-  hr_admin:  ['executive', 'ceo'],
-  finance:   ['executive', 'ceo'],
-  ceo:       [],
-}
-
+// 결재선 편집은 <ApprovalLineEditor /> 컴포넌트로 이전됨 — ROLE_OPTIONS / 매칭 / NEXT_CHAIN 도 거기서 관리
 type ActionType = 'approve' | 'consult' | 'reference'
 interface EditStep { role: string; label: string; approver_ids?: string[]; action_type?: ActionType }
-
-const ACTION_TYPE_OPTIONS: { value: ActionType; label: string; desc: string; color: string }[] = [
-  { value: 'approve',   label: '결재', desc: '승인/반려 권한',  color: 'bg-brand-100 text-brand-700 border-brand-300' },
-  { value: 'consult',   label: '합의', desc: '동의 표시',        color: 'bg-blue-100 text-blue-700 border-blue-300' },
-  { value: 'reference', label: '참조', desc: '조회만 가능',       color: 'bg-gray-100 text-gray-600 border-gray-300' },
-]
 
 function ApprovalTemplateManager({
   templates,
@@ -2409,62 +2376,7 @@ function ApprovalTemplateManager({
     onRefresh()
   }
 
-  function addStep() {
-    setEditSteps([...editSteps, { role: 'leader', label: '팀장', approver_ids: [], action_type: 'approve' }])
-  }
-
-  function removeStep(idx: number) {
-    setEditSteps(editSteps.filter((_, i) => i !== idx))
-  }
-
-  function updateStep(idx: number, field: 'role' | 'label', value: string) {
-    const nextSteps = editSteps.map((s, i) => {
-      if (i !== idx) return s
-      // role 변경 시 label 도 자동으로 해당 role 기본 라벨로 갱신
-      if (field === 'role') {
-        const roleOpt = ROLE_OPTIONS.find((r) => r.value === value)
-        return { ...s, role: value, label: roleOpt?.label || value, approver_ids: [] }
-      }
-      return { ...s, [field]: value }
-    })
-
-    // D1-6: 1단계 역할 선택 시, 후속 단계가 비어 있으면 자동으로 권장 체인 추가
-    if (field === 'role' && idx === 0 && nextSteps.length === 1) {
-      const chain = ROLE_NEXT_CHAIN[value] || []
-      for (const nextRole of chain) {
-        const opt = ROLE_OPTIONS.find((r) => r.value === nextRole)
-        nextSteps.push({
-          role: nextRole,
-          label: opt?.label || nextRole,
-          approver_ids: [],
-          action_type: 'approve',
-        })
-      }
-    }
-
-    setEditSteps(nextSteps)
-  }
-
-  function toggleApprover(idx: number, empId: string) {
-    setEditSteps(editSteps.map((s, i) => {
-      if (i !== idx) return s
-      const current = s.approver_ids || []
-      const next = current.includes(empId)
-        ? current.filter(id => id !== empId)
-        : [...current, empId]
-      return { ...s, approver_ids: next }
-    }))
-  }
-
-  // 역할에 해당하는 직원 풀 — 추천 직원은 상단, 전체 직원은 검색으로
-  function getRecommendedEmployees(role: string): Employee[] {
-    const matchRoles = ROLE_EMPLOYEE_MATCH[role] || []
-    if (matchRoles.length === 0) return employees
-    return employees.filter(e => e.role && matchRoles.includes(e.role))
-  }
-
-  // 단계별 검색 쿼리 state (인덱스별 저장)
-  const [stepSearches, setStepSearches] = useState<Record<number, string>>({})
+  // 결재선 단계 편집은 <ApprovalLineEditor /> 로 위임 (옵션 B 세로 타임라인)
 
   // 새 결재선 템플릿 추가
   const [showNewTemplate, setShowNewTemplate] = useState(false)
@@ -2814,175 +2726,12 @@ function ApprovalTemplateManager({
                         )}
                       </div>
                     )}
-                    <p className="text-[10px] text-gray-400 mb-1">드래그로 순서 변경</p>
-                    {editSteps.map((step, idx) => {
-                      const recommendedPool = getRecommendedEmployees(step.role)
-                      const recommendedIds = new Set(recommendedPool.map(e => e.id))
-                      const otherPool = employees.filter(e => !recommendedIds.has(e.id))
-                      const selectedIds = step.approver_ids || []
-                      const searchQ = (stepSearches[idx] || '').toLowerCase()
-                      const matchSearch = (emp: Employee) => !searchQ || emp.name.toLowerCase().includes(searchQ)
-                      const filteredRec = recommendedPool.filter(matchSearch)
-                      const filteredOther = otherPool.filter(matchSearch)
-                      return (
-                        <div
-                          key={idx}
-                          draggable
-                          onDragStart={(e) => { e.dataTransfer.setData('stepIdx', String(idx)) }}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => {
-                            e.preventDefault()
-                            const fromIdx = parseInt(e.dataTransfer.getData('stepIdx'))
-                            if (fromIdx === idx) return
-                            const newSteps = [...editSteps]
-                            const [moved] = newSteps.splice(fromIdx, 1)
-                            newSteps.splice(idx, 0, moved)
-                            setEditSteps(newSteps)
-                          }}
-                          className="bg-white rounded-lg p-3 space-y-2 border-2 border-gray-200 hover:border-brand-400 hover:shadow-sm transition-all"
-                        >
-                          {/* 단계 연결선 (첫 단계 아닌 경우) */}
-                          {idx > 0 && (
-                            <div className="absolute -mt-5 left-6 flex flex-col items-center pointer-events-none">
-                              <div className="w-0.5 h-2 bg-brand-200" />
-                              <span className="text-brand-400 text-xs -mt-0.5">▼</span>
-                            </div>
-                          )}
-                          {/* 역할 + 이름 */}
-                          <div className="flex items-center gap-2 cursor-move">
-                            <span className="text-gray-300 text-xs shrink-0">⋮⋮</span>
-                            <span className="w-6 h-6 rounded-full bg-brand-500 text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-sm">{idx + 1}</span>
-                            <select
-                              value={step.role}
-                              onChange={(e) => updateStep(idx, 'role', e.target.value)}
-                              className="text-xs border border-gray-200 rounded px-2 py-1 shrink-0 bg-white"
-                            >
-                              {ROLE_OPTIONS.map(r => (
-                                <option key={r.value} value={r.value}>{r.label}</option>
-                              ))}
-                            </select>
-                            <input
-                              type="text"
-                              value={step.label}
-                              onChange={(e) => updateStep(idx, 'label', e.target.value)}
-                              className="text-xs border border-gray-200 rounded px-2 py-1 flex-1 min-w-0"
-                              placeholder="표시 이름"
-                            />
-                            <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
-                          </div>
-                          {/* 승인 유형 (결재/합의/참조) */}
-                          <div className="ml-7 flex items-center gap-1 flex-wrap">
-                            <span className="text-[10px] text-gray-500 mr-1">유형:</span>
-                            {ACTION_TYPE_OPTIONS.map((opt) => {
-                              const current = step.action_type || 'approve'
-                              const isActive = current === opt.value
-                              return (
-                                <button
-                                  key={opt.value}
-                                  type="button"
-                                  onClick={() => setEditSteps(editSteps.map((s, i) => i === idx ? { ...s, action_type: opt.value } : s))}
-                                  title={opt.desc}
-                                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-                                    isActive ? opt.color + ' font-semibold' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
-                                  }`}
-                                >
-                                  {opt.label}
-                                </button>
-                              )
-                            })}
-                          </div>
-                          {/* 직원 지정 — 검색 + 추천/전체 직원 선택 */}
-                          <div className="ml-7 space-y-1.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-[10px] text-gray-500">
-                                담당자 지정 {selectedIds.length > 0 && <span className="text-brand-600 font-semibold">({selectedIds.length}명)</span>}
-                                {selectedIds.length === 0 && <span className="text-gray-400"> — 미지정 시 역할로 자동 배정</span>}
-                              </p>
-                              <input
-                                type="text"
-                                placeholder="이름 검색..."
-                                value={stepSearches[idx] || ''}
-                                onChange={(e) => setStepSearches({ ...stepSearches, [idx]: e.target.value })}
-                                className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 w-24 focus:outline-none focus:border-brand-400"
-                              />
-                            </div>
-
-                            {/* 선택된 직원 (최상단) */}
-                            {selectedIds.length > 0 && (
-                              <div className="flex flex-wrap gap-1 pb-1 border-b border-gray-200">
-                                {selectedIds.map(id => {
-                                  const emp = employees.find(e => e.id === id)
-                                  if (!emp) return null
-                                  return (
-                                    <button
-                                      key={id}
-                                      onClick={() => toggleApprover(idx, id)}
-                                      className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-brand-500 text-white"
-                                    >
-                                      ✓ {emp.name} ✕
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            )}
-
-                            {/* 추천 직원 */}
-                            {filteredRec.length > 0 && (
-                              <div>
-                                <p className="text-[9px] text-brand-600 mb-0.5 font-semibold">추천 ({step.role})</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {filteredRec.map(emp => {
-                                    const selected = selectedIds.includes(emp.id)
-                                    if (selected) return null
-                                    return (
-                                      <button
-                                        key={emp.id}
-                                        onClick={() => toggleApprover(idx, emp.id)}
-                                        className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-brand-50 border border-brand-200 text-brand-700 hover:bg-brand-100"
-                                      >
-                                        {emp.name}
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* 그 외 전체 직원 (검색 시에만 펼침) */}
-                            {searchQ && filteredOther.length > 0 && (
-                              <div>
-                                <p className="text-[9px] text-gray-400 mb-0.5">그 외 직원</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {filteredOther.map(emp => {
-                                    const selected = selectedIds.includes(emp.id)
-                                    if (selected) return null
-                                    return (
-                                      <button
-                                        key={emp.id}
-                                        onClick={() => toggleApprover(idx, emp.id)}
-                                        className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-white border border-gray-200 text-gray-600 hover:border-brand-300"
-                                      >
-                                        {emp.name}
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {!searchQ && filteredRec.length === 0 && (
-                              <p className="text-[10px] text-gray-400">추천 직원 없음 — 검색으로 전체 직원에서 선택</p>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                    <button
-                      onClick={addStep}
-                      className="w-full mt-1 py-1.5 text-xs text-brand-600 hover:bg-brand-50 border border-dashed border-brand-300 rounded-lg font-medium"
-                    >
-                      + 단계 추가
-                    </button>
+                    {/* 옵션 B: 새 결재선 편집기 (세로 타임라인 + 다중 담당자 + 추천 칩) */}
+                    <ApprovalLineEditor
+                      steps={editSteps as EditableStep[]}
+                      onChange={(next) => setEditSteps(next as EditStep[])}
+                      employees={employees}
+                    />
                   </div>
                 ) : (
                   /* 보기 모드: 세로 흐름 (가로 밀림 방지) */
