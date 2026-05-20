@@ -25,6 +25,7 @@ CREATE INDEX IF NOT EXISTS anon_reports_category_idx ON public.anonymous_reports
 ALTER TABLE public.anonymous_reports ENABLE ROW LEVEL SECURITY;
 
 -- 조회: HR 전용 (제보자는 RPC 로만 본인 토큰으로 조회)
+DROP POLICY IF EXISTS "anon_reports_select_hr" ON public.anonymous_reports;
 CREATE POLICY "anon_reports_select_hr"
 ON public.anonymous_reports FOR SELECT TO authenticated
 USING (
@@ -48,6 +49,7 @@ CREATE INDEX IF NOT EXISTS anon_replies_report_idx ON public.anonymous_report_re
 
 ALTER TABLE public.anonymous_report_replies ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "anon_replies_select_hr" ON public.anonymous_report_replies;
 CREATE POLICY "anon_replies_select_hr"
 ON public.anonymous_report_replies FOR SELECT TO authenticated
 USING (

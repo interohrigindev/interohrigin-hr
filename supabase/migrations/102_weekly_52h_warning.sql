@@ -24,6 +24,7 @@ CREATE INDEX IF NOT EXISTS hours_warnings_emp_idx ON public.hours_warnings_sent 
 
 ALTER TABLE public.hours_warnings_sent ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "hours_warnings_select" ON public.hours_warnings_sent;
 CREATE POLICY "hours_warnings_select"
 ON public.hours_warnings_sent FOR SELECT TO authenticated
 USING (
@@ -54,6 +55,7 @@ CREATE INDEX IF NOT EXISTS weekly_hours_snap_level_idx ON public.weekly_hours_sn
 
 ALTER TABLE public.weekly_hours_snapshots ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "weekly_hours_snap_select" ON public.weekly_hours_snapshots;
 CREATE POLICY "weekly_hours_snap_select"
 ON public.weekly_hours_snapshots FOR SELECT TO authenticated
 USING (

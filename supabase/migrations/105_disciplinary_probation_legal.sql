@@ -27,12 +27,14 @@ CREATE TABLE IF NOT EXISTS public.disciplinary_cases (
 CREATE INDEX IF NOT EXISTS disciplinary_cases_emp_idx ON public.disciplinary_cases (employee_id, created_at DESC);
 ALTER TABLE public.disciplinary_cases ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "disc_cases_select" ON public.disciplinary_cases;
 CREATE POLICY "disc_cases_select"
 ON public.disciplinary_cases FOR SELECT TO authenticated
 USING (
   EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
     AND e.role IN ('admin','hr_admin','ceo','director','division_head'))
 );
+DROP POLICY IF EXISTS "disc_cases_modify" ON public.disciplinary_cases;
 CREATE POLICY "disc_cases_modify"
 ON public.disciplinary_cases FOR ALL TO authenticated
 USING (
@@ -59,9 +61,11 @@ CREATE TABLE IF NOT EXISTS public.disciplinary_meetings (
 
 CREATE INDEX IF NOT EXISTS disc_meetings_case_idx ON public.disciplinary_meetings (case_id, meeting_at DESC);
 ALTER TABLE public.disciplinary_meetings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "disc_meetings_select" ON public.disciplinary_meetings;
 CREATE POLICY "disc_meetings_select" ON public.disciplinary_meetings FOR SELECT TO authenticated
 USING (EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
   AND e.role IN ('admin','hr_admin','ceo','director','division_head')));
+DROP POLICY IF EXISTS "disc_meetings_modify" ON public.disciplinary_meetings;
 CREATE POLICY "disc_meetings_modify" ON public.disciplinary_meetings FOR ALL TO authenticated
 USING (EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
   AND e.role IN ('admin','hr_admin','ceo')))
@@ -80,9 +84,11 @@ CREATE TABLE IF NOT EXISTS public.disciplinary_documents (
 );
 
 ALTER TABLE public.disciplinary_documents ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "disc_docs_select" ON public.disciplinary_documents;
 CREATE POLICY "disc_docs_select" ON public.disciplinary_documents FOR SELECT TO authenticated
 USING (EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
   AND e.role IN ('admin','hr_admin','ceo','director','division_head')));
+DROP POLICY IF EXISTS "disc_docs_modify" ON public.disciplinary_documents;
 CREATE POLICY "disc_docs_modify" ON public.disciplinary_documents FOR ALL TO authenticated
 USING (EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
   AND e.role IN ('admin','hr_admin','ceo')))
@@ -114,9 +120,11 @@ CREATE TABLE IF NOT EXISTS public.probation_compliance_reviews (
 CREATE INDEX IF NOT EXISTS prob_compl_emp_idx ON public.probation_compliance_reviews (employee_id, reviewed_at DESC);
 ALTER TABLE public.probation_compliance_reviews ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "prob_compl_select" ON public.probation_compliance_reviews;
 CREATE POLICY "prob_compl_select" ON public.probation_compliance_reviews FOR SELECT TO authenticated
 USING (EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
   AND e.role IN ('admin','hr_admin','ceo','director','division_head','executive')));
+DROP POLICY IF EXISTS "prob_compl_modify" ON public.probation_compliance_reviews;
 CREATE POLICY "prob_compl_modify" ON public.probation_compliance_reviews FOR ALL TO authenticated
 USING (EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
   AND e.role IN ('admin','hr_admin','ceo')))
@@ -135,6 +143,7 @@ CREATE TABLE IF NOT EXISTS public.probation_alert_logs (
 );
 
 ALTER TABLE public.probation_alert_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "prob_alert_select" ON public.probation_alert_logs;
 CREATE POLICY "prob_alert_select" ON public.probation_alert_logs FOR SELECT TO authenticated
 USING (EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
   AND e.role IN ('admin','hr_admin','ceo','director','division_head','executive')));
@@ -163,7 +172,9 @@ CREATE INDEX IF NOT EXISTS legal_params_key_idx ON public.legal_params (param_ke
 CREATE INDEX IF NOT EXISTS legal_params_status_idx ON public.legal_params (status);
 
 ALTER TABLE public.legal_params ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "legal_params_select" ON public.legal_params;
 CREATE POLICY "legal_params_select" ON public.legal_params FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "legal_params_modify" ON public.legal_params;
 CREATE POLICY "legal_params_modify" ON public.legal_params FOR ALL TO authenticated
 USING (EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
   AND e.role IN ('admin','hr_admin','ceo')))
@@ -180,6 +191,7 @@ CREATE TABLE IF NOT EXISTS public.legal_param_fetch_logs (
 );
 
 ALTER TABLE public.legal_param_fetch_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "legal_fetch_logs_select" ON public.legal_param_fetch_logs;
 CREATE POLICY "legal_fetch_logs_select" ON public.legal_param_fetch_logs FOR SELECT TO authenticated
 USING (EXISTS (SELECT 1 FROM public.employees e WHERE e.id = auth.uid()
   AND e.role IN ('admin','hr_admin','ceo','director','division_head')));

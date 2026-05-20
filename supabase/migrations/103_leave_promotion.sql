@@ -22,6 +22,7 @@ CREATE INDEX IF NOT EXISTS leave_promo_emp_idx ON public.annual_leave_promotions
 
 ALTER TABLE public.annual_leave_promotions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "leave_promo_select" ON public.annual_leave_promotions;
 CREATE POLICY "leave_promo_select"
 ON public.annual_leave_promotions FOR SELECT TO authenticated
 USING (
@@ -50,6 +51,7 @@ CREATE INDEX IF NOT EXISTS leave_balance_emp_idx ON public.leave_balance_snapsho
 
 ALTER TABLE public.leave_balance_snapshots ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "leave_balance_select" ON public.leave_balance_snapshots;
 CREATE POLICY "leave_balance_select"
 ON public.leave_balance_snapshots FOR SELECT TO authenticated
 USING (
@@ -75,6 +77,7 @@ CREATE INDEX IF NOT EXISTS leave_promo_resp_emp_idx ON public.leave_promotion_re
 
 ALTER TABLE public.leave_promotion_responses ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "leave_promo_resp_select" ON public.leave_promotion_responses;
 CREATE POLICY "leave_promo_resp_select"
 ON public.leave_promotion_responses FOR SELECT TO authenticated
 USING (

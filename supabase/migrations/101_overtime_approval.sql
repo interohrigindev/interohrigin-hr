@@ -39,6 +39,7 @@ CREATE INDEX IF NOT EXISTS overtime_requests_date_idx      ON public.overtime_re
 ALTER TABLE public.overtime_requests ENABLE ROW LEVEL SECURITY;
 
 -- 조회: 본인 신청 + 관리자/임원/대표
+DROP POLICY IF EXISTS "overtime_requests_select" ON public.overtime_requests;
 CREATE POLICY "overtime_requests_select"
 ON public.overtime_requests FOR SELECT TO authenticated
 USING (
@@ -87,6 +88,7 @@ CREATE INDEX IF NOT EXISTS overtime_actuals_request_idx  ON public.overtime_actu
 
 ALTER TABLE public.overtime_actuals ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "overtime_actuals_select" ON public.overtime_actuals;
 CREATE POLICY "overtime_actuals_select"
 ON public.overtime_actuals FOR SELECT TO authenticated
 USING (
@@ -117,9 +119,11 @@ CREATE TABLE IF NOT EXISTS public.overtime_policy_snapshots (
 
 ALTER TABLE public.overtime_policy_snapshots ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "overtime_policy_select" ON public.overtime_policy_snapshots;
 CREATE POLICY "overtime_policy_select"
 ON public.overtime_policy_snapshots FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "overtime_policy_modify_admin" ON public.overtime_policy_snapshots;
 CREATE POLICY "overtime_policy_modify_admin"
 ON public.overtime_policy_snapshots FOR ALL TO authenticated
 USING (

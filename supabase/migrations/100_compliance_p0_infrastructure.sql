@@ -36,6 +36,7 @@ CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx  ON public.audit_logs (crea
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- 조회: admin / hr_admin / ceo / director / division_head 만
+DROP POLICY IF EXISTS "audit_logs_select_admin" ON public.audit_logs;
 CREATE POLICY "audit_logs_select_admin"
 ON public.audit_logs FOR SELECT TO authenticated
 USING (
@@ -70,6 +71,7 @@ CREATE TABLE IF NOT EXISTS public.audit_exports (
 CREATE INDEX IF NOT EXISTS audit_exports_exporter_idx ON public.audit_exports (exporter_uid, created_at DESC);
 ALTER TABLE public.audit_exports ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "audit_exports_select_admin" ON public.audit_exports;
 CREATE POLICY "audit_exports_select_admin"
 ON public.audit_exports FOR SELECT TO authenticated
 USING (
@@ -101,6 +103,7 @@ CREATE TABLE IF NOT EXISTS public.notification_templates (
 
 ALTER TABLE public.notification_templates ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "notification_templates_select_admin" ON public.notification_templates;
 CREATE POLICY "notification_templates_select_admin"
 ON public.notification_templates FOR SELECT TO authenticated
 USING (
@@ -111,6 +114,7 @@ USING (
   )
 );
 
+DROP POLICY IF EXISTS "notification_templates_modify_admin" ON public.notification_templates;
 CREATE POLICY "notification_templates_modify_admin"
 ON public.notification_templates FOR ALL TO authenticated
 USING (
@@ -157,6 +161,7 @@ CREATE INDEX IF NOT EXISTS notification_deliveries_entity_idx    ON public.notif
 ALTER TABLE public.notification_deliveries ENABLE ROW LEVEL SECURITY;
 
 -- 본인 수신 내역은 본인이 조회 가능 / 관리자는 전체
+DROP POLICY IF EXISTS "notification_deliveries_select_self_or_admin" ON public.notification_deliveries;
 CREATE POLICY "notification_deliveries_select_self_or_admin"
 ON public.notification_deliveries FOR SELECT TO authenticated
 USING (
@@ -192,11 +197,13 @@ CREATE INDEX IF NOT EXISTS feature_rollouts_key_idx ON public.feature_rollouts (
 ALTER TABLE public.feature_rollouts ENABLE ROW LEVEL SECURITY;
 
 -- 조회: 모든 authenticated (모듈 활성 여부는 본인 화면에서도 알아야 함)
+DROP POLICY IF EXISTS "feature_rollouts_select_all" ON public.feature_rollouts;
 CREATE POLICY "feature_rollouts_select_all"
 ON public.feature_rollouts FOR SELECT TO authenticated
 USING (true);
 
 -- 수정: admin / ceo / hr_admin 만
+DROP POLICY IF EXISTS "feature_rollouts_modify_admin" ON public.feature_rollouts;
 CREATE POLICY "feature_rollouts_modify_admin"
 ON public.feature_rollouts FOR ALL TO authenticated
 USING (
@@ -250,6 +257,7 @@ CREATE INDEX IF NOT EXISTS compliance_run_logs_status_idx ON public.compliance_r
 
 ALTER TABLE public.compliance_run_logs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "compliance_run_logs_select_admin" ON public.compliance_run_logs;
 CREATE POLICY "compliance_run_logs_select_admin"
 ON public.compliance_run_logs FOR SELECT TO authenticated
 USING (
