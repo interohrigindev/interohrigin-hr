@@ -89,7 +89,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   if (!path) return json({ error: '파일이 없습니다' }, 404)
 
   // 3) 단일 진입점으로 위임 — resolveSignedUrl 이 형식 분기 + 버킷 fallback 자동 처리
-  const url = await resolveSignedUrl(env, path)
-  if (!url) return json({ error: '파일을 찾을 수 없습니다' }, 404)
-  return json({ url, filename })
+  const signedUrl = await resolveSignedUrl(env, path)
+  if (!signedUrl) return json({ error: '파일을 찾을 수 없습니다' }, 404)
+  return json({ url: signedUrl, filename })
 }
