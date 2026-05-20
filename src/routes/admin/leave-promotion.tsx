@@ -109,18 +109,31 @@ export default function LeavePromotionPage() {
     // 소멸일: 회계연도 말 (간단히 12.31)
     const expiresOn = new Date(new Date().getFullYear(), 11, 31).toISOString().slice(0, 10)
 
-    // 발송
+    // 발송 — 이메일 + 인앱 알림 동시
     let deliveryId: string | null = null
+    const subject = `[연차 사용 안내] ${emp?.name || ''} 님 미사용 ${b.remaining_days}일 — ${stage === '6m' ? '6개월' : '2개월'} 전 통지`
+    const body = `<p><strong>${emp?.name || ''}</strong> 님</p>
+<p>현재 미사용 연차가 <strong>${b.remaining_days}일</strong> 남아 있으며, 소멸 예정일은 ${expiresOn} 입니다.</p>
+<p>법정 촉진 절차에 따라 사용 예정일을 회신해 주시기 바랍니다.</p>
+<p>회사 HR 시스템 &gt; <strong>내 연차 촉진 회신</strong> 메뉴에서 사용 예정일을 등록할 수 있습니다.</p>`
+
+    // 인앱 알림 (항상 발송 — 직원이 사이트 접속 시 확인 가능)
+    await sendNotification({
+      channel: 'in_app',
+      recipientUid: b.employee_id,
+      subject,
+      body,
+      relatedEntity: { type: 'leave_promotion' },
+    })
+
+    // 이메일
     if (emp?.email) {
       const result = await sendNotification({
         channel: 'email',
         recipientUid: b.employee_id,
         recipientEmail: emp.email,
-        subject: `[연차 사용 안내] ${emp.name} 님 미사용 ${b.remaining_days}일 — ${stage === '6m' ? '6개월' : '2개월'} 전 통지`,
-        body: `<p><strong>${emp.name}</strong> 님</p>
-<p>현재 미사용 연차가 <strong>${b.remaining_days}일</strong> 남아 있으며, 소멸 예정일은 ${expiresOn} 입니다.</p>
-<p>법정 촉진 절차에 따라 사용 예정일을 회신해 주시기 바랍니다.</p>
-<p>회사 HR 시스템 &gt; 내 연차에서 사용 예정일을 등록할 수 있습니다.</p>`,
+        subject,
+        body,
         relatedEntity: { type: 'leave_promotion' },
       })
       deliveryId = result.deliveryId

@@ -3,9 +3,12 @@ import { Outlet } from 'react-router-dom'
 import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
+import { usePushSubscription } from '@/hooks/usePushSubscription'
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Web Push 구독 자동 등록 (VAPID 키 설정 + push 채널 활성화 + 권한 허용 시)
+  usePushSubscription()
 
   return (
     <div className="flex h-screen flex-col bg-gray-50">

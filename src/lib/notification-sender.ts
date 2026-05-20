@@ -27,6 +27,47 @@ export interface SendNotificationResult {
 }
 
 /**
+ * 채널 설정 캐시 (60초)
+ */
+let channelConfigCache: { data: Record<string, string | null>; ts: number } | null = null
+
+async function getChannelConfig(key: 'slack_webhook_url' | 'generic_webhook_url' | 'vapid_public_key'): Promise<string | null> {
+  if (channelConfigCache && Date.now() - channelConfigCache.ts < 60_000) {
+    return channelConfigCache.data[key] || null
+  }
+  const { data } = await supabase
+    .from('notification_channel_configs')
+    .select('slack_webhook_url, generic_webhook_url, vapid_public_key')
+    .eq('config_key', 'default')
+    .maybeSingle()
+  channelConfigCache = {
+    data: {
+      slack_webhook_url: data?.slack_webhook_url || null,
+      generic_webhook_url: data?.generic_webhook_url || null,
+      vapid_public_key: data?.vapid_public_key || null,
+    },
+    ts: Date.now(),
+  }
+  return channelConfigCache.data[key] || null
+}
+
+export function invalidateChannelConfigCache() {
+  channelConfigCache = null
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>(\s*)/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim()
+}
+
+/**
  * 변수 치환: {{key}} → variables[key]
  */
 function renderTemplate(tpl: string, variables: Record<string, unknown> = {}): string {
@@ -85,9 +126,73 @@ export async function sendNotification(args: SendNotificationArgs): Promise<Send
       return { deliveryId, status: 'sent' }
     }
 
-    // push / slack / webhook / in_app — 추후 구현
-    // 지금은 'skipped' 로 기록만
-    const deliveryId = await recordDelivery(args, subject, body, 'skipped', `${args.channel} 채널 미구현`)
+    if (args.channel === 'in_app') {
+      // 인앱 알림 — DB INSERT 만으로 완료. 헤더 종 아이콘이 polling 으로 가져감.
+      if (!args.recipientUid) throw new Error('recipientUid 필수 (in_app)')
+      const deliveryId = await recordDelivery(args, subject, body, 'sent')
+      return { deliveryId, status: 'sent' }
+    }
+
+    if (args.channel === 'slack') {
+      const url = await getChannelConfig('slack_webhook_url')
+      if (!url) throw new Error('Slack Webhook URL 미설정 (시스템 관리 > 알림 채널)')
+      const slackText = stripHtml(body)
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: subject ? `*${subject}*\n${slackText}` : slackText,
+        }),
+      })
+      if (!res.ok) throw new Error(`Slack 발송 실패 (HTTP ${res.status})`)
+      const deliveryId = await recordDelivery(args, subject, body, 'sent')
+      return { deliveryId, status: 'sent' }
+    }
+
+    if (args.channel === 'webhook') {
+      const url = await getChannelConfig('generic_webhook_url')
+      if (!url) throw new Error('Webhook URL 미설정 (시스템 관리 > 알림 채널)')
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject,
+          body,
+          recipient_uid: args.recipientUid,
+          recipient_email: args.recipientEmail,
+          related_entity: args.relatedEntity,
+          variables: args.variables,
+          sent_at: new Date().toISOString(),
+        }),
+      })
+      if (!res.ok) throw new Error(`Webhook 발송 실패 (HTTP ${res.status})`)
+      const deliveryId = await recordDelivery(args, subject, body, 'sent')
+      return { deliveryId, status: 'sent' }
+    }
+
+    if (args.channel === 'push') {
+      // Web Push — 서버측 VAPID 비공개 키 필요. /api/send-push 엔드포인트로 위임.
+      if (!args.recipientUid) throw new Error('recipientUid 필수 (push)')
+      const res = await fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient_uid: args.recipientUid,
+          title: subject || '알림',
+          body: stripHtml(body).slice(0, 200),
+          url: typeof window !== 'undefined' ? window.location.origin : '',
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error || `Push 발송 실패 (HTTP ${res.status})`)
+      }
+      const deliveryId = await recordDelivery(args, subject, body, 'sent')
+      return { deliveryId, status: 'sent' }
+    }
+
+    // 알 수 없는 채널
+    const deliveryId = await recordDelivery(args, subject, body, 'skipped', `${args.channel} 채널 미지원`)
     return { deliveryId, status: 'skipped' }
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알 수 없는 오류'

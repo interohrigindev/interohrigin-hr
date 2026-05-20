@@ -54,6 +54,7 @@ const STANDALONE_ITEMS: MenuItem[] = [
   { label: '메신저', path: '/messenger' },
   // 법적 리스크 대응 P1-1: 직원 셀프서비스
   { label: '내 연장근로 (직원용)', path: '/my/overtime' },
+  { label: '내 연차 촉진 회신 (직원용)', path: '/my/leave-promotion' },
 ]
 
 const MENU_GROUPS: MenuGroup[] = [
@@ -147,6 +148,7 @@ const MENU_GROUPS: MenuGroup[] = [
       { label: '감사 로그', path: '/admin/system/audit-logs' },
       { label: '익명 신고 처리', path: '/admin/system/anonymous-reports' },
       { label: '법령 파라미터', path: '/admin/system/legal-params' },
+      { label: '알림 채널 설정', path: '/admin/system/notification-channels' },
     ],
   },
 ]

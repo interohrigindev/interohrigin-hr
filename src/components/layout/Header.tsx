@@ -5,6 +5,7 @@ import logoSvg from '@/assets/logo.svg'
 import { ROLE_LABELS } from '@/lib/constants'
 import { Badge } from '@/components/ui/Badge'
 import type { EmployeeRole } from '@/types/database'
+import { NotificationBell } from './NotificationBell'
 
 interface HeaderProps {
   onMenuToggle: () => void
@@ -45,6 +46,8 @@ export function Header({ onMenuToggle }: HeaderProps) {
         {/* Right: user info + logout */}
         {profile && (
           <div className="flex items-center gap-3">
+            {/* 알림 종 */}
+            <NotificationBell />
             {/* 내 정보 링크 */}
             <button
               onClick={() => navigate('/my-profile')}

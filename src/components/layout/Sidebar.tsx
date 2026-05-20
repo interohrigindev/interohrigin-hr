@@ -127,6 +127,13 @@ const standaloneItems: NavItem[] = [
     icon: <Clock className="h-5 w-5" />,
     featureKey: 'overtime_approval',
   },
+  // 법적 리스크 대응 P1-3: 직원 본인의 연차 촉진 회신
+  {
+    to: '/my/leave-promotion',
+    label: '내 연차 촉진 회신',
+    icon: <Clock className="h-5 w-5" />,
+    featureKey: 'leave_promotion',
+  },
   // D2-1: '나의 인수인계' → 프로젝트 그룹 하위로 이동
 ]
 
@@ -265,6 +272,8 @@ const navGroups: NavGroup[] = [
       { to: '/admin/system/anonymous-reports', label: '익명 신고 처리', icon: <ShieldCheck className="h-4 w-4" />, featureKey: 'anonymous_report' },
       // P3-1 법령 파라미터
       { to: '/admin/system/legal-params',     label: '법령 파라미터', icon: <ToggleRight className="h-4 w-4" />, featureKey: 'legal_params_sync' },
+      // 알림 채널 설정 (Slack/Webhook/Push)
+      { to: '/admin/system/notification-channels', label: '알림 채널 설정', icon: <ShieldCheck className="h-4 w-4" /> },
     ],
   },
 ]
