@@ -409,6 +409,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     if (item.featureKey && !enabledFeatures.has(item.featureKey)) {
       return false
     }
+    // featureKey 활성 = menu_permissions 우회 (feature toggle 자체가 노출 제어 역할)
+    // minRole 만 충족하면 노출 — 별도 메뉴 권한 등록 불필요
+    if (item.featureKey && enabledFeatures.has(item.featureKey)) {
+      return !item.minRole || hasRole(item.minRole)
+    }
     if (!item.minRole || hasRole(item.minRole)) {
       // 메뉴 권한이 설정되어 있으면 허용 목록에 있는지 확인
       // CEO/admin은 항상 전체 접근, 권한 미설정(null)이면 전체 허용
@@ -432,6 +437,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     const meetsRole = !group.minRole || hasRole(group.minRole)
     if (meetsRole) return group.items.some(isItemVisible)
     // minRole 미충족 — 명시적 menu_permissions 권한 보유 항목이 있으면 노출
+    // 또는 featureKey 활성된 하위 항목이 있으면 노출 (P1+ compliance 모듈)
+    const hasActiveFeatureItem = group.items.some((item) =>
+      !!item.featureKey && enabledFeatures.has(item.featureKey)
+      && (!item.hideForRoles || !profile?.role || !item.hideForRoles.includes(profile.role as EmployeeRole))
+    )
+    if (hasActiveFeatureItem) return true
     if (!allowedMenus) return false
     return group.items.some((item) => {
       if (item.hideForRoles && profile?.role && item.hideForRoles.includes(profile.role as EmployeeRole)) return false

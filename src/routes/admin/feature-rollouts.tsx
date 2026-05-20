@@ -54,11 +54,15 @@ export default function FeatureRolloutsPage() {
     })
     if (!result.ok) {
       toast(`토글 실패: ${result.error || '알 수 없는 오류'}`, 'error')
+      setTogglingKey(null)
     } else {
-      toast(`${row.display_name} ${next ? '활성화' : '비활성화'} 완료`, 'success')
+      toast(`${row.display_name} ${next ? '활성화' : '비활성화'} 완료 — 사이드바 갱신 중...`, 'success')
       await load()
+      setTogglingKey(null)
+      // 사이드바 즉시 반영 — feature toggle 변경 후 페이지 강제 새로고침
+      // (Sidebar 의 enabledFeatures state 가 mount 시 1회만 fetch 하므로)
+      setTimeout(() => { window.location.reload() }, 600)
     }
-    setTogglingKey(null)
   }
 
   if (loading) return <PageSpinner />
