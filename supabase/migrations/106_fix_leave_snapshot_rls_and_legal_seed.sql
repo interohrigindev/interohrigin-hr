@@ -155,16 +155,30 @@ WHERE NOT EXISTS (
 
 -- ============================================================
 -- 4. legal_param_fetch_logs 에 시드 출처 기록
+--    실제 컬럼: source, status, changes_detected, error_message
+--    재실행 안전: 동일 source 가 이미 있으면 skip
 -- ============================================================
-INSERT INTO public.legal_param_fetch_logs (param_key, source_url, fetched_at, success, response_summary, fetched_by)
-VALUES
-  ('min_wage_hourly', 'manual_seed_106', now(), true, '정부 공식 발표값 수동 시드 (2024~2026)', NULL),
-  ('national_pension_rate', 'manual_seed_106', now(), true, '국민연금공단 공시 요율 수동 시드 (2026)', NULL),
-  ('health_insurance_rate', 'manual_seed_106', now(), true, '건강보험공단 공시 요율 수동 시드 (2026)', NULL),
-  ('employment_insurance_rate', 'manual_seed_106', now(), true, '고용노동부 공시 요율 수동 시드 (2026)', NULL),
-  ('industrial_accident_rate', 'manual_seed_106', now(), true, '근로복지공단 공시 요율 수동 시드 (2026)', NULL),
-  ('weekly_max_hours', 'manual_seed_106', now(), true, '근로기준법 §50, §53 수동 시드', NULL),
-  ('annual_leave_grant', 'manual_seed_106', now(), true, '근로기준법 §60 수동 시드', NULL);
+INSERT INTO public.legal_param_fetch_logs (source, status, changes_detected)
+SELECT v.source, v.status, v.changes_detected::jsonb
+FROM (VALUES
+  ('manual_seed_106:min_wage_hourly', 'success',
+   '{"summary": "정부 공식 발표값 수동 시드 (2024~2026)", "keys": ["min_wage_hourly"]}'),
+  ('manual_seed_106:national_pension_rate', 'success',
+   '{"summary": "국민연금공단 공시 요율 수동 시드 (2026)", "keys": ["national_pension_rate"]}'),
+  ('manual_seed_106:health_insurance_rate', 'success',
+   '{"summary": "건강보험공단 공시 요율 수동 시드 (2026)", "keys": ["health_insurance_rate"]}'),
+  ('manual_seed_106:employment_insurance_rate', 'success',
+   '{"summary": "고용노동부 공시 요율 수동 시드 (2026)", "keys": ["employment_insurance_rate"]}'),
+  ('manual_seed_106:industrial_accident_rate', 'success',
+   '{"summary": "근로복지공단 공시 요율 수동 시드 (2026)", "keys": ["industrial_accident_rate"]}'),
+  ('manual_seed_106:weekly_max_hours', 'success',
+   '{"summary": "근로기준법 §50, §53 수동 시드", "keys": ["weekly_max_hours"]}'),
+  ('manual_seed_106:annual_leave_grant', 'success',
+   '{"summary": "근로기준법 §60 수동 시드", "keys": ["annual_leave_grant"]}')
+) AS v(source, status, changes_detected)
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.legal_param_fetch_logs l WHERE l.source = v.source
+);
 
 COMMENT ON FUNCTION public.snapshot_all_leave_balances() IS
   '잔여 연차 일괄 스냅샷 — admin/hr_admin/ceo/director/division_head 만 호출 가능. employee_hr_details 기반.';
