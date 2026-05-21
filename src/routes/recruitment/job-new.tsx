@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Copy, ClipboardList } from 'lucide-react'
+import { ArrowLeft, Copy, ClipboardList, Sparkles, Loader2, Trash2, Plus, GripVertical } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useJobPostingMutations } from '@/hooks/useRecruitment'
 import { supabase } from '@/lib/supabase'
 import { EMPLOYMENT_TYPE_LABELS, EXPERIENCE_LEVEL_LABELS } from '@/lib/recruitment-constants'
+import { generateInterviewQuestions } from '@/lib/recruitment-ai'
 import type { Department } from '@/types/database'
 import type { JobPosting } from '@/types/recruitment'
 
@@ -55,6 +56,8 @@ export default function RecruitmentJobNew() {
 
   const [form, setForm] = useState({ ...INITIAL_FORM })
   const [aiQuestions, setAiQuestions] = useState<string[]>([])
+  const [generatingQuestions, setGeneratingQuestions] = useState(false)
+  const [questionCount, setQuestionCount] = useState(5)
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>('')
 
   useEffect(() => {
@@ -153,6 +156,66 @@ export default function RecruitmentJobNew() {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
+  async function handleGenerateQuestions() {
+    if (!form.title.trim()) {
+      toast('공고 제목을 먼저 입력하세요.', 'error')
+      return
+    }
+    if (!form.description.trim() && !form.requirements.trim()) {
+      toast('직무 설명 또는 자격 요건을 먼저 입력하세요. (질문 품질을 위해 권장)', 'error')
+      return
+    }
+    setGeneratingQuestions(true)
+    try {
+      const dept = departments.find((d) => d.id === form.department_id)?.name || null
+      const empLabel = (EMPLOYMENT_TYPE_LABELS as Record<string, string>)[form.employment_type] || form.employment_type
+      const expLabel = (EXPERIENCE_LEVEL_LABELS as Record<string, string>)[form.experience_level] || form.experience_level
+      const res = await generateInterviewQuestions({
+        title: form.title,
+        department: dept,
+        position: form.position || null,
+        employment_type: empLabel,
+        experience_level: expLabel,
+        description: form.description || null,
+        requirements: form.requirements || null,
+        preferred: form.preferred || null,
+        count: questionCount,
+      })
+      if (!res.ok) {
+        toast('AI 질문 생성 실패: ' + res.error, 'error')
+      } else {
+        setAiQuestions(res.questions)
+        toast(`AI 면접 질문 ${res.questions.length}개가 생성되었습니다.`, 'success')
+      }
+    } catch (err: any) {
+      toast('AI 질문 생성 실패: ' + (err?.message || '알 수 없는 오류'), 'error')
+    } finally {
+      setGeneratingQuestions(false)
+    }
+  }
+
+  function updateQuestion(index: number, value: string) {
+    setAiQuestions((prev) => prev.map((q, i) => (i === index ? value : q)))
+  }
+
+  function removeQuestion(index: number) {
+    setAiQuestions((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function addQuestion() {
+    setAiQuestions((prev) => [...prev, ''])
+  }
+
+  function moveQuestion(index: number, dir: -1 | 1) {
+    setAiQuestions((prev) => {
+      const next = [...prev]
+      const target = index + dir
+      if (target < 0 || target >= next.length) return prev
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
+  }
+
   async function handleSubmit(status: 'draft' | 'open') {
     if (!form.title.trim()) {
       toast('공고 제목을 입력하세요.', 'error')
@@ -181,7 +244,7 @@ export default function RecruitmentJobNew() {
       contact_phone: form.contact_phone || null,
       company_intro: form.company_intro || null,
       team_intro: form.team_intro || null,
-      ai_questions: aiQuestions as any,
+      ai_questions: aiQuestions.map((q) => q.trim()).filter((q) => q.length > 0) as any,
       survey_template_id: selectedSurveyId || null,
       status,
     }
@@ -347,6 +410,102 @@ export default function RecruitmentJobNew() {
             placeholder="예:&#10;- 뷰티/패션 업계 경험자&#10;- 영상 편집 가능자 (Premiere, After Effects)&#10;- GA4/Meta 광고 운영 경험&#10;- 관련 학과 전공자"
             rows={4}
           />
+        </CardContent>
+      </Card>
+
+      {/* AI 면접 질문 */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-brand-600" />
+            <CardTitle>AI 면접 질문 (선택)</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-gray-500">
+            채용공고 정보를 기반으로 AI가 면접 질문을 자동 생성합니다. 생성된 질문은 직접 수정/추가/삭제할 수 있으며,
+            공고 상세 화면과 지원자 공유 페이지에 노출됩니다.
+          </p>
+
+          <div className="flex items-end gap-3 flex-wrap">
+            <div className="w-32">
+              <Select
+                label="생성 개수"
+                value={String(questionCount)}
+                onChange={(e) => setQuestionCount(parseInt(e.target.value) || 5)}
+                options={[3, 5, 7, 10].map((n) => ({ value: String(n), label: `${n}개` }))}
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGenerateQuestions}
+              disabled={generatingQuestions}
+            >
+              {generatingQuestions ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 생성 중...</>
+              ) : (
+                <><Sparkles className="h-4 w-4 mr-1" /> {aiQuestions.length > 0 ? 'AI 질문 재생성' : 'AI 질문 생성'}</>
+              )}
+            </Button>
+            {aiQuestions.length > 0 && (
+              <span className="text-xs text-gray-400">총 {aiQuestions.length}개</span>
+            )}
+          </div>
+
+          {aiQuestions.length === 0 ? (
+            <p className="text-sm text-gray-400">
+              아직 생성된 질문이 없습니다. 위 버튼으로 AI에게 자동 생성을 요청하거나 직접 추가하세요.
+            </p>
+          ) : (
+            <ol className="space-y-2">
+              {aiQuestions.map((q, i) => (
+                <li key={i} className="flex items-start gap-2 p-2.5 bg-gray-50 rounded-lg">
+                  <div className="flex flex-col items-center pt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => moveQuestion(i, -1)}
+                      className="text-gray-300 hover:text-gray-600 disabled:opacity-30"
+                      disabled={i === 0}
+                      aria-label="위로 이동"
+                    >
+                      <GripVertical className="h-3 w-3" />
+                    </button>
+                    <span className="text-xs font-bold text-brand-600">{i + 1}</span>
+                  </div>
+                  <Textarea
+                    value={q}
+                    onChange={(e) => updateQuestion(i, e.target.value)}
+                    rows={2}
+                    className="flex-1"
+                    placeholder="면접 질문을 입력하세요"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      onClick={() => moveQuestion(i, 1)}
+                      className="text-xs text-gray-400 hover:text-gray-600 px-1 disabled:opacity-30"
+                      disabled={i === aiQuestions.length - 1}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeQuestion(i)}
+                      className="text-red-400 hover:text-red-600"
+                      aria-label="질문 삭제"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+
+          <Button variant="ghost" size="sm" onClick={addQuestion}>
+            <Plus className="h-4 w-4 mr-1" /> 질문 직접 추가
+          </Button>
         </CardContent>
       </Card>
 

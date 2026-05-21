@@ -5,6 +5,78 @@
 import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature, type AIConfig } from '@/lib/ai-client'
 
+/**
+ * 채용공고 정보 기반 AI 면접 질문 자동 생성
+ *  - 직무 적합성 + 역량 검증 + 사례 기반 + 동기/문화 적합성 등 다양한 카테고리
+ *  - 응답은 string 배열로 파싱 후 반환
+ */
+export async function generateInterviewQuestions(input: {
+  title: string
+  department?: string | null
+  position?: string | null
+  employment_type?: string | null
+  experience_level?: string | null
+  description?: string | null
+  requirements?: string | null
+  preferred?: string | null
+  count?: number
+}): Promise<{ ok: true; questions: string[] } | { ok: false; error: string }> {
+  const config = (await getAIConfigForFeature('recruitment_screening'))
+    || (await getAIConfigForFeature('resume_analysis'))
+    || (await getAIConfig())
+  if (!config) {
+    return { ok: false, error: 'AI 설정이 없습니다. 시스템 관리 > AI 설정에서 등록해주세요.' }
+  }
+
+  const count = input.count || 5
+  const prompt = `당신은 채용 면접 전문가입니다. 아래 채용공고를 분석하여 면접 시 활용할 수 있는 면접 질문 ${count}개를 한국어로 작성해주세요.
+
+## 채용공고 정보
+- 공고 제목: ${input.title}
+${input.department ? `- 부서: ${input.department}` : ''}
+${input.position ? `- 포지션: ${input.position}` : ''}
+${input.employment_type ? `- 고용 형태: ${input.employment_type}` : ''}
+${input.experience_level ? `- 경력 수준: ${input.experience_level}` : ''}
+${input.description ? `\n## 직무 설명\n${input.description}` : ''}
+${input.requirements ? `\n## 필수 요건\n${input.requirements}` : ''}
+${input.preferred ? `\n## 우대 사항\n${input.preferred}` : ''}
+
+## 작성 가이드
+1. 다음 카테고리를 골고루 포함:
+   - 직무 전문성 / 역량 검증 (40%)
+   - 경험·사례 기반 (행동 면접, STAR) (30%)
+   - 문화 적합성 / 가치관 (15%)
+   - 지원 동기 / 커리어 비전 (15%)
+2. 단답형이 아닌 구체적 사고 과정·사례를 묻는 개방형 질문
+3. 한 질문은 한 가지 핵심만 (multi-part 지양)
+4. 너무 일반적인 클리셰 ("자기소개 해주세요") 제외
+5. 직무와 직접 연관된 구체적 질문 우선
+
+## 출력 형식 (엄격)
+JSON 배열로만 출력. 다른 설명/주석/코드 펜스 없이 순수 배열만.
+예: ["질문1", "질문2", "질문3"]`
+
+  try {
+    const res = await generateAIContent(config, prompt)
+    const text = (res.content || '').trim()
+    let jsonText = text
+    const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (fence) jsonText = fence[1].trim()
+    const start = jsonText.indexOf('[')
+    const end = jsonText.lastIndexOf(']')
+    if (start >= 0 && end > start) jsonText = jsonText.slice(start, end + 1)
+    const parsed = JSON.parse(jsonText)
+    if (!Array.isArray(parsed)) throw new Error('응답이 배열 형식이 아닙니다')
+    const questions = parsed
+      .map((q) => (typeof q === 'string' ? q.trim() : String(q || '').trim()))
+      .filter((q) => q.length > 0)
+    if (questions.length === 0) throw new Error('빈 질문 배열')
+    return { ok: true, questions }
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'AI 응답 파싱 실패' }
+  }
+}
+
 // AI 설정 가져오기 (기본 — 레거시 호환)
 export async function getAIConfig(): Promise<AIConfig | null> {
   const { data } = await supabase
