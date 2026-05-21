@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, Copy, Info, Loader2, RefreshCw, Trash2, X } fro
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { PBD_QUESTIONS, scorePbd, AXIS_DETAILS, DOMAIN_PROFILES, type PbdScores, type PbdAxis } from '@/lib/pbd-questions'
+import { PUBLIC_APP_URL } from '@/lib/app-url'
 
 interface ResponseRow {
   id: string
@@ -35,15 +36,9 @@ export default function SurveyTestResults({ publicMode = false }: { publicMode?:
     return ['admin', 'hr_admin', 'director', 'division_head', 'ceo'].includes(profile.role || '')
   }, [profile, publicMode])
 
-  const testUrl = useMemo(() => {
-    if (typeof window === 'undefined') return ''
-    return `${window.location.origin}/survey-test`
-  }, [])
-
-  const publicResultUrl = useMemo(() => {
-    if (typeof window === 'undefined') return ''
-    return `${window.location.origin}/survey-test-results`
-  }, [])
+  // 외부 공유용 URL — 미리보기 도메인(pages.dev) 박힘 방지 위해 production 도메인 고정
+  const testUrl = useMemo(() => `${PUBLIC_APP_URL}/survey-test`, [])
+  const publicResultUrl = useMemo(() => `${PUBLIC_APP_URL}/survey-test-results`, [])
 
   async function load() {
     setLoading(true)

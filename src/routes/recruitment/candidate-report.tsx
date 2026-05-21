@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase'
 import { getCandidateFileUrl } from '@/lib/candidate-storage'
 import { generateAIContent, getAIConfigForFeature, type AIFileAttachment } from '@/lib/ai-client'
 import { runComprehensiveAnalysis, generateSecondInterviewQuestions } from '@/lib/recruitment-ai'
+import { PUBLIC_APP_URL } from '@/lib/app-url'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
 import type { Candidate, CandidateStatus, SourceChannel, ResumeAnalysis, RecruitmentReport } from '@/types/recruitment'
 import { formatDate } from '@/lib/utils'
@@ -708,8 +709,8 @@ ${fileInfo}
         token = crypto.randomUUID().replace(/-/g, '')
       }
 
-      const baseUrl = window.location.origin
-      const surveyUrl = `${baseUrl}/survey-test?candidate=${token}&t=${Date.now()}`
+      // 외부 노출 URL — 미리보기 도메인(pages.dev)이 박히지 않도록 항상 production 도메인 사용
+      const surveyUrl = `${PUBLIC_APP_URL}/survey-test?candidate=${token}&t=${Date.now()}`
       const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl, getJobTitle())
 
       const emailRes = await fetch('/api/send-email', {
@@ -976,8 +977,8 @@ ${fileInfo}
     try {
       // 새 토큰 생성 (재발송 = 응답 초기화 의도)
       const newToken = crypto.randomUUID().replace(/-/g, '')
-      const baseUrl = window.location.origin
-      const surveyUrl = `${baseUrl}/survey-test?candidate=${newToken}&t=${Date.now()}`
+      // 외부 노출 URL — production 도메인 고정
+      const surveyUrl = `${PUBLIC_APP_URL}/survey-test?candidate=${newToken}&t=${Date.now()}`
       const { subject, html } = surveyInviteEmail(candidate.name, surveyUrl, getJobTitle())
 
       const emailRes = await fetch('/api/send-email', {
