@@ -93,6 +93,10 @@ export default function CandidateSharePage() {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [savingAnswerKey, setSavingAnswerKey] = useState<string | null>(null)
   const [answerError, setAnswerError] = useState<string | null>(null)
+  const [commentsState, setCommentsState] = useState<InterviewerComment[]>([])
+  const [newComment, setNewComment] = useState('')
+  const [submittingComment, setSubmittingComment] = useState(false)
+  const [commentError, setCommentError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!token) {
@@ -113,6 +117,10 @@ export default function CandidateSharePage() {
       // 저장된 답변 동기화
       if (sd?.candidate?.interview_answers && typeof sd.candidate.interview_answers === 'object') {
         setAnswers(sd.candidate.interview_answers as Record<string, string>)
+      }
+      // 면접관 코멘트 동기화 (이후 추가/삭제로 갱신)
+      if (Array.isArray(sd?.candidate?.interviewer_comments)) {
+        setCommentsState(sd.candidate.interviewer_comments)
       }
 
       // 이력서/자기소개서
@@ -189,24 +197,43 @@ export default function CandidateSharePage() {
     setSavingAnswerKey(key)
     setAnswerError(null)
     try {
-      const { error } = await supabase.rpc('save_shared_interview_answer', {
+      const { data, error } = await supabase.rpc('save_shared_interview_answer', {
         p_token: token,
         p_key: key,
         p_answer: value,
       })
       if (error) {
         setAnswerError(error.message || '답변 저장 실패')
-      } else {
-        const next: Record<string, string> = { ...answers }
-        const trimmed = (value || '').trim()
-        if (trimmed.length === 0) delete next[key]
-        else next[key] = trimmed
-        setAnswers(next)
+      } else if (data && (data as any).interview_answers) {
+        // 응답의 전체 최신 답변 객체로 동기화 (다른 세션 변경분 반영)
+        setAnswers((data as any).interview_answers as Record<string, string>)
       }
     } catch (err: any) {
       setAnswerError(err?.message || '답변 저장 실패')
     } finally {
       setSavingAnswerKey(null)
+    }
+  }
+
+  async function submitSharedComment() {
+    if (!token || !newComment.trim()) return
+    setSubmittingComment(true)
+    setCommentError(null)
+    try {
+      const { data, error } = await supabase.rpc('add_shared_interviewer_comment', {
+        p_token: token,
+        p_content: newComment.trim(),
+      })
+      if (error) {
+        setCommentError(error.message || '코멘트 등록 실패')
+      } else {
+        setCommentsState(((data as any)?.interviewer_comments as InterviewerComment[]) || [])
+        setNewComment('')
+      }
+    } catch (err: any) {
+      setCommentError(err?.message || '코멘트 등록 실패')
+    } finally {
+      setSubmittingComment(false)
     }
   }
 
@@ -235,7 +262,7 @@ export default function CandidateSharePage() {
   const portfolioLinks = candidate.portfolio_links || []
   const surveyAnswers = candidate.pre_survey_data?.answers || {}
   const surveyMeta = candidate.pre_survey_data?.meta || {}
-  const interviewerComments = candidate.interviewer_comments || []
+  const interviewerComments = commentsState.length > 0 ? commentsState : (candidate.interviewer_comments || [])
   // RPC 응답에 ai_questions 가 있으면 우선, 없으면 fallback (직접 조회) 사용
   const aiQuestions = (job?.ai_questions && job.ai_questions.length > 0)
     ? job.ai_questions
@@ -590,21 +617,20 @@ export default function CandidateSharePage() {
           </div>
         )}
 
-        {/* 면접관 코멘트 — 필드 정확 매칭: { author_name, content, created_at } */}
-        {interviewerComments.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
-            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <MessageCircle className="h-4 w-4 text-brand-500" />
-              면접관 코멘트 ({interviewerComments.length}건)
-            </h2>
-            <ul className="space-y-2">
+        {/* 면접관 코멘트 — 외부 면접관도 직접 추가 가능 (atomic RPC) */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+          <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+            <MessageCircle className="h-4 w-4 text-brand-500" />
+            면접관 코멘트 ({interviewerComments.length}건)
+          </h2>
+          {interviewerComments.length > 0 && (
+            <ul className="space-y-2 mb-3">
               {interviewerComments.map((c, i) => {
-                // 신규 구조 우선, 레거시 text/comment 폴백
                 const body = c.content || c.text || c.comment || ''
                 const authorName = c.author_name || '익명'
                 const ts = c.created_at
                 return (
-                  <li key={i} className="bg-gray-50 rounded-lg p-3">
+                  <li key={(c as any).id || i} className="bg-gray-50 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
                       <span className="text-sm font-semibold text-gray-800">{authorName}</span>
                       {ts && <span className="text-[11px] text-gray-400">{formatDate(ts, 'yyyy.MM.dd HH:mm')}</span>}
@@ -614,8 +640,31 @@ export default function CandidateSharePage() {
                 )
               })}
             </ul>
+          )}
+          <div className="border-t border-gray-100 pt-3">
+            {commentError && (
+              <p className="text-[11px] text-red-500 mb-2">{commentError}</p>
+            )}
+            <textarea
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 resize-y"
+              rows={3}
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="면접 평가, 인상, 특이사항 등을 기록하세요..."
+            />
+            <div className="flex justify-end mt-2">
+              <button
+                type="button"
+                onClick={submitSharedComment}
+                disabled={!newComment.trim() || submittingComment}
+                className="inline-flex items-center gap-1 bg-brand-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {submittingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                등록
+              </button>
+            </div>
           </div>
-        )}
+        </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
           이 페이지는 외부 공유 링크입니다. 외부 유출 및 재공유를 금지합니다.

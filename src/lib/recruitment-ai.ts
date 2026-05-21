@@ -267,6 +267,10 @@ export function buildComprehensiveAnalysisPrompt(data: {
   interviewAnalyses: any[]
   talentProfiles: any[]
   candidateMetadata: any
+  interviewerComments?: { author_name?: string; content?: string; created_at?: string }[]
+  interviewAnswers?: Record<string, string>
+  aiQuestions?: string[]
+  secondQuestions?: string[]
 }) {
   // 면접 분석 데이터 포맷
   const interviewSection = data.interviewAnalyses.length > 0
@@ -317,6 +321,32 @@ ${data.faceToFaceEval ? JSON.stringify(data.faceToFaceEval, null, 2) : '미실�
 ## 면접 AI 분석 결과 (녹음/녹화 기반)
 ${interviewSection}
 
+## 면접 질문별 답변 기록 (면접관이 면접 진행 중 직접 기재)
+${(() => {
+  const ans = data.interviewAnswers || {}
+  const aiQs = data.aiQuestions || []
+  const secondQs = data.secondQuestions || []
+  const lines: string[] = []
+  aiQs.forEach((q, i) => {
+    const a = ans[`ai:${i}`]
+    if (a && a.trim().length > 0) lines.push(`[공고 권장 질문 ${i + 1}]\nQ: ${q}\nA: ${a}`)
+  })
+  secondQs.forEach((q, i) => {
+    const a = ans[`second:${i}`]
+    if (a && a.trim().length > 0) lines.push(`[2차 맞춤 질문 ${i + 1}]\nQ: ${q}\nA: ${a}`)
+  })
+  return lines.length === 0 ? '기재된 답변 없음' : lines.join('\n\n')
+})()}
+
+## 면접관 정성 코멘트 (관리자/외부 면접관 직접 기록)
+${
+  (data.interviewerComments && data.interviewerComments.length > 0)
+    ? data.interviewerComments
+        .map((c) => `- [${c.author_name || '익명'} · ${c.created_at || ''}]\n  ${(c.content || '').trim()}`)
+        .join('\n')
+    : '없음'
+}
+
 ## 회사 인재상
 ${data.talentProfiles.length > 0 ? data.talentProfiles.map((t) => `${t.name}: ${(t.traits || []).join(', ')}`).join('\n') : '미설정'}
 
@@ -358,7 +388,7 @@ export async function runComprehensiveAnalysis(candidateId: string) {
 
   // 데이터 수집
   const [candRes, analysisRes, f2fRes, interviewAnaRes, talentRes] = await Promise.all([
-    supabase.from('candidates').select('*, job_postings(title)').eq('id', candidateId).single(),
+    supabase.from('candidates').select('*, job_postings(title, ai_questions)').eq('id', candidateId).single(),
     supabase.from('resume_analysis').select('*').eq('candidate_id', candidateId).order('created_at', { ascending: false }).limit(1).single(),
     supabase.from('face_to_face_evals').select('*').eq('candidate_id', candidateId).order('created_at', { ascending: false }).limit(1).single(),
     supabase.from('interview_analyses').select('*').eq('candidate_id', candidateId).eq('status', 'completed').order('created_at', { ascending: true }),
@@ -368,15 +398,30 @@ export async function runComprehensiveAnalysis(candidateId: string) {
   const candidate = candRes.data as any
   if (!candidate) throw new Error('지원자를 찾을 수 없습니다.')
 
+  const posting = Array.isArray(candidate.job_postings) ? candidate.job_postings[0] : candidate.job_postings
+  const aiQuestions: string[] = Array.isArray(posting?.ai_questions) ? posting.ai_questions : []
+  const secondQuestions: string[] = Array.isArray(candidate.second_interview_questions) ? candidate.second_interview_questions : []
+  const interviewAnswers: Record<string, string> =
+    candidate.interview_answers && typeof candidate.interview_answers === 'object'
+      ? (candidate.interview_answers as Record<string, string>)
+      : {}
+  const interviewerComments = Array.isArray(candidate.interviewer_comments)
+    ? candidate.interviewer_comments
+    : []
+
   const prompt = buildComprehensiveAnalysisPrompt({
     candidateName: candidate.name,
-    postingTitle: candidate.job_postings?.title || '미정',
+    postingTitle: posting?.title || '미정',
     resumeAnalysis: analysisRes.data,
     surveyData: candidate.pre_survey_data,
     faceToFaceEval: f2fRes.data,
     interviewAnalyses: interviewAnaRes.data || [],
     talentProfiles: talentRes.data || [],
     candidateMetadata: candidate.metadata,
+    interviewerComments,
+    interviewAnswers,
+    aiQuestions,
+    secondQuestions,
   })
 
   const result = await generateAIContent(config, prompt)

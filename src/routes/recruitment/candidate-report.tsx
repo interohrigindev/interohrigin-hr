@@ -61,7 +61,7 @@ export default function CandidateReport() {
   // 면접 질문별 답변 기록 — key: "ai:0", "second:1" 등
   const [interviewAnswers, setInterviewAnswers] = useState<Record<string, string>>({})
   const [savingAnswerKey, setSavingAnswerKey] = useState<string | null>(null)
-  const [comments, setComments] = useState<{ author_id: string; author_name: string; content: string; created_at: string }[]>([])
+  const [comments, setComments] = useState<{ id?: string; author_id: string; author_name: string; content: string; created_at: string }[]>([])
   const [newComment, setNewComment] = useState('')
   const [hiringDecision, setHiringDecision] = useState<{
     decision: string
@@ -601,22 +601,17 @@ ${fileInfo}
     if (!id) return
     setSavingAnswerKey(key)
     try {
-      // 빈 문자열이면 키 제거 / 아니면 set
-      const trimmed = (value || '').trim()
-      const next: Record<string, string> = { ...interviewAnswers }
-      if (trimmed.length === 0) {
-        delete next[key]
-      } else {
-        next[key] = trimmed
-      }
-      const { error } = await supabase
-        .from('candidates')
-        .update({ interview_answers: next as any } as any)
-        .eq('id', id)
+      // atomic RPC — 다른 세션의 다른 key 답변/코멘트와 충돌하지 않음
+      const { data, error } = await supabase.rpc('save_interview_answer', {
+        p_candidate_id: id,
+        p_key: key,
+        p_answer: value,
+      })
       if (error) {
         toast('답변 저장 실패: ' + error.message, 'error')
-      } else {
-        setInterviewAnswers(next)
+      } else if (data && (data as any).interview_answers) {
+        // 응답으로 받은 최신 전체 상태로 동기화 (다른 세션의 변경도 반영됨)
+        setInterviewAnswers((data as any).interview_answers as Record<string, string>)
       }
     } catch (err: any) {
       toast('답변 저장 실패: ' + (err?.message || '알 수 없는 오류'), 'error')
@@ -2220,18 +2215,24 @@ ${surveyText || '응답 없음'}
               {comments.length > 0 && (
                 <div className="space-y-3 mb-4">
                   {comments.map((c, i) => (
-                    <div key={i} className="p-3 bg-gray-50 rounded-lg">
+                    <div key={c.id || i} className="p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-gray-800">{c.author_name}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-gray-400">{formatDate(c.created_at)}</span>
-                          {c.author_id === profile?.id && (
+                          {c.author_id === profile?.id && c.id && (
                             <button
                               onClick={async () => {
-                                const updated = comments.filter((_, idx) => idx !== i)
-                                await supabase.from('candidates').update({ interviewer_comments: updated }).eq('id', id)
-                                setComments(updated)
-                                toast('코멘트가 삭제되었습니다.')
+                                const { data, error } = await supabase.rpc('delete_interviewer_comment', {
+                                  p_candidate_id: id,
+                                  p_comment_id: c.id,
+                                })
+                                if (error) {
+                                  toast('삭제 실패: ' + error.message, 'error')
+                                } else {
+                                  setComments(((data as any)?.interviewer_comments as typeof comments) || [])
+                                  toast('코멘트가 삭제되었습니다.')
+                                }
                               }}
                               className="text-gray-400 hover:text-red-500"
                             >
@@ -2258,15 +2259,16 @@ ${surveyText || '응답 없음'}
                   disabled={!newComment.trim()}
                   onClick={async () => {
                     if (!profile || !newComment.trim()) return
-                    const entry = {
-                      author_id: profile.id,
-                      author_name: profile.name,
-                      content: newComment.trim(),
-                      created_at: new Date().toISOString(),
+                    const { data, error } = await supabase.rpc('add_interviewer_comment', {
+                      p_candidate_id: id,
+                      p_content: newComment.trim(),
+                    })
+                    if (error) {
+                      toast('등록 실패: ' + error.message, 'error')
+                      return
                     }
-                    const updated = [...comments, entry]
-                    await supabase.from('candidates').update({ interviewer_comments: updated }).eq('id', id)
-                    setComments(updated)
+                    // 응답의 전체 코멘트 배열로 동기화 (다른 세션이 동시에 추가한 코멘트도 함께 반영)
+                    setComments(((data as any)?.interviewer_comments as typeof comments) || [])
                     setNewComment('')
                     toast('코멘트가 등록되었습니다.')
                   }}
