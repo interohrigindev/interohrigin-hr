@@ -33,6 +33,7 @@ type ShareData = {
     pbd_survey_completed_at: string | null
     second_interview_questions: string[] | null
     second_interview_questions_generated_at: string | null
+    interview_answers: Record<string, string> | null
     created_at: string
   }
   job: {
@@ -89,6 +90,9 @@ export default function CandidateSharePage() {
   const [portfolioSignedUrls, setPortfolioSignedUrls] = useState<Record<number, FileInfo>>({})
   const [surveyQuestions, setSurveyQuestions] = useState<{ id: string; question: string }[]>([])
   const [fallbackAiQuestions, setFallbackAiQuestions] = useState<string[]>([])
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [savingAnswerKey, setSavingAnswerKey] = useState<string | null>(null)
+  const [answerError, setAnswerError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!token) {
@@ -106,6 +110,10 @@ export default function CandidateSharePage() {
       const sd = rpcData as ShareData
       setData(sd)
       setLoading(false)
+      // 저장된 답변 동기화
+      if (sd?.candidate?.interview_answers && typeof sd.candidate.interview_answers === 'object') {
+        setAnswers(sd.candidate.interview_answers as Record<string, string>)
+      }
 
       // 이력서/자기소개서
       if (sd?.candidate?.resume_url) {
@@ -171,6 +179,36 @@ export default function CandidateSharePage() {
       }
     })()
   }, [token])
+
+  function updateAnswerLocal(key: string, value: string) {
+    setAnswers((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function saveAnswer(key: string, value: string) {
+    if (!token) return
+    setSavingAnswerKey(key)
+    setAnswerError(null)
+    try {
+      const { error } = await supabase.rpc('save_shared_interview_answer', {
+        p_token: token,
+        p_key: key,
+        p_answer: value,
+      })
+      if (error) {
+        setAnswerError(error.message || '답변 저장 실패')
+      } else {
+        const next: Record<string, string> = { ...answers }
+        const trimmed = (value || '').trim()
+        if (trimmed.length === 0) delete next[key]
+        else next[key] = trimmed
+        setAnswers(next)
+      }
+    } catch (err: any) {
+      setAnswerError(err?.message || '답변 저장 실패')
+    } finally {
+      setSavingAnswerKey(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -425,14 +463,41 @@ export default function CandidateSharePage() {
           </h2>
           {aiQuestions.length > 0 ? (
             <>
-              <p className="text-xs text-gray-500 mb-3">면접 시 활용할 수 있는 AI 추천 질문입니다.</p>
-              <ol className="space-y-2">
-                {aiQuestions.map((q, i) => (
-                  <li key={i} className="flex gap-3 text-sm">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
-                    <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
-                  </li>
-                ))}
+              <p className="text-xs text-gray-500 mb-3">면접 답변을 입력하면 자동 저장됩니다.</p>
+              {answerError && (
+                <p className="text-[11px] text-red-500 mb-2">{answerError}</p>
+              )}
+              <ol className="space-y-4">
+                {aiQuestions.map((q, i) => {
+                  const key = `ai:${i}`
+                  return (
+                    <li key={i} className="space-y-2">
+                      <div className="flex gap-3 text-sm">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
+                        <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
+                      </div>
+                      <div className="pl-9 relative">
+                        <textarea
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 resize-y"
+                          rows={2}
+                          value={answers[key] || ''}
+                          onChange={(e) => updateAnswerLocal(key, e.target.value)}
+                          onBlur={(e) => {
+                            const orig = ((data?.candidate?.interview_answers?.[key]) || '').trim()
+                            const cur = (e.target.value || '').trim()
+                            if (orig !== cur) saveAnswer(key, e.target.value)
+                          }}
+                          placeholder="면접 답변을 기재하세요 (입력란을 벗어나면 자동 저장)"
+                        />
+                        {savingAnswerKey === key && (
+                          <span className="absolute right-2 top-2 text-[11px] text-gray-400 flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" /> 저장 중
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
               </ol>
             </>
           ) : (
@@ -461,13 +526,37 @@ export default function CandidateSharePage() {
                     마지막 생성: {formatDate(candidate.second_interview_questions_generated_at, 'yyyy.MM.dd HH:mm')}
                   </p>
                 )}
-                <ol className="space-y-2">
-                  {candidate.second_interview_questions.map((q, i) => (
-                    <li key={i} className="flex gap-3 text-sm">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-bold">{i + 1}</span>
-                      <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
-                    </li>
-                  ))}
+                <ol className="space-y-4">
+                  {candidate.second_interview_questions.map((q, i) => {
+                    const key = `second:${i}`
+                    return (
+                      <li key={i} className="space-y-2">
+                        <div className="flex gap-3 text-sm">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-bold">{i + 1}</span>
+                          <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
+                        </div>
+                        <div className="pl-9 relative">
+                          <textarea
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 resize-y"
+                            rows={2}
+                            value={answers[key] || ''}
+                            onChange={(e) => updateAnswerLocal(key, e.target.value)}
+                            onBlur={(e) => {
+                              const orig = ((data?.candidate?.interview_answers?.[key]) || '').trim()
+                              const cur = (e.target.value || '').trim()
+                              if (orig !== cur) saveAnswer(key, e.target.value)
+                            }}
+                            placeholder="2차 면접 답변을 기재하세요 (자동 저장)"
+                          />
+                          {savingAnswerKey === key && (
+                            <span className="absolute right-2 top-2 text-[11px] text-gray-400 flex items-center gap-1">
+                              <Loader2 className="h-3 w-3 animate-spin" /> 저장 중
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ol>
               </>
             ) : (

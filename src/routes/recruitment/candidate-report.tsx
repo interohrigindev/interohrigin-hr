@@ -58,6 +58,9 @@ export default function CandidateReport() {
   const [secondQuestions, setSecondQuestions] = useState<string[]>([])
   const [secondQuestionsGeneratedAt, setSecondQuestionsGeneratedAt] = useState<string | null>(null)
   const [generatingSecondQuestions, setGeneratingSecondQuestions] = useState(false)
+  // 면접 질문별 답변 기록 — key: "ai:0", "second:1" 등
+  const [interviewAnswers, setInterviewAnswers] = useState<Record<string, string>>({})
+  const [savingAnswerKey, setSavingAnswerKey] = useState<string | null>(null)
   const [comments, setComments] = useState<{ author_id: string; author_name: string; content: string; created_at: string }[]>([])
   const [newComment, setNewComment] = useState('')
   const [hiringDecision, setHiringDecision] = useState<{
@@ -192,6 +195,10 @@ export default function CandidateReport() {
       }
       if (candAny?.second_interview_questions_generated_at) {
         setSecondQuestionsGeneratedAt(candAny.second_interview_questions_generated_at as string)
+      }
+      // 면접 답변 기록 로딩
+      if (candAny?.interview_answers && typeof candAny.interview_answers === 'object') {
+        setInterviewAnswers(candAny.interview_answers as Record<string, string>)
       }
 
       // 면접관 코멘트 로딩
@@ -584,6 +591,38 @@ ${fileInfo}
       toast('종합 분석 실패: ' + err.message, 'error')
     }
     setComprehensiveAnalyzing(false)
+  }
+
+  function updateAnswerLocal(key: string, value: string) {
+    setInterviewAnswers((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function saveAnswer(key: string, value: string) {
+    if (!id) return
+    setSavingAnswerKey(key)
+    try {
+      // 빈 문자열이면 키 제거 / 아니면 set
+      const trimmed = (value || '').trim()
+      const next: Record<string, string> = { ...interviewAnswers }
+      if (trimmed.length === 0) {
+        delete next[key]
+      } else {
+        next[key] = trimmed
+      }
+      const { error } = await supabase
+        .from('candidates')
+        .update({ interview_answers: next as any } as any)
+        .eq('id', id)
+      if (error) {
+        toast('답변 저장 실패: ' + error.message, 'error')
+      } else {
+        setInterviewAnswers(next)
+      }
+    } catch (err: any) {
+      toast('답변 저장 실패: ' + (err?.message || '알 수 없는 오류'), 'error')
+    } finally {
+      setSavingAnswerKey(null)
+    }
   }
 
   async function handleGenerateSecondQuestions() {
@@ -2056,14 +2095,37 @@ ${surveyText || '응답 없음'}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-gray-400 mb-3">면접 시 활용할 수 있는 AI 추천 질문입니다.</p>
-                <ol className="space-y-2">
-                  {aiQuestions.map((q, i) => (
-                    <li key={i} className="flex gap-3 text-sm">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
-                      <span className="text-gray-700 pt-0.5">{q}</span>
-                    </li>
-                  ))}
+                <p className="text-xs text-gray-400 mb-3">면접 시 활용할 수 있는 AI 추천 질문입니다. 답변란에 기록하면 자동 저장됩니다.</p>
+                <ol className="space-y-4">
+                  {aiQuestions.map((q, i) => {
+                    const key = `ai:${i}`
+                    return (
+                      <li key={i} className="space-y-2">
+                        <div className="flex gap-3 text-sm">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
+                          <span className="text-gray-700 pt-0.5">{q}</span>
+                        </div>
+                        <div className="pl-9 relative">
+                          <Textarea
+                            value={interviewAnswers[key] || ''}
+                            onChange={(e) => updateAnswerLocal(key, e.target.value)}
+                            onBlur={(e) => {
+                              const original = (interviewAnswers[key] || '').trim()
+                              const current = (e.target.value || '').trim()
+                              if (original !== current) saveAnswer(key, e.target.value)
+                            }}
+                            rows={2}
+                            placeholder="면접 답변을 기재하세요 (입력란을 벗어나면 자동 저장)"
+                          />
+                          {savingAnswerKey === key && (
+                            <span className="absolute right-2 top-2 text-[11px] text-gray-400 flex items-center gap-1">
+                              <Loader2 className="h-3 w-3 animate-spin" /> 저장 중
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ol>
               </CardContent>
             </Card>
@@ -2109,13 +2171,36 @@ ${surveyText || '응답 없음'}
                         마지막 생성: {formatDate(secondQuestionsGeneratedAt)}
                       </p>
                     )}
-                    <ol className="space-y-2">
-                      {secondQuestions.map((q, i) => (
-                        <li key={i} className="flex gap-3 text-sm">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-bold">{i + 1}</span>
-                          <span className="text-gray-700 pt-0.5 whitespace-pre-wrap">{q}</span>
-                        </li>
-                      ))}
+                    <ol className="space-y-4">
+                      {secondQuestions.map((q, i) => {
+                        const key = `second:${i}`
+                        return (
+                          <li key={i} className="space-y-2">
+                            <div className="flex gap-3 text-sm">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-bold">{i + 1}</span>
+                              <span className="text-gray-700 pt-0.5 whitespace-pre-wrap">{q}</span>
+                            </div>
+                            <div className="pl-9 relative">
+                              <Textarea
+                                value={interviewAnswers[key] || ''}
+                                onChange={(e) => updateAnswerLocal(key, e.target.value)}
+                                onBlur={(e) => {
+                                  const original = (interviewAnswers[key] || '').trim()
+                                  const current = (e.target.value || '').trim()
+                                  if (original !== current) saveAnswer(key, e.target.value)
+                                }}
+                                rows={2}
+                                placeholder="2차 면접 답변을 기재하세요 (자동 저장)"
+                              />
+                              {savingAnswerKey === key && (
+                                <span className="absolute right-2 top-2 text-[11px] text-gray-400 flex items-center gap-1">
+                                  <Loader2 className="h-3 w-3 animate-spin" /> 저장 중
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
                     </ol>
                   </>
                 )}
