@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useSelfEvaluation, type SelfEvalFormData } from '@/hooks/useSelfEvaluation'
+import { useEvaluationPeriods } from '@/hooks/useEvaluation'
 import { useToast } from '@/components/ui/Toast'
 import { PageSpinner, Spinner } from '@/components/ui/Spinner'
 import { Button } from '@/components/ui/Button'
@@ -14,6 +15,26 @@ import { CheckCircle, Lock } from 'lucide-react'
 export default function SelfEvaluation() {
   const { profile } = useAuth()
   const { toast } = useToast()
+
+  // 진행 중인 분기 목록 + 선택된 분기 — 다중 분기 동시 진행 지원
+  const { periods, loading: periodsLoading } = useEvaluationPeriods()
+  const activePeriods = useMemo(
+    () =>
+      periods
+        .filter((p) => p.status === 'in_progress')
+        // 오래된 분기(미완료 누락 방지)부터 보이도록 오름차순 정렬
+        .sort((a, b) => (a.year - b.year) || (a.quarter - b.quarter)),
+    [periods],
+  )
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null)
+
+  // activePeriods 로딩되면 기본 선택 (가장 오래된 미완료 분기 우선)
+  useEffect(() => {
+    if (selectedPeriodId) return
+    if (activePeriods.length === 0) return
+    setSelectedPeriodId(activePeriods[0].id)
+  }, [activePeriods, selectedPeriodId])
+
   const {
     period,
     target,
@@ -30,7 +51,7 @@ export default function SelfEvaluation() {
     saveAll,
     submitGoals,
     submit,
-  } = useSelfEvaluation()
+  } = useSelfEvaluation(selectedPeriodId)
 
   const [formData, setFormData] = useState<Record<string, SelfEvalFormData>>({})
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -63,12 +84,39 @@ export default function SelfEvaluation() {
     setFormData(map)
   }, [items, selfEvals])
 
-  if (loading) return <PageSpinner />
+  if (loading || periodsLoading) return <PageSpinner />
+
+  // 진행 중인 분기 탭바 — 2개 이상일 때만 노출
+  const periodTabBar = activePeriods.length > 1 ? (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-2">
+      <span className="px-2 text-xs font-medium text-gray-500">진행 중인 평가:</span>
+      {activePeriods.map((p) => {
+        const isSelected = p.id === selectedPeriodId
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => setSelectedPeriodId(p.id)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              isSelected
+                ? 'bg-brand-600 text-white'
+                : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            {p.year}년 {p.quarter}분기
+          </button>
+        )
+      })}
+    </div>
+  ) : null
 
   if (!period) {
     return (
-      <div className="flex h-64 flex-col items-center justify-center gap-2">
-        <p className="text-lg font-medium text-gray-600">현재 진행 중인 평가 기간이 없습니다</p>
+      <div className="space-y-6">
+        {periodTabBar}
+        <div className="flex h-64 flex-col items-center justify-center gap-2">
+          <p className="text-lg font-medium text-gray-600">현재 진행 중인 평가 기간이 없습니다</p>
+        </div>
       </div>
     )
   }
@@ -76,6 +124,7 @@ export default function SelfEvaluation() {
   if (!target) {
     return (
       <div className="space-y-6">
+        {periodTabBar}
         <div>
           <h2 className="text-2xl font-bold text-gray-900">자기평가</h2>
           <p className="text-sm text-gray-500 mt-1">
@@ -177,6 +226,7 @@ export default function SelfEvaluation() {
   if (isReadOnly) {
     return (
       <div className="space-y-6">
+        {periodTabBar}
         <div>
           <h2 className="text-2xl font-bold text-gray-900">자기평가</h2>
           <p className="text-sm text-gray-500 mt-1">
@@ -240,6 +290,7 @@ export default function SelfEvaluation() {
 
   return (
     <div className="space-y-6 pb-24">
+      {periodTabBar}
       {/* Locked banner */}
       {isLocked && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-center gap-2">

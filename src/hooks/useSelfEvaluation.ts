@@ -21,11 +21,19 @@ export type EvalPhase = 'goal_setting' | 'quarterly_eval' | 'readonly'
 
 // ─── Hook ───────────────────────────────────────────────────────
 
-export function useSelfEvaluation() {
+/**
+ * @param periodIdOverride 진행중인 평가 기간이 여러 개일 때 특정 분기를 선택하기 위한 ID.
+ *                         값이 없거나 일치하는 period 가 없으면 기본 activePeriod(최신 분기) 사용.
+ */
+export function useSelfEvaluation(periodIdOverride?: string | null) {
   const { profile, isAdmin } = useAuth()
-  const { activePeriod, loading: periodLoading } = useEvaluationPeriods()
+  const { periods, activePeriod, loading: periodLoading } = useEvaluationPeriods()
   const { categories, loading: catsLoading } = useEvaluationCategories()
   const { items, loading: itemsLoading } = useEvaluationItems(profile?.id)
+
+  // periodIdOverride 가 있으면 해당 period 우선 사용 (없으면 기본 activePeriod)
+  const effectivePeriod =
+    (periodIdOverride && periods.find((p) => p.id === periodIdOverride)) || activePeriod
 
   const [target, setTarget] = useState<EvaluationTarget | null>(null)
   const [selfEvals, setSelfEvals] = useState<SelfEvaluation[]>([])
@@ -38,15 +46,16 @@ export function useSelfEvaluation() {
 
   useEffect(() => {
     if (periodLoading || !profile?.id) return
-    if (!activePeriod?.id) {
+    if (!effectivePeriod?.id) {
       setDataLoading(false)
       return
     }
     fetchData()
-  }, [profile?.id, activePeriod?.id, periodLoading])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id, effectivePeriod?.id, periodLoading])
 
   async function fetchData() {
-    if (!profile || !activePeriod) return
+    if (!profile || !effectivePeriod) return
     setDataLoading(true)
 
     const [targetRes, deptRes] = await Promise.all([
@@ -54,7 +63,7 @@ export function useSelfEvaluation() {
         .from('evaluation_targets')
         .select('*')
         .eq('employee_id', profile.id)
-        .eq('period_id', activePeriod.id)
+        .eq('period_id', effectivePeriod.id)
         .maybeSingle(),
       profile.department_id
         ? supabase
@@ -82,7 +91,7 @@ export function useSelfEvaluation() {
   // ─── Computed ──────────────────────────────────────────────
 
   const loading = periodLoading || catsLoading || itemsLoading || dataLoading
-  const isLocked = !!(activePeriod?.is_locked && !isAdmin)
+  const isLocked = !!(effectivePeriod?.is_locked && !isAdmin)
 
   // 현재 평가 단계 판별
   const currentPhase: EvalPhase = (() => {
@@ -236,7 +245,8 @@ export function useSelfEvaluation() {
   }
 
   return {
-    period: activePeriod,
+    period: effectivePeriod,
+    activePeriods: periods.filter((p) => p.status === 'in_progress'),
     target,
     categories,
     items,
