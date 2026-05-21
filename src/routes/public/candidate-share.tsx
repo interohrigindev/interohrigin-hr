@@ -31,6 +31,8 @@ type ShareData = {
     talent_match_score: number | null
     pbd_survey_sent_at: string | null
     pbd_survey_completed_at: string | null
+    second_interview_questions: string[] | null
+    second_interview_questions_generated_at: string | null
     created_at: string
   }
   job: {
@@ -439,6 +441,42 @@ export default function CandidateSharePage() {
             </p>
           )}
         </div>
+
+        {/* 2차 면접 맞춤 질문 — 1차 통과(video_done) / 2차 예정(face_to_face_scheduled) 단계에서만 노출 */}
+        {(candidate.status === 'video_done' || candidate.status === 'face_to_face_scheduled') && (
+          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4 border border-brand-200">
+            <h2 className="text-base font-bold text-gray-900 mb-2 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-brand-600" />
+              🎯 2차 면접 맞춤 질문
+              {candidate.second_interview_questions && candidate.second_interview_questions.length > 0 &&
+                ` (${candidate.second_interview_questions.length}개)`}
+            </h2>
+            <p className="text-xs text-gray-500 mb-3">
+              이 지원자의 이력서·사전질의·1차 면접 분석·면접관 코멘트를 종합한 <strong className="text-brand-700">맞춤 질문</strong>입니다.
+            </p>
+            {candidate.second_interview_questions && candidate.second_interview_questions.length > 0 ? (
+              <>
+                {candidate.second_interview_questions_generated_at && (
+                  <p className="text-[11px] text-gray-400 mb-2">
+                    마지막 생성: {formatDate(candidate.second_interview_questions_generated_at, 'yyyy.MM.dd HH:mm')}
+                  </p>
+                )}
+                <ol className="space-y-2">
+                  {candidate.second_interview_questions.map((q, i) => (
+                    <li key={i} className="flex gap-3 text-sm">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-bold">{i + 1}</span>
+                      <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+                아직 생성되지 않았습니다. 관리자가 지원자 상세 페이지에서 'AI 생성' 버튼을 누르면 여기에 표시됩니다.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* 면접 일정 */}
         {interview_schedules.length > 0 && (

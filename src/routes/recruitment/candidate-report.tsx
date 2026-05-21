@@ -12,7 +12,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { getCandidateFileUrl } from '@/lib/candidate-storage'
 import { generateAIContent, getAIConfigForFeature, type AIFileAttachment } from '@/lib/ai-client'
-import { runComprehensiveAnalysis } from '@/lib/recruitment-ai'
+import { runComprehensiveAnalysis, generateSecondInterviewQuestions } from '@/lib/recruitment-ai'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
 import type { Candidate, CandidateStatus, SourceChannel, ResumeAnalysis, RecruitmentReport } from '@/types/recruitment'
 import { formatDate } from '@/lib/utils'
@@ -54,6 +54,10 @@ export default function CandidateReport() {
   const [sendEmail, setSendEmail] = useState(true)
   const [decidingInProgress, setDecidingInProgress] = useState(false)
   const [aiQuestions, setAiQuestions] = useState<string[]>([])
+  // 2차 면접 맞춤 질문 (지원자별)
+  const [secondQuestions, setSecondQuestions] = useState<string[]>([])
+  const [secondQuestionsGeneratedAt, setSecondQuestionsGeneratedAt] = useState<string | null>(null)
+  const [generatingSecondQuestions, setGeneratingSecondQuestions] = useState(false)
   const [comments, setComments] = useState<{ author_id: string; author_name: string; content: string; created_at: string }[]>([])
   const [newComment, setNewComment] = useState('')
   const [hiringDecision, setHiringDecision] = useState<{
@@ -179,6 +183,15 @@ export default function CandidateReport() {
           .single()
         if (jp?.ai_questions) setAiQuestions((jp.ai_questions as string[]) || [])
         if (jp?.title) setJobTitle(jp.title)
+      }
+
+      // 2차 면접 맞춤 질문 로딩 (candidates 테이블의 새 컬럼)
+      const candAny = cand as any
+      if (candAny?.second_interview_questions) {
+        setSecondQuestions((candAny.second_interview_questions as string[]) || [])
+      }
+      if (candAny?.second_interview_questions_generated_at) {
+        setSecondQuestionsGeneratedAt(candAny.second_interview_questions_generated_at as string)
       }
 
       // 면접관 코멘트 로딩
@@ -571,6 +584,25 @@ ${fileInfo}
       toast('종합 분석 실패: ' + err.message, 'error')
     }
     setComprehensiveAnalyzing(false)
+  }
+
+  async function handleGenerateSecondQuestions() {
+    if (!id) return
+    setGeneratingSecondQuestions(true)
+    try {
+      const res = await generateSecondInterviewQuestions(id, { count: 7 })
+      if (!res.ok) {
+        toast('2차 면접 질문 생성 실패: ' + res.error, 'error')
+      } else {
+        setSecondQuestions(res.questions)
+        setSecondQuestionsGeneratedAt(res.generatedAt)
+        toast(`2차 면접 맞춤 질문 ${res.questions.length}개가 생성되었습니다.`, 'success')
+      }
+    } catch (err: any) {
+      toast('2차 면접 질문 생성 실패: ' + (err?.message || '알 수 없는 오류'), 'error')
+    } finally {
+      setGeneratingSecondQuestions(false)
+    }
   }
 
   function openProfileEdit() {
@@ -2033,6 +2065,60 @@ ${surveyText || '응답 없음'}
                     </li>
                   ))}
                 </ol>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 2차 면접 맞춤 질문 — 1차 통과(video_done) 또는 2차 예정(face_to_face_scheduled) 단계 한정 */}
+          {candidate && (candidate.status === 'video_done' || candidate.status === 'face_to_face_scheduled') && (
+            <Card className="border-brand-200">
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-brand-600" />
+                    🎯 2차 면접 맞춤 질문 {secondQuestions.length > 0 && `(${secondQuestions.length}개)`}
+                  </CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleGenerateSecondQuestions}
+                    disabled={generatingSecondQuestions}
+                  >
+                    {generatingSecondQuestions ? (
+                      <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 생성 중...</>
+                    ) : (
+                      <><Sparkles className="h-4 w-4 mr-1" /> {secondQuestions.length > 0 ? '재생성' : 'AI 생성'}</>
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-gray-500 mb-3">
+                  지원자의 이력서·사전질의·1차 면접 분석·면접관 코멘트를 종합하여
+                  <strong className="text-brand-700"> 이 지원자만을 위한 2차 대면면접 질문</strong>을 생성합니다.
+                  면접관 코멘트가 추가될 때마다 재생성을 권장합니다.
+                </p>
+                {secondQuestions.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4 text-center bg-gray-50 rounded-lg">
+                    아직 생성되지 않았습니다. 위 'AI 생성' 버튼으로 시작하세요.
+                  </p>
+                ) : (
+                  <>
+                    {secondQuestionsGeneratedAt && (
+                      <p className="text-[11px] text-gray-400 mb-2">
+                        마지막 생성: {formatDate(secondQuestionsGeneratedAt)}
+                      </p>
+                    )}
+                    <ol className="space-y-2">
+                      {secondQuestions.map((q, i) => (
+                        <li key={i} className="flex gap-3 text-sm">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-bold">{i + 1}</span>
+                          <span className="text-gray-700 pt-0.5 whitespace-pre-wrap">{q}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </>
+                )}
               </CardContent>
             </Card>
           )}
