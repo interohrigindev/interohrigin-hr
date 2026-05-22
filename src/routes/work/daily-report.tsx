@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { CalendarDays, Sparkles, Save, ChevronLeft, ChevronRight, Send } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -170,8 +170,17 @@ export default function DailyReportPage() {
   const [allEmployees, setAllEmployees] = useState<{ id: string; name: string; role: string; department_id: string | null }[]>([])
   // 이 보고서가 이미 결재 전송되었는지 체크
   const [alreadySubmitted, setAlreadySubmitted] = useState(false)
-  // 일일보고 결재선 템플릿 (관리자가 결재선 관리에서 설정)
-  const [reportTemplate, setReportTemplate] = useState<{ id: string; steps: { role: string; label: string; approver_ids?: string[] }[] } | null>(null)
+  // 일일보고 결재선 템플릿 — 활성 전체 로드 후 신청자 부서 기반 매칭
+  // (leave.tsx 54f435e 패턴 동일 — 부서별 템플릿 "일일업무보고 - 브랜드사업본부" 등 지원)
+  interface DailyReportTemplateRow {
+    id: string
+    name: string
+    department_id?: string | null
+    team_id?: string | null
+    steps: { role: string; label: string; approver_ids?: string[] }[]
+  }
+  const [reportTemplates, setReportTemplates] = useState<DailyReportTemplateRow[]>([])
+  const [departments, setDepartments] = useState<{ id: string; name: string; parent_id: string | null }[]>([])
 
   // D2-4: OJT 진행 상황 (멘티인 경우)
   const [ojtInfo, setOjtInfo] = useState<{
@@ -190,18 +199,40 @@ export default function DailyReportPage() {
       .then(({ data }) => { if (data) setAllEmployees(data) })
   }, [])
 
-  // 일일보고 결재선 템플릿 로드
+  // 일일보고 결재선 템플릿 — 활성 전체 로드 (부서별 매칭은 reportTemplate 에서 처리)
   useEffect(() => {
     supabase.from('approval_templates')
-      .select('id, steps')
+      .select('id, name, department_id, team_id, steps')
       .eq('doc_type', 'daily_report')
       .eq('is_active', true)
-      .limit(1)
-      .maybeSingle()
       .then(({ data }) => {
-        if (data) setReportTemplate(data as typeof reportTemplate)
+        if (data) setReportTemplates((data as unknown) as DailyReportTemplateRow[])
       })
   }, [])
+
+  // 부서 계층 (본부 ↔ 팀 매칭용)
+  useEffect(() => {
+    supabase.from('departments').select('id, name, parent_id')
+      .then(({ data }) => { if (data) setDepartments(data) })
+  }, [])
+
+  // 신청자 부서 기반 결재선 매칭 — 우선순위:
+  //   1) team_id = 본인 팀  →  2) department_id = 본인 본부 (team_id NULL)  →  3) 둘 다 NULL (전체 fallback)
+  const reportTemplate = useMemo<DailyReportTemplateRow | null>(() => {
+    if (reportTemplates.length === 0) return null
+    const me = allEmployees.find((e) => e.id === profile?.id)
+    const myDeptId = me?.department_id || null
+    const myDept = departments.find((d) => d.id === myDeptId)
+    const myDivisionId = myDept?.parent_id || myDeptId
+
+    const teamMatch = reportTemplates.filter((t) => t.team_id && t.team_id === myDeptId)
+    if (teamMatch.length > 0) return teamMatch[0]
+    const deptMatch = reportTemplates.filter((t) => t.department_id && t.department_id === myDivisionId && !t.team_id)
+    if (deptMatch.length > 0) return deptMatch[0]
+    const fallback = reportTemplates.filter((t) => !t.team_id && !t.department_id)
+    if (fallback.length > 0) return fallback[0]
+    return reportTemplates[0] || null
+  }, [reportTemplates, allEmployees, departments, profile?.id])
 
   // D2-4: 내 OJT 진행 상황 로드 (멘티인 경우)
   useEffect(() => {
@@ -1469,16 +1500,18 @@ ${completedText || '아직 없음'}
                     setApprovalSending(false)
                     return
                   }
+                  // 병렬 결재 (dfa976d): 같은 step_order 에 N명 fan-out 해야
+                  // approval.tsx 의 pending_approval 필터(steps.some(...))가 본인 row 를 찾을 수 있음
                   reportTemplate.steps.forEach((step, idx) => {
-                    const approverId = step.approver_ids?.[0]
-                    if (approverId) {
+                    const ids = (step.approver_ids || []).filter(Boolean)
+                    ids.forEach((approverId) => {
                       steps.push({
                         step_order: idx + 1,
                         approver_id: approverId,
                         approver_role: step.role,
                         action: 'pending',
                       })
-                    }
+                    })
                   })
                   if (steps.length === 0) {
                     toast('결재선 템플릿에 담당자가 지정되지 않았습니다. 관리자에게 문의하세요.', 'error')

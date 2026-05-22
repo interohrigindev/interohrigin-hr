@@ -18,6 +18,7 @@ import { RichEditor } from '@/components/ui/RichEditor'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { safeStorageUpload, describeUploadError } from '@/lib/storage-upload'
 import { useAuth } from '@/hooks/useAuth'
 import { ApprovalLineViewer } from '@/components/approval/ApprovalLineViewer'
 import { ApprovalLineEditor, type EditableStep } from '@/components/approval/ApprovalLineEditor'
@@ -943,9 +944,9 @@ export default function ApprovalManagementPage() {
         }
         const ext = f.name.split('.').pop() || 'bin'
         const path = `${profile.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
-        const { error } = await supabase.storage.from('approval-attachments').upload(path, f)
+        const { error } = await safeStorageUpload('approval-attachments', path, f)
         if (error) {
-          toast(`업로드 실패 (${f.name}): ${error.message}`, 'error')
+          toast(`업로드 실패 (${f.name}): ${describeUploadError(error)}`, 'error')
           continue
         }
         uploaded.push({ url: path, filename: f.name, type: f.type, size: f.size })
@@ -1014,17 +1015,30 @@ export default function ApprovalManagementPage() {
 
     // Insert approval steps
     if (selectedTemplate) {
-      const stepInserts = selectedTemplate.steps.map((step, idx) => {
+      // 병렬 결재 (dfa976d): 같은 step_order 에 N명을 모두 fan-out 해야
+      // pending_approval 탭 필터(steps.some(...))가 본인 row 를 찾을 수 있음
+      // 우선순위:
+      //   1) 사용자가 dropdown 으로 명시 선택한 1명 (직접 지정)
+      //   2) 템플릿 approver_ids 전체 (병렬 N명 fan-out)
+      //   3) CEO auto / role 기본값 (1명 fallback)
+      const stepInserts = selectedTemplate.steps.flatMap((step, idx) => {
         const stepKey = `${step.role}__${idx}`
         const approverIds = (step as { approver_ids?: string[] }).approver_ids || []
-        // 우선순위: 사용자 선택값 → 템플릿 지정 직원 첫 번째 → CEO auto → role 기본값
-        const approverId =
-          newApprovers[stepKey] ||
-          approverIds[0] ||
-          (step.role === 'ceo' && ceo ? ceo.id : '') ||
-          (getApproverOptions(step.role)[0]?.value || '')
         const actionType = (step as { action_type?: ActionType }).action_type || 'approve'
-        return {
+
+        let resolved: string[]
+        if (newApprovers[stepKey]) {
+          resolved = [newApprovers[stepKey]]
+        } else if (approverIds.length > 0) {
+          resolved = approverIds.filter(Boolean)
+        } else if (step.role === 'ceo' && ceo) {
+          resolved = [ceo.id]
+        } else {
+          const fallback = getApproverOptions(step.role)[0]?.value
+          resolved = fallback ? [fallback] : []
+        }
+
+        return resolved.map((approverId) => ({
           document_id: docData.id,
           step_order: idx + 1,
           approver_id: approverId,
@@ -1035,7 +1049,7 @@ export default function ApprovalManagementPage() {
           acted_at: null,
           is_delegated: false,
           original_approver_id: null,
-        }
+        }))
       })
 
       let { error: stepsErr } = await supabase
