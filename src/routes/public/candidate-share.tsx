@@ -3,9 +3,12 @@ import { useParams } from 'react-router-dom'
 import {
   Loader2, FileText, Mail, Phone, Briefcase, Calendar, AlertCircle, CheckCircle2,
   Download, ExternalLink, MessageCircle, Sparkles, Link2, FolderOpen,
+  MapPin, Users, Banknote, Clock as ClockIcon, Compass,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
+import { SOURCE_CHANNEL_LABELS, EMPLOYMENT_TYPE_LABELS, EXPERIENCE_LEVEL_LABELS } from '@/lib/recruitment-constants'
+import type { SourceChannel } from '@/types/recruitment'
 
 interface PortfolioFile { path: string; filename: string; size?: number }
 interface PortfolioLink { url: string; label: string }
@@ -19,6 +22,7 @@ type ShareData = {
     phone: string | null
     status: string
     source_channel: string | null
+    source_detail: string | null
     resume_url: string | null
     cover_letter_text: string | null
     cover_letter_url: string | null
@@ -40,6 +44,20 @@ type ShareData = {
     id: string
     title: string
     department: string | null
+    position: string | null
+    employment_type: string | null
+    experience_level: string | null
+    headcount: number | null
+    salary_range: string | null
+    location: string | null
+    work_hours: string | null
+    description: string | null
+    requirements: string | null
+    preferred: string | null
+    benefits: string | null
+    hiring_process: string | null
+    company_intro: string | null
+    team_intro: string | null
     job_type: string | null
     ai_questions: string[] | null
   } | null
@@ -284,19 +302,106 @@ export default function CandidateSharePage() {
           </div>
         </div>
 
-        {/* 지원 공고 */}
-        {job && (
-          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
-            <div className="flex items-start gap-3">
-              <Briefcase className="h-5 w-5 text-brand-500 mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs text-gray-400 mb-0.5">지원 포지션</p>
-                <p className="text-base font-bold text-gray-900">{job.title}</p>
-                {job.department && <p className="text-sm text-gray-600">{job.department}</p>}
+        {/* 지원 공고 + 직무 상세 */}
+        {job && (() => {
+          const empLabel = job.employment_type ? (EMPLOYMENT_TYPE_LABELS[job.employment_type] || job.employment_type) : null
+          const expLabel = job.experience_level ? (EXPERIENCE_LEVEL_LABELS[job.experience_level] || job.experience_level) : null
+          const hasDetails = !!(job.description || job.requirements || job.preferred || job.benefits || job.hiring_process)
+          return (
+            <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+              <div className="flex items-start gap-3 mb-3">
+                <Briefcase className="h-5 w-5 text-brand-500 mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-gray-400 mb-0.5">지원 포지션</p>
+                  <p className="text-base font-bold text-gray-900">{job.title}</p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-gray-600">
+                    {job.department && <span>{job.department}</span>}
+                    {job.position && <><span className="text-gray-300">·</span><span>{job.position}</span></>}
+                  </div>
+                </div>
+              </div>
+
+              {/* 근무 조건 메타 */}
+              {(empLabel || expLabel || job.headcount || job.salary_range || job.location || job.work_hours) && (
+                <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                  {empLabel && (
+                    <div className="flex items-center gap-1.5 text-gray-700">
+                      <Users className="h-3.5 w-3.5 text-gray-400 shrink-0" /><span>{empLabel}</span>
+                    </div>
+                  )}
+                  {expLabel && (
+                    <div className="flex items-center gap-1.5 text-gray-700">
+                      <Sparkles className="h-3.5 w-3.5 text-gray-400 shrink-0" /><span>{expLabel}</span>
+                    </div>
+                  )}
+                  {job.headcount && (
+                    <div className="flex items-center gap-1.5 text-gray-700">
+                      <Users className="h-3.5 w-3.5 text-gray-400 shrink-0" /><span>채용 {job.headcount}명</span>
+                    </div>
+                  )}
+                  {job.salary_range && (
+                    <div className="flex items-center gap-1.5 text-gray-700">
+                      <Banknote className="h-3.5 w-3.5 text-gray-400 shrink-0" /><span className="truncate">{job.salary_range}</span>
+                    </div>
+                  )}
+                  {job.location && (
+                    <div className="flex items-center gap-1.5 text-gray-700 col-span-2">
+                      <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" /><span className="truncate">{job.location}</span>
+                    </div>
+                  )}
+                  {job.work_hours && (
+                    <div className="flex items-center gap-1.5 text-gray-700 col-span-2">
+                      <ClockIcon className="h-3.5 w-3.5 text-gray-400 shrink-0" /><span className="truncate">{job.work_hours}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 직무 상세 */}
+              {hasDetails && (
+                <div className="space-y-3 border-t border-gray-100 pt-3">
+                  {job.description && (
+                    <JobDetailSection title="📋 담당 업무" body={job.description} />
+                  )}
+                  {job.requirements && (
+                    <JobDetailSection title="✅ 자격 요건 (필수)" body={job.requirements} />
+                  )}
+                  {job.preferred && (
+                    <JobDetailSection title="⭐ 우대 사항" body={job.preferred} />
+                  )}
+                  {job.benefits && (
+                    <JobDetailSection title="🎁 복리후생" body={job.benefits} />
+                  )}
+                  {job.hiring_process && (
+                    <JobDetailSection title="🧭 전형 절차" body={job.hiring_process} />
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* 유입 경로 */}
+        {(candidate.source_channel || candidate.source_detail) && (() => {
+          const ch = candidate.source_channel as SourceChannel | null
+          const label = ch ? (SOURCE_CHANNEL_LABELS[ch] || candidate.source_channel) : '미상'
+          return (
+            <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+              <div className="flex items-start gap-3">
+                <Compass className="h-5 w-5 text-brand-500 mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-gray-400 mb-0.5">유입 경로</p>
+                  <p className="text-base font-semibold text-gray-900">{label}</p>
+                  {candidate.source_detail && (
+                    <p className="text-sm text-gray-600 mt-0.5 whitespace-pre-wrap break-words">
+                      {candidate.source_detail}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* 연락처 */}
         <div className="bg-white rounded-2xl shadow-sm p-5 mb-4 space-y-3">
@@ -670,6 +775,15 @@ export default function CandidateSharePage() {
           이 페이지는 외부 공유 링크입니다. 외부 유출 및 재공유를 금지합니다.
         </p>
       </div>
+    </div>
+  )
+}
+
+function JobDetailSection({ title, body }: { title: string; body: string }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold text-gray-700 mb-1">{title}</p>
+      <p className="text-sm text-gray-700 whitespace-pre-wrap break-keep leading-relaxed">{body}</p>
     </div>
   )
 }

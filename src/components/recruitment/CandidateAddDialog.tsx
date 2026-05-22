@@ -12,6 +12,8 @@ import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
+import type { SourceChannel } from '@/types/recruitment'
 import { Upload, FileCheck, X, Loader2, Link2, Plus } from 'lucide-react'
 
 interface JobPostingOption { id: string; title: string; status: string }
@@ -39,6 +41,8 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  // 유입 경로 — 담당자가 수동 추가 시에도 어느 채널로 들어온 지원자인지 선택
+  const [sourceChannel, setSourceChannel] = useState<SourceChannel>('direct')
   const [sourceDetail, setSourceDetail] = useState('')
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
@@ -66,7 +70,7 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
 
   function reset() {
     setJobPostingId(defaultJobPostingId || '')
-    setName(''); setEmail(''); setPhone(''); setSourceDetail('')
+    setName(''); setEmail(''); setPhone(''); setSourceChannel('direct'); setSourceDetail('')
     setResumeFile(null); setCoverFile(null)
     setPortfolioFiles([]); setPortfolioLinks([])
     setLinkLabel(''); setLinkUrl('')
@@ -185,7 +189,8 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
           name: name.trim(),
           email: email.trim(),
           phone: phone.trim() || null,
-          source_channel: 'manual_upload',
+          // 담당자가 선택한 채널 (기본 direct) — 면접 시 공유 페이지에서 유입경로로 노출
+          source_channel: sourceChannel,
           source_detail: sourceDetail.trim() || null,
           status: 'applied',
         })
@@ -284,8 +289,29 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="연락처 (선택)" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-1234-5678" />
-            <Input label="출처 (선택)" value={sourceDetail} onChange={(e) => setSourceDetail(e.target.value)} placeholder="지인 추천, 이메일 직접 등" />
+            <Select
+              label="유입 경로 *"
+              value={sourceChannel}
+              onChange={(e) => setSourceChannel(e.target.value as SourceChannel)}
+              options={(Object.entries(SOURCE_CHANNEL_LABELS) as [SourceChannel, string][])
+                .map(([v, l]) => ({ value: v, label: l }))}
+            />
           </div>
+          <Input
+            label="출처 상세 (선택)"
+            value={sourceDetail}
+            onChange={(e) => setSourceDetail(e.target.value)}
+            placeholder={
+              sourceChannel === 'headhunter' ? '예: ○○ 헤드헌팅 - 김XX 매니저'
+              : sourceChannel === 'referral' ? '예: 디자인팀 홍길동 추천'
+              : sourceChannel === 'university' ? '예: ○○대 진로상담센터'
+              : sourceChannel === 'agency' ? '예: ○○ 파견업체'
+              : sourceChannel === 'job_korea' ? '예: 잡코리아 일반 공고'
+              : sourceChannel === 'direct' ? '예: 사람인 / 링크드인 / 인스타그램 등 — 구체 채널'
+              : '필요 시 자세한 출처를 입력하세요'
+            }
+          />
+          <p className="text-[11px] text-gray-400">유입 경로는 면접 시 공유 페이지에 표시됩니다.</p>
         </div>
 
         {/* 첨부 파일 */}
