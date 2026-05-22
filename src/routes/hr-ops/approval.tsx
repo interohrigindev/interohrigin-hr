@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams, useParams, useNavigate } from 'react-router-dom'
 import {
   FileCheck, Clock, CheckCircle, XCircle,
@@ -137,6 +137,14 @@ export default function ApprovalManagementPage() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<TabKey>('my_requests')
+  // 결재 현황 카드 클릭 시 탭 영역으로 스크롤
+  const tabsRef = useRef<HTMLDivElement | null>(null)
+  function jumpToTab(key: TabKey) {
+    setActiveTab(key)
+    setTimeout(() => {
+      tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+  }
   const [searchQuery, setSearchQuery] = useState('')
   const [filterDept, setFilterDept] = useState<string>('') // 부서별 필터
 
@@ -1320,35 +1328,56 @@ export default function ApprovalManagementPage() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats — 클릭 시 해당 탭으로 이동 + 결재 목록 영역으로 스크롤 */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Card className="border-l-4 border-l-blue-500">
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Send className="h-4 w-4 text-blue-500" />
-              <span className="text-[11px] text-gray-500">내가 신청한 결재</span>
-            </div>
-            <p className="text-2xl font-bold text-blue-600">{stats.myRequests}건</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-amber-500">
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Clock className="h-4 w-4 text-amber-500" />
-              <span className="text-[11px] text-gray-500">내가 결재할 문서</span>
-            </div>
-            <p className="text-2xl font-bold text-amber-600">{stats.pendingApproval}건</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-emerald-500">
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center gap-2 mb-1">
-              <CheckCircle className="h-4 w-4 text-emerald-500" />
-              <span className="text-[11px] text-gray-500">완료된 결재</span>
-            </div>
-            <p className="text-2xl font-bold text-emerald-600">{stats.completed}건</p>
-          </CardContent>
-        </Card>
+        <button
+          type="button"
+          onClick={() => jumpToTab('my_requests')}
+          className="text-left focus:outline-none focus:ring-2 focus:ring-blue-300 rounded-lg"
+          aria-label={`내 결재함으로 이동 (${stats.myRequests}건)`}
+        >
+          <Card className="border-l-4 border-l-blue-500 cursor-pointer hover:shadow-md hover:bg-blue-50/30 transition-all">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Send className="h-4 w-4 text-blue-500" />
+                <span className="text-[11px] text-gray-500">내가 신청한 결재</span>
+              </div>
+              <p className="text-2xl font-bold text-blue-600">{stats.myRequests}건</p>
+            </CardContent>
+          </Card>
+        </button>
+        <button
+          type="button"
+          onClick={() => jumpToTab('pending_approval')}
+          className="text-left focus:outline-none focus:ring-2 focus:ring-amber-300 rounded-lg"
+          aria-label={`받은 결재함으로 이동 (${stats.pendingApproval}건)`}
+        >
+          <Card className="border-l-4 border-l-amber-500 cursor-pointer hover:shadow-md hover:bg-amber-50/30 transition-all">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="h-4 w-4 text-amber-500" />
+                <span className="text-[11px] text-gray-500">내가 결재할 문서</span>
+              </div>
+              <p className="text-2xl font-bold text-amber-600">{stats.pendingApproval}건</p>
+            </CardContent>
+          </Card>
+        </button>
+        <button
+          type="button"
+          onClick={() => jumpToTab(isAdmin ? 'all' : 'my_requests')}
+          className="text-left focus:outline-none focus:ring-2 focus:ring-emerald-300 rounded-lg"
+          aria-label={`완료된 결재 보기 (${stats.completed}건)`}
+        >
+          <Card className="border-l-4 border-l-emerald-500 cursor-pointer hover:shadow-md hover:bg-emerald-50/30 transition-all">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle className="h-4 w-4 text-emerald-500" />
+                <span className="text-[11px] text-gray-500">완료된 결재</span>
+              </div>
+              <p className="text-2xl font-bold text-emerald-600">{stats.completed}건</p>
+            </CardContent>
+          </Card>
+        </button>
       </div>
 
       {/* ── 새 결재 신청 — 컴팩트 접기/펼치기 + 카테고리 탭 ── */}
@@ -1426,7 +1455,7 @@ export default function ApprovalManagementPage() {
       )}
 
       {/* Tabs + Search */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div ref={tabsRef} className="flex items-center justify-between flex-wrap gap-2 scroll-mt-4">
         <div className="flex bg-gray-100 rounded-lg p-0.5">
           {([
             { key: 'my_requests' as TabKey, label: '내 결재함', count: stats.myRequests },
