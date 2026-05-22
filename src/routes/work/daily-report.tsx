@@ -218,6 +218,8 @@ export default function DailyReportPage() {
 
   // 신청자 부서 기반 결재선 매칭 — 우선순위:
   //   1) team_id = 본인 팀  →  2) department_id = 본인 본부 (team_id NULL)  →  3) 둘 다 NULL (전체 fallback)
+  // ⚠️ 4) 마지막 fallback 으로 reportTemplates[0] 을 반환하면 '다른 부서 템플릿'이 잡혀서
+  //     관리자가 등록하지 않은 결재선이 노출되는 회귀 발생 (사용자 실보고) — null 반환으로 명시적 안내.
   const reportTemplate = useMemo<DailyReportTemplateRow | null>(() => {
     if (reportTemplates.length === 0) return null
     const me = allEmployees.find((e) => e.id === profile?.id)
@@ -229,9 +231,10 @@ export default function DailyReportPage() {
     if (teamMatch.length > 0) return teamMatch[0]
     const deptMatch = reportTemplates.filter((t) => t.department_id && t.department_id === myDivisionId && !t.team_id)
     if (deptMatch.length > 0) return deptMatch[0]
-    const fallback = reportTemplates.filter((t) => !t.team_id && !t.department_id)
-    if (fallback.length > 0) return fallback[0]
-    return reportTemplates[0] || null
+    const globalFallback = reportTemplates.filter((t) => !t.team_id && !t.department_id)
+    if (globalFallback.length > 0) return globalFallback[0]
+    // 본인 부서 매칭도 없고 전사 fallback 도 없으면 — 무작위 다른 부서 템플릿을 잡지 말고 null
+    return null
   }, [reportTemplates, allEmployees, departments, profile?.id])
 
   // D2-4: 내 OJT 진행 상황 로드 (멘티인 경우)

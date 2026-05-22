@@ -205,9 +205,11 @@ export default function LeaveManagementPage() {
     if (teamMatch.length > 0) return teamMatch[0]
     const deptMatch = leaveTemplates.filter((t) => t.department_id && t.department_id === myDivisionId && !t.team_id)
     if (deptMatch.length > 0) return deptMatch[0]
-    const fallback = leaveTemplates.filter((t) => !t.team_id && !t.department_id)
-    if (fallback.length > 0) return fallback[0]
-    return leaveTemplates[0] || null
+    const globalFallback = leaveTemplates.filter((t) => !t.team_id && !t.department_id)
+    if (globalFallback.length > 0) return globalFallback[0]
+    // ⚠️ 본인 부서 매칭도 없고 전사 fallback 도 없으면 — 무작위 다른 부서 템플릿을 잡으면 안 됨.
+    // (이전: leaveTemplates[0] 반환 → 관리자가 등록하지 않은 결재선이 노출되는 회귀)
+    return null
   }, [leaveTemplates, allEmployees, departments, profile?.id])
 
   async function fetchData() {
