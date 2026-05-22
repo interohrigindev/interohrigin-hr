@@ -115,8 +115,16 @@ export default function LeaveManagementPage() {
   const [reqDays, setReqDays] = useState(1)
   const [reqReason, setReqReason] = useState('')
   // 결재라인 (D1-4: 자동 지정 — 수동 선택 제거)
-  // approval_templates(doc_type='leave').steps 를 우선 사용 — role 별 모든 매칭 직원 자동 배정
-  const [leaveTemplate, setLeaveTemplate] = useState<{ steps: { role: string; label: string }[] } | null>(null)
+  // approval_templates(doc_type='leave') 활성 전체 로드 후 신청자 부서로 매칭
+  // step.approver_ids 가 있으면 그 직원들 우선 사용, 없으면 role 기반 자동 매칭
+  interface LeaveTemplateRow {
+    id: string
+    name: string
+    department_id?: string | null
+    team_id?: string | null
+    steps: { role: string; label?: string; approver_ids?: string[] }[]
+  }
+  const [leaveTemplates, setLeaveTemplates] = useState<LeaveTemplateRow[]>([])
   // ApprovalLineViewer 사용
   const [saving, setSaving] = useState(false)
   const [sendingPromotionId, setSendingPromotionId] = useState<string | null>(null)
@@ -173,11 +181,34 @@ export default function LeaveManagementPage() {
 
   useEffect(() => { fetchData() }, [profile?.id])
 
-  // 연차 결재선 템플릿 로드 (고정된 결재선)
+  // 연차 결재선 템플릿 — 활성 전체 로드 (부서별 매칭은 effectiveLeaveTemplate 에서 처리)
   useEffect(() => {
-    supabase.from('approval_templates').select('steps').eq('doc_type', 'leave').eq('is_active', true).maybeSingle()
-      .then(({ data }) => { if (data?.steps) setLeaveTemplate(data as { steps: { role: string; label: string }[] }) })
+    supabase.from('approval_templates')
+      .select('id, name, department_id, team_id, steps')
+      .eq('doc_type', 'leave')
+      .eq('is_active', true)
+      .then(({ data }) => {
+        if (data) setLeaveTemplates((data as unknown) as LeaveTemplateRow[])
+      })
   }, [])
+
+  // 신청자의 부서 기반 결재선 템플릿 매칭 — approval.tsx getTemplateForDocType 패턴 동일
+  // 1순위: team_id = 본인 팀 / 2순위: department_id = 본인 본부 / 3순위: 둘 다 NULL (전체 fallback)
+  const effectiveLeaveTemplate = useMemo<LeaveTemplateRow | null>(() => {
+    if (leaveTemplates.length === 0) return null
+    const me = allEmployees.find((e) => e.id === profile?.id)
+    const myDeptId = me?.department_id || null
+    const myDept = departments.find((d) => d.id === myDeptId)
+    const myDivisionId = myDept?.parent_id || myDeptId
+
+    const teamMatch = leaveTemplates.filter((t) => t.team_id && t.team_id === myDeptId)
+    if (teamMatch.length > 0) return teamMatch[0]
+    const deptMatch = leaveTemplates.filter((t) => t.department_id && t.department_id === myDivisionId && !t.team_id)
+    if (deptMatch.length > 0) return deptMatch[0]
+    const fallback = leaveTemplates.filter((t) => !t.team_id && !t.department_id)
+    if (fallback.length > 0) return fallback[0]
+    return leaveTemplates[0] || null
+  }, [leaveTemplates, allEmployees, departments, profile?.id])
 
   async function fetchData() {
     if (!profile?.id) return
@@ -269,16 +300,22 @@ export default function LeaveManagementPage() {
     const approvalLine: ApprovalStep[] = []
     let step = 0
 
-    if (leaveTemplate && leaveTemplate.steps && leaveTemplate.steps.length > 0) {
-      // 템플릿 step.role 별로 매칭되는 모든 직원을 결재단계로 추가
-      // role 예시: 'hr_admin' | 'leader' | 'executive' | 'director' | 'division_head' | 'ceo' | 'finance'
+    if (effectiveLeaveTemplate && effectiveLeaveTemplate.steps && effectiveLeaveTemplate.steps.length > 0) {
+      // 템플릿 step 별로 결재단계 구성
+      // 우선순위 1: step.approver_ids 가 있으면 그 직원들만 사용 (관리자가 직접 지정한 사람들)
+      // 우선순위 2: approver_ids 가 없으면 role 기반 자동 매칭 (legacy)
       // 신청자 본인은 제외 + 중복 방지
       const usedIds = new Set<string>([profile.id])
 
-      for (const tplStep of leaveTemplate.steps) {
+      for (const tplStep of effectiveLeaveTemplate.steps) {
         let candidates: typeof allEmployees = []
 
-        if (tplStep.role === 'leader') {
+        // ── 우선순위 1: 관리자가 결재선 편집기에서 직접 지정한 approver_ids ──
+        if (Array.isArray(tplStep.approver_ids) && tplStep.approver_ids.length > 0) {
+          candidates = tplStep.approver_ids
+            .map((id) => allEmployees.find((e) => e.id === id))
+            .filter((e): e is typeof allEmployees[number] => !!e)
+        } else if (tplStep.role === 'leader') {
           // 신청자 부서의 리더 우선, 없으면 전사 리더
           candidates = autoLeader ? [autoLeader] : leaders
         } else if (tplStep.role === 'executive' || tplStep.role === 'director' || tplStep.role === 'division_head') {
@@ -856,11 +893,16 @@ export default function LeaveManagementPage() {
             </div>
             {(() => {
               const steps: { role_label: string; approver_name: string; status: 'pending' }[] = []
-              if (leaveTemplate && leaveTemplate.steps && leaveTemplate.steps.length > 0) {
+              if (effectiveLeaveTemplate && effectiveLeaveTemplate.steps && effectiveLeaveTemplate.steps.length > 0) {
                 const used = new Set<string>([profile?.id || ''])
-                for (const ts of leaveTemplate.steps) {
+                for (const ts of effectiveLeaveTemplate.steps) {
                   let candidates: typeof allEmployees = []
-                  if (ts.role === 'leader') candidates = autoLeader ? [autoLeader] : leaders
+                  // 우선순위 1: 관리자가 지정한 approver_ids
+                  if (Array.isArray(ts.approver_ids) && ts.approver_ids.length > 0) {
+                    candidates = ts.approver_ids
+                      .map((id) => allEmployees.find((e) => e.id === id))
+                      .filter((e): e is typeof allEmployees[number] => !!e)
+                  } else if (ts.role === 'leader') candidates = autoLeader ? [autoLeader] : leaders
                   else if (ts.role === 'executive' || ts.role === 'director' || ts.role === 'division_head')
                     candidates = allEmployees.filter((e) => e.role && ['director','division_head','executive'].includes(e.role))
                   else if (ts.role === 'hr_admin') candidates = hrAdmin ? [hrAdmin] : []
