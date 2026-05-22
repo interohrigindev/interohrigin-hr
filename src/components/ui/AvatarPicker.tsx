@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react'
 import { Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { safeStorageUpload, describeUploadError } from '@/lib/storage-upload'
 import { AVATAR_CATEGORIES, ALL_AVATARS, renderAvatarSvg, extractAvatarKey } from '@/lib/avatar-data'
 
 export const AVATAR_LIST = ALL_AVATARS
@@ -70,11 +71,12 @@ export function AvatarPicker({ value, onChange }: AvatarPickerProps) {
       const safeName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const path = `employee-photos/${user.id}/${timestamp}-${safeName}`
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(path, selectedFile, { upsert: true })
+      const { error: uploadError } = await safeStorageUpload('avatars', path, selectedFile, {
+        upsert: true,
+        timeoutMs: 60_000, // 아바타 2MB 제한 — 1분 충분
+      })
 
-      if (uploadError) { setError(`업로드 실패: ${uploadError.message}`); return }
+      if (uploadError) { setError(describeUploadError(uploadError)); return }
 
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')

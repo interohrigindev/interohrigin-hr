@@ -12,6 +12,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { safeStorageUpload, describeUploadError } from '@/lib/storage-upload'
 import { transcribeAudio, summarizeMeeting, DEEPGRAM_COST_PER_MIN } from '@/lib/ai-client'
 import { generateMeetingPdf } from '@/lib/pdf-meeting'
 import { useAuth } from '@/hooks/useAuth'
@@ -315,10 +316,11 @@ export default function MeetingNotes() {
         const suffix = recordingChunks.length > 1 ? `_part${chunk.part}` : ''
         const filePath = `${profile.id}/${meeting.id}${suffix}.webm`
 
-        // Storage 업로드
-        await supabase.storage
-          .from('meeting-recordings')
-          .upload(filePath, chunk.blob, { contentType: 'audio/webm' })
+        // Storage 업로드 — 청크는 보통 5~10MB. timeoutMs 5분 + 재시도 1회.
+        const { error: chunkErr } = await safeStorageUpload('meeting-recordings', filePath, chunk.blob, {
+          contentType: 'audio/webm',
+        })
+        if (chunkErr) throw new Error(`녹음 청크 ${chunk.part} 업로드 실패: ${describeUploadError(chunkErr)}`)
         if (i === 0) {
           const { data: urlData } = supabase.storage.from('meeting-recordings').getPublicUrl(filePath)
           firstUploadUrl = urlData.publicUrl

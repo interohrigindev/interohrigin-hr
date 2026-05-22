@@ -12,6 +12,7 @@
  *  - portfolio:     {candidate_id}/portfolio_{timestamp}_{n}.{ext}
  */
 import { supabase } from './supabase'
+import { safeStorageUpload, describeUploadError } from './storage-upload'
 
 export type CandidateFileKind = 'resume' | 'cover_letter' | 'portfolio'
 
@@ -34,8 +35,8 @@ export async function uploadCandidateFile(
   const fname = kind === 'portfolio' ? `portfolio_${ts}_${idx}.${ext}` : `${kind}_${ts}.${ext}`
   const path = `${candidateId}/${fname}`
 
-  const { error } = await supabase.storage.from(PRIMARY_BUCKET).upload(path, file, { upsert: false })
-  if (error) return { path: '', error: error.message }
+  const { error } = await safeStorageUpload(PRIMARY_BUCKET, path, file, { upsert: false })
+  if (error) return { path: '', error: describeUploadError(error) }
   return { path }
 }
 

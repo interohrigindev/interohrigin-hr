@@ -11,6 +11,7 @@ import { Select } from '@/components/ui/Select'
 import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
+import { safeStorageUpload, describeUploadError } from '@/lib/storage-upload'
 import { useAuth } from '@/hooks/useAuth'
 import { SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
 import type { SourceChannel } from '@/types/recruitment'
@@ -203,10 +204,11 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
       //    candidate-report.tsx 가 자동으로 createSignedUrl 로 변환해서 표시.
       const resumeExt = resumeFile.name.split('.').pop() || 'pdf'
       const resumePath = `${jobPostingId}/${candidate.id}/resume.${resumeExt}`
-      const { error: resumeErr } = await supabase.storage
-        .from('resumes')
-        .upload(resumePath, resumeFile, { upsert: true, contentType: resumeFile.type })
-      if (resumeErr) throw new Error('이력서 업로드 실패: ' + resumeErr.message)
+      const { error: resumeErr } = await safeStorageUpload('resumes', resumePath, resumeFile, {
+        upsert: true,
+        contentType: resumeFile.type,
+      })
+      if (resumeErr) throw new Error('이력서 업로드 실패: ' + describeUploadError(resumeErr))
 
       // 4) Storage 업로드 (자소서, 선택)
       let coverPath: string | null = null
@@ -214,10 +216,11 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
       if (coverFile) {
         const coverExt = coverFile.name.split('.').pop() || 'pdf'
         coverPath = `${jobPostingId}/${candidate.id}/cover-letter.${coverExt}`
-        const { error: coverErr } = await supabase.storage
-          .from('resumes')
-          .upload(coverPath, coverFile, { upsert: true, contentType: coverFile.type })
-        if (coverErr) throw new Error('자기소개서 업로드 실패: ' + coverErr.message)
+        const { error: coverErr } = await safeStorageUpload('resumes', coverPath, coverFile, {
+          upsert: true,
+          contentType: coverFile.type,
+        })
+        if (coverErr) throw new Error('자기소개서 업로드 실패: ' + describeUploadError(coverErr))
         coverFilename = coverFile.name
       }
 
@@ -227,12 +230,13 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
       for (const f of portfolioFiles) {
         const safeName = f.name.replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ.\-]/g, '_')
         const path = `portfolios/${candidate.id}/${Date.now()}_${safeName}`
-        const { error: pfErr } = await supabase.storage
-          .from('resumes')
-          .upload(path, f, { upsert: false, contentType: f.type || undefined })
+        const { error: pfErr } = await safeStorageUpload('resumes', path, f, {
+          upsert: false,
+          contentType: f.type || undefined,
+        })
         if (pfErr) {
           // 한 개 실패해도 나머지는 계속 진행 + 사용자에게 알림
-          toast(`포트폴리오 "${f.name}" 업로드 실패: ${pfErr.message}`, 'error')
+          toast(`포트폴리오 "${f.name}" 업로드 실패: ${describeUploadError(pfErr)}`, 'error')
           continue
         }
         uploadedPortfolioFiles.push({ path, filename: f.name, size: f.size })

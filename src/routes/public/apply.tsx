@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Upload, FileText, Loader2, CheckCircle, MapPin, Clock, Users, Banknote, CalendarDays, Briefcase, Gift, ListChecks, Building2, ArrowLeft, ChevronRight, Plus, X, Link as LinkIcon, FolderUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { safeStorageUpload, describeUploadError } from '@/lib/storage-upload'
 import type { JobPosting } from '@/types/recruitment'
 import { formatDate } from '@/lib/utils'
 import { newCandidateNotificationEmail } from '@/lib/email-templates'
@@ -104,15 +105,15 @@ export default function PublicApply() {
 
       // 1) 이력서 업로드
       const resumePath = `${postingId}/${Date.now()}_resume${getExt(resumeFile.name)}`
-      const { error: uploadErr } = await supabase.storage.from('resumes').upload(resumePath, resumeFile)
-      if (uploadErr) throw new Error('이력서 업로드 실패: ' + uploadErr.message)
+      const { error: uploadErr } = await safeStorageUpload('resumes', resumePath, resumeFile)
+      if (uploadErr) throw new Error('이력서 업로드 실패: ' + describeUploadError(uploadErr))
 
       // 2) 자기소개서 업로드 (선택)
       let coverLetterPath: string | null = null
       if (coverLetterFile) {
         coverLetterPath = `${postingId}/${Date.now()}_cover_letter${getExt(coverLetterFile.name)}`
-        const { error: clUploadErr } = await supabase.storage.from('resumes').upload(coverLetterPath, coverLetterFile)
-        if (clUploadErr) throw new Error('자기소개서 업로드 실패: ' + clUploadErr.message)
+        const { error: clUploadErr } = await safeStorageUpload('resumes', coverLetterPath, coverLetterFile)
+        if (clUploadErr) throw new Error('자기소개서 업로드 실패: ' + describeUploadError(clUploadErr))
       }
 
       // 3) 포트폴리오 파일 다중 업로드
@@ -120,8 +121,8 @@ export default function PublicApply() {
       for (let i = 0; i < portfolioFiles.length; i++) {
         const pf = portfolioFiles[i]
         const path = `${postingId}/${Date.now()}_portfolio_${i}${getExt(pf.name)}`
-        const { error: pfErr } = await supabase.storage.from('resumes').upload(path, pf)
-        if (pfErr) throw new Error(`포트폴리오 업로드 실패 (${pf.name}): ${pfErr.message}`)
+        const { error: pfErr } = await safeStorageUpload('resumes', path, pf)
+        if (pfErr) throw new Error(`포트폴리오 업로드 실패 (${pf.name}): ${describeUploadError(pfErr)}`)
         uploadedPortfolioFiles.push({ path, filename: pf.name, size: pf.size })
       }
 

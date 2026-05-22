@@ -5,6 +5,7 @@ import {
   Quote, Code, Minus, Type,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { safeStorageUpload } from '@/lib/storage-upload'
 
 const FONT_SIZE_OPTIONS: { label: string; px: string }[] = [
   { label: '작게', px: '12px' },
@@ -83,11 +84,11 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
     setTimeout(notifyChange, 0)
   }, [execCommand, notifyChange])
 
-  // 파일 업로드 공통
+  // 파일 업로드 공통 — 타임아웃/재시도 보호 (safeStorageUpload)
   async function uploadFile(file: File): Promise<string | null> {
     const ext = file.name.split('.').pop() || 'bin'
     const path = `project-files/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-    const { error } = await supabase.storage.from('chat-attachments').upload(path, file)
+    const { error } = await safeStorageUpload('chat-attachments', path, file)
     if (error) return null
     const { data } = supabase.storage.from('chat-attachments').getPublicUrl(path)
     return data.publicUrl
