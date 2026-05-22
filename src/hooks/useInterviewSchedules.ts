@@ -27,15 +27,23 @@ export function useInterviewSchedules(candidateId?: string) {
   return { schedules, loading, refetch: fetch }
 }
 
+export type ScheduleWithCandidate = InterviewSchedule & {
+  candidate_name?: string
+  candidate_status?: string | null
+  candidate_position?: string | null
+  job_title?: string | null
+}
+
 export function useAllSchedules(dateFrom?: string, dateTo?: string) {
-  const [schedules, setSchedules] = useState<(InterviewSchedule & { candidate_name?: string })[]>([])
+  const [schedules, setSchedules] = useState<ScheduleWithCandidate[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetch = useCallback(async () => {
     setLoading(true)
     let query = supabase
       .from('interview_schedules')
-      .select('*, candidates(name)')
+      // 불합격(rejected) 지원자의 이름·직무 정보도 캘린더에 노출되어야 하므로 schedule 단에서 join
+      .select('*, candidates(name, status, position, job_postings(title))')
       .order('scheduled_at', { ascending: true })
 
     if (dateFrom) query = query.gte('scheduled_at', dateFrom)
@@ -44,10 +52,17 @@ export function useAllSchedules(dateFrom?: string, dateTo?: string) {
     const { data } = await query
     if (data) {
       setSchedules(
-        data.map((s: any) => ({
-          ...s,
-          candidate_name: s.candidates?.name || '알 수 없음',
-        }))
+        data.map((s: any) => {
+          const cand = s.candidates
+          const posting = cand?.job_postings
+          return {
+            ...s,
+            candidate_name: cand?.name || '알 수 없음',
+            candidate_status: cand?.status ?? null,
+            candidate_position: cand?.position ?? null,
+            job_title: posting?.title ?? null,
+          }
+        })
       )
     }
     setLoading(false)

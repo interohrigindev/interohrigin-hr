@@ -827,16 +827,46 @@ ${candidateList}
                       </div>
                       <div className="space-y-0.5">
                         {daySchedules.slice(0, 3).map((s: any) => {
+                          // candidates 배열은 활성 후보만 → fallback 으로 schedule.candidate_name 사용 (불합격자도 노출)
                           const cand = candidates.find((c) => c.id === s.candidate_id)
+                          const name = cand?.name || s.candidate_name || '?'
+                          const status = (cand?.status as string | undefined) || s.candidate_status
+                          const isRejected = status === 'rejected'
+                          const isHired = status === 'hired'
+                          const interviewTypeLabel = s.interview_type === 'video' ? '화상' : '대면'
+                          const jobLabel = s.job_title || s.candidate_position || ''
+                          const interviewerNames = Array.isArray(s.interviewer_ids)
+                            ? s.interviewer_ids
+                                .map((iid: string) => interviewers.find((i) => i.id === iid)?.name)
+                                .filter(Boolean)
+                                .join(', ')
+                            : ''
+                          // 색상: 불합격 = 회색+취소선 / 합격 = 에메랄드 / 그 외 = 브랜드
+                          const cls = isRejected
+                            ? 'bg-gray-100 text-gray-400 line-through hover:bg-gray-200'
+                            : isHired
+                              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
                           return (
-                            <button
-                              key={s.id}
-                              onClick={() => navigate(`/admin/recruitment/candidates/${s.candidate_id}`)}
-                              className="block w-full text-left text-[10px] px-1 py-0.5 rounded bg-brand-50 text-brand-700 truncate hover:bg-brand-100"
-                              title={`${format(new Date(s.scheduled_at), 'HH:mm')} ${cand?.name || ''}`}
-                            >
-                              {format(new Date(s.scheduled_at), 'HH:mm')} {cand?.name || '?'}
-                            </button>
+                            <div key={s.id} className="relative group">
+                              <button
+                                onClick={() => navigate(`/admin/recruitment/candidates/${s.candidate_id}`)}
+                                className={`block w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${cls}`}
+                              >
+                                {format(new Date(s.scheduled_at), 'HH:mm')} {name}
+                              </button>
+                              {/* 커스텀 hover 툴팁 — 퀵 + 심플 */}
+                              <div className="pointer-events-none absolute left-0 top-full mt-1 z-30 hidden group-hover:block w-56 rounded-md bg-gray-900 text-white text-[11px] shadow-lg p-2 space-y-1">
+                                <div className="font-semibold text-sm">{name}{isRejected && ' (불합격)'}{isHired && ' (합격)'}</div>
+                                {jobLabel && <div className="text-gray-300">📋 {jobLabel}</div>}
+                                <div className="text-gray-300">
+                                  🕒 {format(new Date(s.scheduled_at), 'HH:mm')} · {interviewTypeLabel} 면접
+                                </div>
+                                <div className="text-gray-300">
+                                  👤 면접관: {interviewerNames || '-'}
+                                </div>
+                              </div>
+                            </div>
                           )
                         })}
                         {daySchedules.length > 3 && (
