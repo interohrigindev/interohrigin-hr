@@ -7,7 +7,7 @@ import { useSearchParams } from 'react-router-dom'
 import { CheckCircle2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { PBD_QUESTIONS, SCALE_LABELS } from '@/lib/pbd-questions'
-import { COMMON_QUESTIONS, type CommonQ } from '@/lib/pbd-common-questions'
+import { COMMON_QUESTIONS } from '@/lib/pbd-common-questions'
 
 const DRAFT_KEY_BASE = 'iohr-survey-test-draft-v1'
 

@@ -447,8 +447,8 @@ ${postingInfo || '정보 없음'}
 [지원자 제출 정보]
 이름: ${candidate.name}
 이력서: ${candidate.resume_url ? '제출됨 (파일 첨부)' : '미제출'}
-자기소개서 파일: ${candidate.cover_letter_url ? '제출됨 (파일 첨부)' : '미제출'}
-자기소개서 텍스트: ${candidate.cover_letter_text || '작성하지 않음'}
+자기소개서 파일: ${candidate.cover_letter_url ? '별도 제출됨 (파일 첨부)' : '별도 제출 없음 (이력서 파일 안에 포함되어 있을 수 있음)'}
+자기소개서 텍스트: ${candidate.cover_letter_text || '별도 텍스트 작성 없음'}
 ${(() => {
   const pfFiles = (candidate as unknown as { portfolio_files?: { filename: string; size: number }[] }).portfolio_files || []
   const pfLinks = (candidate as unknown as { portfolio_links?: { url: string; label: string }[] }).portfolio_links || []
@@ -460,6 +460,14 @@ ${(() => {
 })()}
 ${fileInfo}
 
+[자기소개서 처리 규칙 — 반드시 준수]
+- 많은 지원자가 자기소개서를 별도 파일로 제출하지 않고 이력서 파일 안에 통합해서 제출합니다
+- 자기소개서 파일이 "별도 제출 없음" 이어도 이력서 전체를 끝까지 읽어 자기소개·지원 동기·강점/포부·성장 과정 등 자기소개서적 요소를 찾아 분석에 반영하세요
+- 다음 표현은 weaknesses / red_flags / summary 어디에도 사용 금지:
+  "자기소개서 미제출", "자기소개서가 없음", "자기소개서 누락", "자기소개서 부재"
+- 이력서 안에 자기소개서적 요소가 포함되어 있으면 통상적인 자기소개서 제출로 간주하고 정상 평가
+- 이력서 안에서도 자기소개·지원 동기를 전혀 찾을 수 없는 경우에만 "지원 동기 파악 어려움" 정도로 1회 짧게 언급 가능 (부적합 판정 사유로는 사용 금지)
+
 [요청사항]
 위 정보와 첨부된 파일 내용을 꼼꼼히 분석하여 서류 심사 의견을 아래 JSON 형식으로 작성해주세요. 반드시 순수 JSON만 출력하고 다른 텍스트는 포함하지 마세요.
 
@@ -468,7 +476,8 @@ ${fileInfo}
 필드 설명:
 - position_fit, organization_fit: 0~100 정수
 - recommendation: PROCEED(서류통과), REVIEW(추가검토필요), REJECT(부적합) 중 택 1
-- 날짜 해석 오류로 인한 부적합 판정 금지 — 이력서의 졸업일·경력 종료일이 현재 날짜(${todayStr}) 이전이면 "이미 완료" 로 처리`
+- 날짜 해석 오류로 인한 부적합 판정 금지 — 이력서의 졸업일·경력 종료일이 현재 날짜(${todayStr}) 이전이면 "이미 완료" 로 처리
+- 자기소개서 별도 제출 여부만으로 weaknesses/red_flags/REJECT 판정 금지 (위 [자기소개서 처리 규칙] 적용)`
 
       let result
       try {
@@ -1321,8 +1330,8 @@ ${postingInfo || '정보 없음'}
 [지원자 제출 정보]
 이름: ${candidate.name}
 이력서: ${candidate.resume_url ? '제출됨 (파일 첨부)' : '미제출'}
-자기소개서 파일: ${candidate.cover_letter_url ? '제출됨 (파일 첨부)' : '미제출'}
-자기소개서 텍스트: ${candidate.cover_letter_text || '작성하지 않음'}
+자기소개서 파일: ${candidate.cover_letter_url ? '별도 제출됨 (파일 첨부)' : '별도 제출 없음 (이력서 파일 안에 포함되어 있을 수 있음)'}
+자기소개서 텍스트: ${candidate.cover_letter_text || '별도 텍스트 작성 없음'}
 ${(() => {
   const pfFiles = (candidate as unknown as { portfolio_files?: { filename: string; size: number }[] }).portfolio_files || []
   const pfLinks = (candidate as unknown as { portfolio_links?: { url: string; label: string }[] }).portfolio_links || []
@@ -1333,6 +1342,14 @@ ${(() => {
   return parts.join('\n')
 })()}
 ${fileInfo}
+
+[자기소개서 처리 규칙 — 반드시 준수]
+- 많은 지원자가 자기소개서를 별도 파일로 제출하지 않고 이력서 파일 안에 통합해서 제출합니다
+- 자기소개서 파일이 "별도 제출 없음" 이어도 이력서 전체를 끝까지 읽어 자기소개·지원 동기·강점/포부·성장 과정 등 자기소개서적 요소를 찾아 분석에 반영하세요
+- 다음 표현은 weaknesses / red_flags / summary 어디에도 사용 금지:
+  "자기소개서 미제출", "자기소개서가 없음", "자기소개서 누락", "자기소개서 부재"
+- 이력서 안에 자기소개서적 요소가 포함되어 있으면 통상적인 자기소개서 제출로 간주하고 정상 평가
+- 이력서 안에서도 자기소개·지원 동기를 전혀 찾을 수 없는 경우에만 "지원 동기 파악 어려움" 정도로 1회 짧게 언급 가능 (부적합 판정 사유로는 사용 금지)
 
 [사전 질의서 응답]
 ${surveyText || '응답 없음'}
@@ -1347,7 +1364,8 @@ ${surveyText || '응답 없음'}
 필드 설명:
 - position_fit, organization_fit: 0~100 정수
 - recommendation: PROCEED(서류통과), REVIEW(추가검토필요), REJECT(부적합) 중 택 1
-- survey_insights: 사전질의서 응답에서 도출된 핵심 인사이트`
+- survey_insights: 사전질의서 응답에서 도출된 핵심 인사이트
+- 자기소개서 별도 제출 여부만으로 weaknesses/red_flags/REJECT 판정 금지 (위 [자기소개서 처리 규칙] 적용)`
 
       setAnalysisStatus('AI 분석 요청 중... (서류+질의서 종합, 약 15~40초 소요)')
       const result = await generateAIContent(config, prompt, files.length > 0 ? files : undefined)
