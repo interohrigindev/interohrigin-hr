@@ -633,11 +633,13 @@ export default function ApprovalManagementPage() {
 
   const stats = useMemo(() => {
     const myRequests = documents.filter((d) => d.requester_id === profile?.id).length
+    // 병렬 결재: 같은 step 의 결재자 중 본인이 있고 본인 row 가 pending 이면 카운트
     const pendingApproval = documents.filter((d) => {
       if (d.status !== 'submitted' && d.status !== 'in_review') return false
       const steps = stepsMap[d.id] || []
-      const currentStepData = steps.find((s) => s.step_order === d.current_step)
-      return currentStepData?.approver_id === profile?.id && currentStepData?.action === 'pending'
+      return steps.some(
+        (s) => s.step_order === d.current_step && s.approver_id === profile?.id && s.action === 'pending',
+      )
     }).length
     const completed = documents.filter((d) => d.status === 'approved' || d.status === 'rejected').length
     return { myRequests, pendingApproval, completed }
@@ -651,11 +653,13 @@ export default function ApprovalManagementPage() {
     if (activeTab === 'my_requests') {
       result = result.filter((d) => d.requester_id === profile?.id)
     } else if (activeTab === 'pending_approval') {
+      // 병렬 결재: 같은 step 의 결재자 중 본인이 있고 본인 row 가 pending 이면 포함
       result = result.filter((d) => {
         if (d.status !== 'submitted' && d.status !== 'in_review') return false
         const steps = stepsMap[d.id] || []
-        const currentStepData = steps.find((s) => s.step_order === d.current_step)
-        return currentStepData?.approver_id === profile?.id && currentStepData?.action === 'pending'
+        return steps.some(
+          (s) => s.step_order === d.current_step && s.approver_id === profile?.id && s.action === 'pending',
+        )
       })
     }
     // 'all' tab: no filter (admin only, enforced in UI)
@@ -689,7 +693,13 @@ export default function ApprovalManagementPage() {
   }, [documents, activeTab, searchQuery, stepsMap, profile?.id, filterDept, allEmployees, departments])
 
   /* ── Approval Actions ── */
-
+  /**
+   * 병렬 결재 정책 (v2):
+   *  - 같은 step_order 에 결재자가 N명 있을 때, 누구나 먼저 결재 가능
+   *  - 본인 row 만 atomic 하게 update
+   *  - 승인: 같은 step 의 모든 row 가 approved 가 되어야 다음 step 으로 진행
+   *  - 반려: 누구 한 명이라도 반려하면 전체 반려 (즉시 종료)
+   */
   async function handleApprovalAction(docId: string, action: 'approved' | 'rejected') {
     if (!profile?.id) return
     setProcessing(true)
@@ -698,34 +708,42 @@ export default function ApprovalManagementPage() {
     if (!doc) { setProcessing(false); return }
 
     const steps = stepsMap[docId] || []
-    const currentStepData = steps.find((s) => s.step_order === doc.current_step)
+    const currentStepRows = steps.filter((s) => s.step_order === doc.current_step)
 
-    // C-2: 위임 결재 체크 — 현재 결재자가 본인이 아닌 경우 위임 확인
+    // 1) 본인 pending row 찾기 — 같은 step 의 결재자 중 본인이 있고 아직 처리 안 함
+    let myRow = currentStepRows.find((s) => s.approver_id === profile.id && s.action === 'pending')
     let isDelegated = false
     let originalApproverId: string | null = null
 
-    if (currentStepData && currentStepData.approver_id !== profile.id) {
-      // 위임받은 결재인지 확인
-      const { data: delegation } = await supabase
-        .from('approval_delegations')
-        .select('*')
-        .eq('delegator_id', currentStepData.approver_id)
-        .eq('delegate_id', profile.id)
-        .eq('is_active', true)
-        .gte('end_date', new Date().toISOString().split('T')[0])
-        .lte('start_date', new Date().toISOString().split('T')[0])
-        .maybeSingle()
-
-      if (!delegation) {
-        toast('현재 결재 차례가 아닙니다', 'error')
-        setProcessing(false)
-        return
+    // 2) 본인 row 없으면 위임 결재 체크 — 같은 step 의 pending 결재자에게서 본인이 위임받았는지
+    if (!myRow) {
+      const pendingOthers = currentStepRows.filter((s) => s.action === 'pending' && s.approver_id !== profile.id)
+      for (const row of pendingOthers) {
+        const { data: delegation } = await supabase
+          .from('approval_delegations')
+          .select('*')
+          .eq('delegator_id', row.approver_id)
+          .eq('delegate_id', profile.id)
+          .eq('is_active', true)
+          .gte('end_date', new Date().toISOString().split('T')[0])
+          .lte('start_date', new Date().toISOString().split('T')[0])
+          .maybeSingle()
+        if (delegation) {
+          myRow = row
+          isDelegated = true
+          originalApproverId = row.approver_id
+          break
+        }
       }
-      isDelegated = true
-      originalApproverId = currentStepData.approver_id
     }
 
-    // 현재 스텝 승인/반려
+    if (!myRow) {
+      toast('현재 결재 차례가 아닙니다', 'error')
+      setProcessing(false)
+      return
+    }
+
+    // 3) 본인 row 만 update (다른 결재자의 row 는 건드리지 않음 — 병렬 결재)
     const { error: stepErr } = await supabase
       .from('approval_steps')
       .update({
@@ -735,7 +753,7 @@ export default function ApprovalManagementPage() {
         is_delegated: isDelegated,
         original_approver_id: isDelegated ? originalApproverId : null,
       })
-      .eq('id', currentStepData!.id)
+      .eq('id', myRow.id)
 
     if (stepErr) {
       toast('처리 실패: ' + stepErr.message, 'error')
@@ -744,6 +762,7 @@ export default function ApprovalManagementPage() {
     }
 
     if (action === 'rejected') {
+      // 한 명이라도 반려하면 전체 반려
       await supabase
         .from('approval_documents')
         .update({
@@ -753,46 +772,69 @@ export default function ApprovalManagementPage() {
         .eq('id', docId)
       toast('반려 처리되었습니다', 'success')
     } else {
-      // C-2: 전결 처리 — 위임받은 임원이 자신의 스텝도 함께 승인
-      let nextStepToProcess = doc.current_step + 1
-      if (isDelegated && action === 'approved') {
-        // 위임자의 스텝을 승인했으니, 본인의 스텝이 다음에 있으면 자동 승인
-        const myStep = steps.find((s) => s.step_order === nextStepToProcess && s.approver_id === profile.id)
-        if (myStep) {
-          await supabase
-            .from('approval_steps')
-            .update({
-              action: 'approved',
-              comment: '전결 처리 (위임 결재와 동시 승인)',
-              acted_at: new Date().toISOString(),
-            })
-            .eq('id', myStep.id)
-          nextStepToProcess = nextStepToProcess + 1
-        }
-      }
+      // 4) 같은 step 의 다른 row 중 pending 이 남았는지 확인
+      // (방금 update 한 본인 row 는 approved 로 간주)
+      const otherRows = currentStepRows.filter((s) => s.id !== myRow!.id)
+      const stillPendingInSameStep = otherRows.some((s) => s.action === 'pending')
 
-      if (nextStepToProcess > doc.total_steps) {
-        // 최종 승인
+      if (stillPendingInSameStep) {
+        // 같은 단계 다른 결재자 대기 중 — current_step 유지 + 알림
+        const waiting = otherRows
+          .filter((s) => s.action === 'pending')
+          .map((s) => getEmpName(s.approver_id))
+          .join(', ')
         await supabase
           .from('approval_documents')
-          .update({
-            status: 'approved',
-            completed_at: new Date().toISOString(),
-          })
+          .update({ status: 'in_review' })
           .eq('id', docId)
-        toast(isDelegated ? '전결 처리로 최종 승인 완료' : '최종 승인 완료', 'success')
+        toast(`승인 완료. 같은 단계 결재자(${waiting}) 승인 대기 중입니다.`, 'success')
       } else {
-        // 다음 결재자로 이동
-        await supabase
-          .from('approval_documents')
-          .update({
-            status: 'in_review',
-            current_step: nextStepToProcess,
-          })
-          .eq('id', docId)
-        const nextStep = steps.find((s) => s.step_order === nextStepToProcess)
-        const nextName = nextStep ? getEmpName(nextStep.approver_id) : ''
-        toast(`승인 완료. 다음 결재자(${nextName})에게 전달되었습니다.`, 'success')
+        // 5) 같은 step 모든 row 가 처리됨 → 다음 step 으로 이동
+        let nextStepToProcess = doc.current_step + 1
+
+        // 전결 처리 (위임 + 다음 step 본인) — 다음 step 의 본인 row 도 자동 승인
+        if (isDelegated) {
+          const myNextRow = steps.find((s) => s.step_order === nextStepToProcess && s.approver_id === profile.id)
+          if (myNextRow) {
+            await supabase
+              .from('approval_steps')
+              .update({
+                action: 'approved',
+                comment: '전결 처리 (위임 결재와 동시 승인)',
+                acted_at: new Date().toISOString(),
+              })
+              .eq('id', myNextRow.id)
+            // 다음 step 의 다른 결재자가 모두 처리됐으면 추가로 한 단계 더 진행
+            const nextStepRows = steps.filter((s) => s.step_order === nextStepToProcess)
+            const nextOthersPending = nextStepRows.some((s) => s.id !== myNextRow.id && s.action === 'pending')
+            if (!nextOthersPending) {
+              nextStepToProcess = nextStepToProcess + 1
+            }
+          }
+        }
+
+        if (nextStepToProcess > doc.total_steps) {
+          // 최종 승인
+          await supabase
+            .from('approval_documents')
+            .update({
+              status: 'approved',
+              completed_at: new Date().toISOString(),
+            })
+            .eq('id', docId)
+          toast(isDelegated ? '전결 처리로 최종 승인 완료' : '최종 승인 완료', 'success')
+        } else {
+          await supabase
+            .from('approval_documents')
+            .update({
+              status: 'in_review',
+              current_step: nextStepToProcess,
+            })
+            .eq('id', docId)
+          const nextStepRows = steps.filter((s) => s.step_order === nextStepToProcess)
+          const nextNames = nextStepRows.map((s) => getEmpName(s.approver_id)).filter(Boolean).join(', ')
+          toast(`승인 완료. 다음 결재자(${nextNames})에게 전달되었습니다.`, 'success')
+        }
       }
     }
 
@@ -1081,10 +1123,11 @@ export default function ApprovalManagementPage() {
     const doc = selectedDoc
     const cfg = STATUS_CONFIG[doc.status] || STATUS_CONFIG.submitted
     const steps = stepsMap[doc.id] || []
-    const currentStepData = steps.find((s) => s.step_order === doc.current_step)
+    // 병렬 결재: 같은 step 의 결재자 중 본인이 있고 본인 row 가 pending 이면 내 차례
     const isMyTurn =
-      currentStepData?.approver_id === profile?.id &&
-      currentStepData?.action === 'pending' &&
+      steps.some(
+        (s) => s.step_order === doc.current_step && s.approver_id === profile?.id && s.action === 'pending',
+      ) &&
       (doc.status === 'submitted' || doc.status === 'in_review')
 
     return (
@@ -1627,10 +1670,11 @@ export default function ApprovalManagementPage() {
             {filteredDocuments.map((doc) => {
               const cfg = STATUS_CONFIG[doc.status] || STATUS_CONFIG.submitted
               const steps = stepsMap[doc.id] || []
-              const currentStepData = steps.find((s) => s.step_order === doc.current_step)
+              // 병렬 결재: 같은 step 의 결재자 중 본인이 있고 본인 row 가 pending 이면 내 차례
               const isMyTurn =
-                currentStepData?.approver_id === profile?.id &&
-                currentStepData?.action === 'pending' &&
+                steps.some(
+                  (s) => s.step_order === doc.current_step && s.approver_id === profile?.id && s.action === 'pending',
+                ) &&
                 (doc.status === 'submitted' || doc.status === 'in_review')
 
               return (
@@ -1695,10 +1739,11 @@ export default function ApprovalManagementPage() {
           const doc = selectedDoc
           const cfg = STATUS_CONFIG[doc.status] || STATUS_CONFIG.submitted
           const steps = stepsMap[doc.id] || []
-          const currentStepData = steps.find((s) => s.step_order === doc.current_step)
+          // 병렬 결재: 같은 step 의 결재자 중 본인이 있고 본인 row 가 pending 이면 내 차례
           const isMyTurn =
-            currentStepData?.approver_id === profile?.id &&
-            currentStepData?.action === 'pending' &&
+            steps.some(
+              (s) => s.step_order === doc.current_step && s.approver_id === profile?.id && s.action === 'pending',
+            ) &&
             (doc.status === 'submitted' || doc.status === 'in_review')
 
           return (
