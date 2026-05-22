@@ -61,7 +61,11 @@
       "Bash(git commit *)",
       "Bash(git push *)",
       "Bash(\" | head -30)",
-      "Bash(grep -v \"console\\\\|html\\\\|html\\\\|HTML\\\\|`\" | head -30)"
+      "Bash(grep -v \"console\\\\|html\\\\|html\\\\|HTML\\\\|`\" | head -30)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(awk 'NR>=1132 && NR<=1320 && /currentStepData/' src/routes/hr-ops/approval.tsx)",
+      "Bash(awk 'NR>=1675 && NR<=1735 && /currentStepData/' src/routes/hr-ops/approval.tsx)",
+      "Bash(awk 'NR>=1745 && NR<=1990 && /currentStepData/' src/routes/hr-ops/approval.tsx)"
     ]
   }
 }
