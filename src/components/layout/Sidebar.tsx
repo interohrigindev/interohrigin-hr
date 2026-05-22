@@ -410,21 +410,24 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     '/admin/probation-results':['/admin/probation-results'],
   }
 
+  // 조직 의사결정 권한자 — minRole / menu_permissions 모두 우회 (전체 메뉴 접근)
+  const AUTO_BYPASS_ROLES = ['ceo', 'admin', 'director', 'division_head', 'hr_admin']
+
   function isItemVisible(item: NavItem): boolean {
     if (item.hideForRoles && profile?.role && item.hideForRoles.includes(profile.role as EmployeeRole)) {
       return false
     }
     // 법적 리스크 대응 P1+: feature toggle 미활성 메뉴 숨김 (admin/ceo 도 동일하게 숨김 — 기능 토글 화면에서 활성화 후 노출)
-    // featureKey 활성 후에도 menu_permissions 권한이 있는 직원에게만 노출 (admin/ceo 는 항상 우회)
     if (item.featureKey && !enabledFeatures.has(item.featureKey)) {
       return false
     }
+    // 우회 역할은 minRole 충족 여부와 무관하게 노출
+    // (hr_admin 은 ROLE_HIERARCHY 가 2 라서 hasRole('director')=false 이지만 채용/직원/OJT 접근 필요)
+    if (profile?.role && AUTO_BYPASS_ROLES.includes(profile.role)) {
+      return true
+    }
     if (!item.minRole || hasRole(item.minRole)) {
-      // 메뉴 권한이 설정되어 있으면 허용 목록에 있는지 확인
-      // ceo/admin/director/division_head/hr_admin 은 항상 전체 접근 (조직 의사결정 권한자)
-      // 권한 미설정(null)이면 전체 허용
-      const AUTO_BYPASS_ROLES = ['ceo', 'admin', 'director', 'division_head', 'hr_admin']
-      if (allowedMenus === null || (profile?.role && AUTO_BYPASS_ROLES.includes(profile.role))) {
+      if (allowedMenus === null) {
         return true
       }
       const path = typeof item.to === 'string' ? item.to : ''
@@ -441,6 +444,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   // minRole 미충족 사용자라도 menu_permissions 에 명시적으로 권한이 부여된 하위 항목이 있으면 노출
   // (예: 리더에게 '수습 평가' 권한만 부여한 경우 OJT/수습 그룹이 열림)
   function isGroupVisible(group: NavGroup): boolean {
+    // 우회 역할은 group.minRole 무관하게 — 하위 가시 항목이 1개라도 있으면 노출
+    if (profile?.role && AUTO_BYPASS_ROLES.includes(profile.role)) {
+      return group.items.some(isItemVisible)
+    }
     const meetsRole = !group.minRole || hasRole(group.minRole)
     if (meetsRole) return group.items.some(isItemVisible)
     // minRole 미충족 — 명시적 menu_permissions 권한 보유 항목이 있으면 노출
