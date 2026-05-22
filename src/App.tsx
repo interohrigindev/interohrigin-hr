@@ -11,6 +11,7 @@ import FeatureRolloutsPage from '@/routes/admin/feature-rollouts'
 import AuditLogsPage from '@/routes/admin/audit-logs'
 import MyOvertimePage from '@/routes/my/overtime'
 import MyLeavePromotionPage from '@/routes/my/leave-promotion'
+import MyLeaveWaiverPage from '@/routes/my/leave-waiver'
 import NotificationChannelConfigPage from '@/routes/admin/notification-channels'
 import OvertimeApprovalsPage from '@/routes/admin/overtime-approvals'
 import WeeklyHoursPage from '@/routes/admin/weekly-hours'
@@ -351,6 +352,7 @@ function App() {
               {/* 연장근로 사전 승인제 — P1-1 (feature toggle 로 메뉴 노출 제어) */}
               <Route path="my/overtime"       element={<MyOvertimePage />} />
               <Route path="my/leave-promotion" element={<MyLeavePromotionPage />} />
+              <Route path="my/leave-waiver/:id" element={<MyLeaveWaiverPage />} />
               <Route path="admin/system/notification-channels" element={<AdminRoute><NotificationChannelConfigPage /></AdminRoute>} />
               <Route path="admin/overtime"    element={<OvertimeApprovalsPage />} />
 
