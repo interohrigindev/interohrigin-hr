@@ -110,6 +110,61 @@ const ROLE_LABELS: Record<string, string> = {
   leader: '리더', executive: '이사/임원', ceo: '대표', hr_admin: 'HR 관리자',
 }
 
+// 결재 신청 내용 카드의 영어 key 를 한글 라벨로 매핑 (지출결의서 / 출장 / 구매 등 공통)
+const CONTENT_FIELD_LABELS: Record<string, string> = {
+  // 금액·정산 공통
+  category: '카테고리',
+  amount: '금액',
+  currency: '통화',
+  vat: 'VAT',
+  vat_included: 'VAT 포함 여부',
+  payment_method: '결제 수단',
+  expense_date: '지출일',
+  due_date: '입금 기한',
+  vendor: '거래처',
+  // 계좌
+  bank_name: '은행',
+  account_holder: '예금주',
+  account_number: '계좌번호',
+  // 일정·기간
+  start_date: '시작일',
+  end_date: '종료일',
+  date: '일자',
+  days_count: '일수',
+  hours: '시간',
+  // 휴가
+  leave_type: '연차 유형',
+  // 출장
+  destination: '출장지',
+  purpose: '목적',
+  transport: '교통편',
+  accommodation: '숙박',
+  travelers: '동행자',
+  // 구매·요청
+  item_name: '품목',
+  quantity: '수량',
+  unit_price: '단가',
+  total_price: '총액',
+  delivery_address: '배송지',
+  // 일반
+  title: '제목',
+  description: '내용',
+  reason: '사유',
+  note: '비고',
+  remarks: '특이사항',
+  attachments: '첨부',
+  receipt_url: '영수증',
+  // 기타 (보고/일반)
+  report_date: '보고일',
+  work_memo: '업무 메모',
+  satisfaction_score: '만족도 점수',
+  satisfaction_comment: '만족도 의견',
+  blockers: '장애 요인',
+}
+function getContentFieldLabel(key: string): string {
+  return CONTENT_FIELD_LABELS[key] || key
+}
+
 const ADMIN_ROLES = ['ceo', 'director', 'division_head', 'admin']
 const LEADER_ROLES = ['leader', 'director', 'division_head', 'ceo', 'admin']
 const EXECUTIVE_ROLES = ['director', 'division_head', 'ceo', 'admin']
@@ -1225,7 +1280,7 @@ export default function ApprovalManagementPage() {
                         : String(value)
                     return (
                       <div key={key} className="flex text-sm">
-                        <span className="text-gray-500 w-28 shrink-0">{key}</span>
+                        <span className="text-gray-500 w-28 shrink-0">{getContentFieldLabel(key)}</span>
                         <span className="text-gray-900 flex-1 break-all">{display}</span>
                       </div>
                     )
@@ -1817,7 +1872,7 @@ export default function ApprovalManagementPage() {
                           : String(value)
                       return (
                         <div key={key} className="flex text-sm">
-                          <span className="text-gray-500 w-28 shrink-0">{key}</span>
+                          <span className="text-gray-500 w-28 shrink-0">{getContentFieldLabel(key)}</span>
                           <span className="text-gray-900 flex-1 break-all">{display}</span>
                         </div>
                       )
