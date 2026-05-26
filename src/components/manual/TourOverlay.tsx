@@ -179,48 +179,69 @@ function getTooltipStyle(rect: Rect | null, placement: string): React.CSSPropert
   }
 
   const offset = 16
+  const margin = 16 // viewport 가장자리 여백
   const tooltipWidth = 420
+  const tooltipHeight = 280 // 대략적 — 카드 평균 높이
   const viewportW = window.innerWidth
   const viewportH = window.innerHeight
 
-  let style: React.CSSProperties = {}
-
-  switch (placement) {
-    case 'top':
-      style = {
-        bottom: `${viewportH - rect.top + offset}px`,
-        left: `${rect.left + rect.width / 2}px`,
-        transform: 'translateX(-50%)',
-      }
-      break
-    case 'bottom':
-      style = {
-        top: `${rect.top + rect.height + offset}px`,
-        left: `${rect.left + rect.width / 2}px`,
-        transform: 'translateX(-50%)',
-      }
-      break
-    case 'left':
-      style = {
-        top: `${rect.top + rect.height / 2}px`,
-        right: `${viewportW - rect.left + offset}px`,
-        transform: 'translateY(-50%)',
-      }
-      break
-    case 'right':
-      style = {
-        top: `${rect.top + rect.height / 2}px`,
-        left: `${rect.left + rect.width + offset}px`,
-        transform: 'translateY(-50%)',
-      }
-      break
-  }
-
-  // viewport 밖으로 나가면 center 폴백
-  // 모바일에서 화면이 좁을 때 — 단순화: viewport 폭이 tooltipWidth+32 보다 작으면 center
-  if (viewportW < tooltipWidth + 32) {
+  // viewport 가 너무 좁으면 center 폴백
+  if (viewportW < tooltipWidth + margin * 2) {
     return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
   }
 
-  return style
+  // 1) 우선 placement 시도, 단 viewport 밖으로 튀어나가면 자동 fallback
+  // 각 placement 의 tooltip 박스 left/top 계산 (transform 적용 전)
+  const calcBox = (p: string) => {
+    switch (p) {
+      case 'top':
+        return {
+          left: rect.left + rect.width / 2 - tooltipWidth / 2,
+          top: rect.top - offset - tooltipHeight,
+        }
+      case 'bottom':
+        return {
+          left: rect.left + rect.width / 2 - tooltipWidth / 2,
+          top: rect.top + rect.height + offset,
+        }
+      case 'left':
+        return {
+          left: rect.left - offset - tooltipWidth,
+          top: rect.top + rect.height / 2 - tooltipHeight / 2,
+        }
+      case 'right':
+      default:
+        return {
+          left: rect.left + rect.width + offset,
+          top: rect.top + rect.height / 2 - tooltipHeight / 2,
+        }
+    }
+  }
+
+  // 2) 4방향 시도 — viewport 안에 완전히 들어가는 placement 선택
+  const tryOrder = [placement, 'bottom', 'right', 'top', 'left']
+  let chosen: { left: number; top: number } | null = null
+  for (const p of tryOrder) {
+    const box = calcBox(p)
+    if (
+      box.left >= margin &&
+      box.left + tooltipWidth <= viewportW - margin &&
+      box.top >= margin &&
+      box.top + tooltipHeight <= viewportH - margin
+    ) {
+      chosen = box
+      break
+    }
+  }
+
+  // 3) 그래도 못 찾으면 placement 박스를 viewport 안으로 clamp
+  if (!chosen) {
+    const box = calcBox(placement)
+    chosen = {
+      left: Math.max(margin, Math.min(box.left, viewportW - tooltipWidth - margin)),
+      top: Math.max(margin, Math.min(box.top, viewportH - tooltipHeight - margin)),
+    }
+  }
+
+  return { left: `${chosen.left}px`, top: `${chosen.top}px` }
 }

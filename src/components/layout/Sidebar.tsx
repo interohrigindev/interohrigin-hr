@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import {
   BarChart3,
   // PenSquare, ClipboardList, // D2-3: 인사평가 그룹에서 제거되어 미사용
@@ -290,7 +290,22 @@ const navGroups: NavGroup[] = [
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { profile, hasRole } = useAuth()
+  const location = useLocation()
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+
+  // 현재 경로가 그룹 내부 메뉴이면 해당 그룹 자동 펼침 (매뉴얼 Tour 시 selector 매칭 보장)
+  useEffect(() => {
+    const auto: Record<string, boolean> = {}
+    navGroups.forEach((group) => {
+      const inGroup = group.items.some(
+        (it) => typeof it.to === 'string' && location.pathname.startsWith(it.to)
+      )
+      if (inGroup) auto[group.id] = true
+    })
+    if (Object.keys(auto).length > 0) {
+      setExpandedGroups((prev) => ({ ...prev, ...auto }))
+    }
+  }, [location.pathname])
   const [messengerUnread, setMessengerUnread] = useState(0)
   const [allowedMenus, setAllowedMenus] = useState<string[] | null>(null) // null = 로딩중 또는 권한 미설정 (전체 허용)
   const [hasOjtEnrollment, setHasOjtEnrollment] = useState(false)
@@ -493,33 +508,34 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const visibleBottomItems = bottomItems.filter(isItemVisible)
 
   // standalone 항목 렌더링 헬퍼
-  // data-tour="nav:<path>" — 매뉴얼 시스템이 메뉴 항목을 식별할 수 있도록 부여
+  // wrapper div + data-tour — NavLink prop forward 보장 X 회피 (querySelector 안정성)
   const renderStandaloneItem = (item: typeof standaloneItems[number]) => {
     const path = resolvePath(item)
+    const tourKey = `nav:${typeof item.to === 'string' ? item.to : path}`
     return (
-      <NavLink
-        key={path}
-        to={path}
-        end={item.end}
-        onClick={onClose}
-        data-tour={`nav:${typeof item.to === 'string' ? item.to : path}`}
-        className={({ isActive }) =>
-          cn(
-            'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-            isActive
-              ? 'bg-brand-50 text-brand-700'
-              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-          )
-        }
-      >
-        {item.icon}
-        <span className="flex-1">{item.label}</span>
-        {item.to === '/messenger' && messengerUnread > 0 && (
-          <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
-            {messengerUnread > 99 ? '99+' : messengerUnread}
-          </span>
-        )}
-      </NavLink>
+      <div key={path} data-tour={tourKey}>
+        <NavLink
+          to={path}
+          end={item.end}
+          onClick={onClose}
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+              isActive
+                ? 'bg-brand-50 text-brand-700'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            )
+          }
+        >
+          {item.icon}
+          <span className="flex-1">{item.label}</span>
+          {item.to === '/messenger' && messengerUnread > 0 && (
+            <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+              {messengerUnread > 99 ? '99+' : messengerUnread}
+            </span>
+          )}
+        </NavLink>
+      </div>
     )
   }
 
@@ -550,7 +566,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       {visibleGroups.map((group) => {
         const isExpanded = expandedGroups[group.id] ?? false
         return (
-          <div key={group.id}>
+          <div key={group.id} data-tour={`group:${group.id}`}>
             <button
               onClick={() => toggleGroup(group.id)}
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
@@ -572,25 +588,26 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   return isItemVisible(it)
                 }).map((item) => {
                   const path = resolvePath(item)
+                  const tourKey = `nav:${typeof item.to === 'string' ? item.to : path}`
                   return (
-                    <NavLink
-                      key={path}
-                      to={path}
-                      end={item.end}
-                      onClick={onClose}
-                      data-tour={`nav:${typeof item.to === 'string' ? item.to : path}`}
-                      className={({ isActive }) =>
-                        cn(
-                          'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-                          isActive
-                            ? 'bg-brand-50 text-brand-700 font-medium'
-                            : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-                        )
-                      }
-                    >
-                      {item.icon}
-                      {item.label}
-                    </NavLink>
+                    <div key={path} data-tour={tourKey}>
+                      <NavLink
+                        to={path}
+                        end={item.end}
+                        onClick={onClose}
+                        className={({ isActive }) =>
+                          cn(
+                            'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
+                            isActive
+                              ? 'bg-brand-50 text-brand-700 font-medium'
+                              : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                          )
+                        }
+                      >
+                        {item.icon}
+                        {item.label}
+                      </NavLink>
+                    </div>
                   )
                 })}
               </div>

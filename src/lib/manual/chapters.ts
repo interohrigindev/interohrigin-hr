@@ -141,10 +141,10 @@ export const EMPLOYEE_CHAPTERS: ManualChapter[] = [
     id: 'leave-request',
     category: 'employee',
     title: '연차 신청하기',
-    description: '연차 / 반차 / 특별휴가 신청과 결재선 확인 — 잔여 일수도 함께 확인합니다.',
+    description: '연차 / 반차 / 특별휴가 신청과 결재선 확인 — 전자결재에서 진행합니다.',
     icon: 'Calendar',
     estimatedMinutes: 3,
-    startRoute: '/my-leave',
+    startRoute: '/admin/approval',
     steps: [
       {
         id: 'intro',
@@ -154,21 +154,15 @@ export const EMPLOYEE_CHAPTERS: ManualChapter[] = [
       },
       {
         id: 'menu',
-        title: '메뉴 위치',
-        description: '"내 연차" 메뉴는 사이드바 또는 모바일 하단 메뉴에서 접근합니다.\n\n인사담당 등 관리자는 별도의 "연차 관리" 메뉴(전체 직원 연차 확인)를 사용합니다.',
-        target: '[data-tour="nav:/my-leave"]',
+        title: '메뉴 위치 — 전자 결재',
+        description: '일반 직원의 연차 신청은 **전자 결재** 메뉴에서 진행합니다.\n\n사이드바 "전자 결재" 메뉴로 진입하세요. 인사담당은 별도의 "연차 관리" 메뉴(전체 직원 연차 확인)를 사용합니다.',
+        target: '[data-tour="nav:/admin/approval"]',
         placement: 'right',
-      },
-      {
-        id: 'remaining',
-        title: '잔여 연차 확인',
-        description: '화면 상단에 본인의 총 연차 / 사용 일수 / 잔여 일수가 표시됩니다.\n\n회계연도 기준으로 자동 계산되며, 입사 1년 차는 월별 발생 연차로 표시됩니다.',
-        placement: 'center',
       },
       {
         id: 'new',
         title: '연차 신청 시작',
-        description: '"연차 신청" 또는 "+ 새 신청" 버튼을 누르면 신청 폼이 열립니다.',
+        description: '전자 결재 화면 상단의 "새 신청" 버튼을 누르고 종류에서 **연차**를 선택합니다.',
         placement: 'center',
       },
       {
@@ -217,13 +211,13 @@ export const EMPLOYEE_CHAPTERS: ManualChapter[] = [
       {
         id: 'intro',
         title: '자기평가란?',
-        description: '분기마다 본인의 업무 성과를 스스로 점수와 코멘트로 평가하는 단계입니다.\n\n자기평가 → 팀장 평가 → 임원 평가 → 대표 확정 순으로 진행됩니다.\n\n평가 기간이 열려있어야 작성 가능합니다 (보통 분기 마지막 주 ~ 다음 분기 둘째 주).',
+        description: '분기마다 본인의 업무 성과를 스스로 점수와 코멘트로 평가하는 단계입니다.\n\n자기평가 → 팀장 평가 → 임원 평가 → 대표 확정 순으로 진행됩니다.\n\n⚠️ 평가 기간이 열려있어야 작성 가능합니다 (보통 분기 마지막 주 ~ 다음 분기 둘째 주). 평가 비대상자(임원 이상)는 메뉴만 보고 작성은 불가합니다.',
         placement: 'center',
       },
       {
         id: 'menu',
-        title: '메뉴 진입',
-        description: '"정규직 평가" 또는 "자기평가" 메뉴를 통해 진입합니다.\n\n현재 진행 중인 평가 기간이 자동 표시되며, 본인이 평가 대상이면 항목들이 노출됩니다.',
+        title: '메뉴 위치',
+        description: '사이드바 "인사평가 > 정규직 평가" 또는 사이드바의 "자기평가" 카드를 통해 진입합니다.\n\n현재 진행 중인 평가 기간이 있을 때만 항목이 노출됩니다.',
         placement: 'center',
       },
       {
@@ -334,75 +328,9 @@ export const EMPLOYEE_CHAPTERS: ManualChapter[] = [
     ],
   },
 
-  // ─── 6) 메신저 사용법 ─────────────────────────────────────────
-  {
-    id: 'messenger-usage',
-    category: 'employee',
-    title: '메신저 사용법',
-    description: '동료와 채팅 / 파일 첨부 / 검색 / 채널 관리를 익힙니다.',
-    icon: 'MessageCircle',
-    estimatedMinutes: 3,
-    startRoute: '/messenger',
-    steps: [
-      {
-        id: 'intro',
-        title: '사내 메신저',
-        description: '동료와 1:1 또는 그룹으로 실시간 소통하는 메뉴입니다.\n\n외부 메신저(카카오톡 등) 대신 업무 메시지를 회사 시스템 안에서 안전하게 주고받을 수 있어요.',
-        placement: 'center',
-      },
-      {
-        id: 'menu',
-        title: '메뉴 진입',
-        description: '사이드바의 "메신저" 또는 하단 빠른 메뉴에서 진입합니다.\n\n읽지 않은 메시지가 있으면 빨간색 숫자 배지로 표시됩니다.',
-        target: '[data-tour="nav:/messenger"]',
-        placement: 'right',
-      },
-      {
-        id: 'channel-list',
-        title: '채널 목록 (왼쪽)',
-        description: '왼쪽에 본인이 참여한 모든 채널이 표시됩니다:\n\n· 1:1 대화 (개별 동료)\n· 그룹 채널 (팀 / 프로젝트)\n· 공지 채널 (회사 전체)\n\n최근 메시지 순으로 정렬됩니다.',
-        placement: 'center',
-      },
-      {
-        id: 'new',
-        title: '새 대화 시작',
-        description: '"새 대화" 또는 "+" 버튼으로 동료에게 1:1 메시지를 시작할 수 있습니다.\n\n그룹 채널은 인사담당이 만들거나, 본인이 직접 동료들을 초대해 만들 수 있어요.',
-        placement: 'center',
-      },
-      {
-        id: 'input',
-        title: '메시지 입력창',
-        description: '하단 입력창에서 텍스트, 이모지, 파일을 자유롭게 보낼 수 있습니다.\n\n· Enter: 메시지 전송\n· Shift + Enter: 줄바꿈',
-        placement: 'center',
-      },
-      {
-        id: 'attach',
-        title: '📎 파일 첨부',
-        description: '클립 아이콘 또는 드래그&드롭으로 파일 첨부 가능:\n\n· 이미지 (jpg, png, gif)\n· 문서 (pdf, doc, xlsx)\n· 영상 (mp4 등)\n\n최대 10MB까지 가능하며, 큰 파일은 Drive 링크를 활용하세요.',
-        placement: 'center',
-      },
-      {
-        id: 'search',
-        title: '🔍 메시지 검색',
-        description: '상단 검색창에서 키워드로 과거 메시지를 찾을 수 있습니다.\n\n특정 채널 안에서만 검색하거나, 전체 채널에서 검색할 수 있어요.',
-        placement: 'center',
-      },
-      {
-        id: 'notification',
-        title: '🔔 알림 설정',
-        description: '채널별로 알림 ON/OFF를 설정할 수 있습니다.\n\n공지 채널은 항상 알림 받고, 잡담 채널은 알림 끄는 식으로 본인에 맞게 조정하세요.',
-        placement: 'center',
-      },
-      {
-        id: 'done',
-        title: '메신저 완료! 💬',
-        description: '메신저 사용법을 모두 익혔습니다.\n\n💡 팁: 결재 진행 중인 문서에 대한 빠른 문의는 메신저로 결재자에게 직접 보내는 것이 효과적입니다.',
-        placement: 'center',
-      },
-    ],
-  },
+  // (메신저 챕터는 메뉴 숨김 처리되어 제거됨 — 2026-05-26)
 
-  // ─── 7) 프로젝트 & 업무 (신규 추가, 2026-05-26) ───────────────
+  // ─── 6) 프로젝트 & 업무 ────────────────────────────────────────
   {
     id: 'projects-work',
     category: 'employee',
