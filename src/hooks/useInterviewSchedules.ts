@@ -122,6 +122,44 @@ export function useInterviewScheduleMutations() {
     return { data: result, error }
   }
 
+  /**
+   * 안전 수정 — safe_update_interview_schedule RPC 기반 (마이그레이션 124).
+   *
+   * 보장:
+   *   1) 화이트리스트 필드만 변경 (id/candidate_id/created_at 등 키 컬럼 변경 차단)
+   *   2) Row lock (FOR UPDATE) — 동시 편집 충돌 시 lost update 방지
+   *   3) Audit log 자동 기록 (interview_schedule_audits)
+   *   4) 존재 검증 — 다른 사용자가 삭제했어도 조용히 사라지지 않고 명시 에러
+   *   5) silent fail 방지 — error 가 항상 호출자에 전달됨
+   *
+   * 사용 예:
+   *   const { data, error } = await safeUpdateSchedule(id, {
+   *     scheduled_at: '2026-06-01T05:00:00+09:00',
+   *     duration_minutes: 45,
+   *     interviewer_ids: ['emp-1', 'emp-2'],
+   *   }, '시간 조정 (지원자 요청)')
+   */
+  async function safeUpdateSchedule(
+    id: string,
+    patch: Partial<InterviewSchedule>,
+    reason?: string,
+  ): Promise<{ data: any; error: { message: string } | null; changedKeys?: string[] }> {
+    const { data, error } = await supabase.rpc('safe_update_interview_schedule', {
+      p_schedule_id: id,
+      p_patch: patch as any,
+      p_reason: reason ?? null,
+    })
+    if (error) {
+      console.error('[safeUpdateSchedule] failed:', error)
+      return { data: null, error: { message: error.message } }
+    }
+    const payload = data as { ok?: boolean; schedule?: any; changed_keys?: string[] }
+    if (!payload?.ok) {
+      return { data: null, error: { message: '알 수 없는 응답' } }
+    }
+    return { data: payload.schedule, error: null, changedKeys: payload.changed_keys }
+  }
+
   async function deleteSchedule(id: string) {
     const { error } = await supabase
       .from('interview_schedules')
@@ -141,5 +179,16 @@ export function useInterviewScheduleMutations() {
     return { error }
   }
 
-  return { createSchedule, updateSchedule, deleteSchedule, sendPreMaterials }
+  return { createSchedule, updateSchedule, safeUpdateSchedule, deleteSchedule, sendPreMaterials }
+}
+
+/**
+ * 일정 변경 이력 조회 (audit log)
+ */
+export async function fetchScheduleAuditLog(scheduleId: string, limit = 20) {
+  const { data, error } = await supabase.rpc('get_schedule_audit_log', {
+    p_schedule_id: scheduleId,
+    p_limit: limit,
+  })
+  return { data: (data as any[]) || [], error }
 }

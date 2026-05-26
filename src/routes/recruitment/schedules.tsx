@@ -43,11 +43,13 @@ export default function InterviewSchedules() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { schedules, loading, refetch } = useAllSchedules()
-  const { createSchedule, updateSchedule, sendPreMaterials } = useInterviewScheduleMutations()
+  const { createSchedule, updateSchedule, safeUpdateSchedule, sendPreMaterials } = useInterviewScheduleMutations()
 
   /* 기본 state */
   const [dialogOpen, setDialogOpen] = useState(false)
   const [autoDialogOpen, setAutoDialogOpen] = useState(false)
+  // 수정 모드 — null 이면 새 일정, 값이 있으면 그 id 의 기존 일정 수정
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [saving, setSaving] = useState(false)
   const [autoGenerating, setAutoGenerating] = useState(false)
@@ -557,6 +559,85 @@ ${candidateList}
   }
 
   // Meet 링크 재생성
+  /**
+   * 수정 모드 진입 — 기존 일정을 form 에 채우고 다이얼로그 오픈.
+   * scheduled_at 은 ISO + 타임존 → 입력용 yyyy-MM-dd / HH:mm 분리.
+   */
+  function openEditDialog(scheduleId: string) {
+    const s = schedules.find((x: any) => x.id === scheduleId) as any
+    if (!s) {
+      toast('해당 면접 일정을 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.', 'error')
+      return
+    }
+    const d = new Date(s.scheduled_at)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    setEditingScheduleId(scheduleId)
+    setForm({
+      candidate_id: s.candidate_id || '',
+      interview_type: s.interview_type || 'video',
+      scheduled_at: `${dateStr}T${timeStr}:00`,
+      scheduled_date: dateStr,
+      scheduled_time: timeStr,
+      duration_minutes: String(s.duration_minutes || 30),
+      priority: s.priority || 'normal',
+      meeting_link: s.meeting_link || '',
+      google_event_id: s.google_event_id || '',
+      location_info: s.location_info || '',
+      interviewer_ids: Array.isArray(s.interviewer_ids) ? s.interviewer_ids : [],
+    })
+    setDialogOpen(true)
+  }
+
+  /**
+   * 수정 저장 — safe_update_interview_schedule RPC 호출.
+   * 화이트리스트 필드만 변경 + Row lock + Audit log 자동 기록.
+   * 일정이 다른 사용자에 의해 삭제됐을 경우에도 silent fail 없이 명시 에러.
+   */
+  async function handleUpdateSchedule() {
+    if (!editingScheduleId) return
+    setSaving(true)
+
+    const scheduledAtKST =
+      form.scheduled_at.includes('+') || form.scheduled_at.endsWith('Z')
+        ? form.scheduled_at
+        : form.scheduled_at + '+09:00'
+
+    const patch: any = {
+      scheduled_at: new Date(scheduledAtKST).toISOString(),
+      duration_minutes: parseInt(form.duration_minutes),
+      interview_type: form.interview_type,
+      priority: form.priority,
+      meeting_link: form.meeting_link || null,
+      google_event_id: form.google_event_id || null,
+      location_info: form.location_info || null,
+      interviewer_ids: form.interviewer_ids,
+    }
+
+    const { error, changedKeys } = await safeUpdateSchedule(
+      editingScheduleId,
+      patch,
+      '관리자 수동 수정',
+    )
+
+    if (error) {
+      toast('수정 실패: ' + error.message, 'error')
+    } else {
+      const cnt = (changedKeys || []).length
+      toast(
+        cnt > 0
+          ? `면접 일정이 수정되었습니다 (${cnt}개 항목 변경 · 이력에 기록됨).`
+          : '변경된 항목이 없습니다.',
+        cnt > 0 ? 'success' : 'info',
+      )
+      setDialogOpen(false)
+      setEditingScheduleId(null)
+      refetch()
+    }
+    setSaving(false)
+  }
+
   async function handleRegenerateMeet(scheduleId: string) {
     const schedule = schedules.find((s: any) => s.id === scheduleId)
     if (!schedule) return
@@ -946,6 +1027,7 @@ ${candidateList}
                             onComplete={() => handleStatusChange(s.id, 'completed')}
                             onNoShow={() => handleStatusChange(s.id, 'no_show')}
                             onRegenerateMeet={() => handleRegenerateMeet(s.id)}
+                            onEdit={() => openEditDialog(s.id)}
                             interviewers={interviewers}
                           />
                         ))
@@ -960,11 +1042,11 @@ ${candidateList}
         </CardContent>
       </Card>
 
-      {/* ── 수동 일정 추가 다이얼로그 ─────────────────── */}
+      {/* ── 수동 일정 추가 / 수정 다이얼로그 (mode 분기) ─── */}
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        title="면접 일정 추가"
+        onClose={() => { setDialogOpen(false); setEditingScheduleId(null) }}
+        title={editingScheduleId ? '면접 일정 수정' : '면접 일정 추가'}
         className="max-w-lg max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-4">
@@ -1184,11 +1266,18 @@ ${candidateList}
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingScheduleId(null) }}>
               취소
             </Button>
-            <Button onClick={handleCreateSchedule} disabled={saving}>
-              {saving ? '저장 중...' : '일정 등록'}
+            <Button
+              onClick={editingScheduleId ? handleUpdateSchedule : handleCreateSchedule}
+              disabled={saving}
+            >
+              {saving
+                ? '저장 중...'
+                : editingScheduleId
+                  ? '변경사항 저장'
+                  : '일정 등록'}
             </Button>
           </div>
         </div>
@@ -1308,6 +1397,7 @@ function ScheduleCard({
   onComplete,
   onNoShow,
   onRegenerateMeet,
+  onEdit,
   interviewers = [],
 }: {
   schedule: any
@@ -1317,6 +1407,7 @@ function ScheduleCard({
   onComplete: () => void
   onNoShow: () => void
   onRegenerateMeet?: () => void
+  onEdit?: () => void
   interviewers?: { id: string; name: string; email: string; role: string }[]
 }) {
   const isVideo = s.interview_type === 'video'
@@ -1440,6 +1531,21 @@ function ScheduleCard({
                 title="Meet 링크 재생성"
               >
                 <Video className="h-3.5 w-3.5 text-blue-500" />
+              </button>
+            )}
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                className="p-1 rounded-md hover:bg-violet-100 transition-colors"
+                title="일정 수정 (시각·면접관·메모 등) — 변경 이력 자동 기록"
+              >
+                {/* 인라인 SVG 로 lucide Pencil 대체 (import 추가 회피) */}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  className="h-3.5 w-3.5 text-violet-500">
+                  <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>
+                  <path d="m15 5 4 4"/>
+                </svg>
               </button>
             )}
             <button
