@@ -247,8 +247,10 @@ const navGroups: NavGroup[] = [
     icon: <LineChart className="h-5 w-5" />,
     items: [
       // D2-3: 정규직 평가 통합 허브 (자기평가/평가하기/내 평가 결과는 허브 내부에서 네비게이션)
-      // 0512 미팅: 정규직 평가 정식 오픈 전까지 director 이상만 노출 (관리 + 진행 중 평가는 그대로 가능)
-      { to: '/evaluation', label: '정규직 평가', icon: <Award className="h-4 w-4" />, end: true, minRole: 'director' as EmployeeRole },
+      // 회귀 fix 2026-05-26: minRole='director' 라 leader 가 메뉴를 못 봐서 본인 부서 직원
+      // 평가 진행 불가 (예: 김보미 팀장 → 유지혜 평가 차단). hub 내부 NavCard 는 leader 노출이므로
+      // 메뉴와 내부 로직 일치를 위해 minRole='leader' 로 변경 (employee 만 자기평가 화면으로 유도).
+      { to: '/evaluation', label: '정규직 평가', icon: <Award className="h-4 w-4" />, end: true, minRole: 'leader' as EmployeeRole },
       { to: '/monthly-checkin', label: '월간 업무 점검', icon: <CalendarCheck className="h-4 w-4" /> },
       { to: '/peer-review', label: '동료 평가', icon: <UsersRound className="h-4 w-4" /> },
       { to: '/eval-dashboard', label: '평가 대시보드', icon: <BarChart3 className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
