@@ -24,9 +24,25 @@ export type SafeUploadOpts = {
   contentType?: string
 }
 
+export type SafeUploadErrorCode = 'timeout' | 'network' | 'storage' | 'rls' | 'auth'
+
 export type SafeUploadResult =
   | { data: { path: string }; error: null }
-  | { data: null; error: { message: string; code: 'timeout' | 'network' | 'storage'; cause?: unknown } }
+  | { data: null; error: { message: string; code: SafeUploadErrorCode; cause?: unknown } }
+
+// RLS / 인증 에러 메시지 패턴 감지 (Supabase + Postgres + Storage 통합)
+function classifyStorageError(rawMessage: string): SafeUploadErrorCode {
+  const msg = rawMessage.toLowerCase()
+  if (msg.includes('row-level security') || msg.includes('row level security')
+      || msg.includes('violates') || msg.includes('rls')) {
+    return 'rls'
+  }
+  if (msg.includes('jwt') || msg.includes('unauthorized') || msg.includes('forbidden')
+      || msg.includes('401') || msg.includes('403')) {
+    return 'auth'
+  }
+  return 'storage'
+}
 
 const DEFAULT_TIMEOUT = 5 * 60_000
 const DEFAULT_RETRIES = 1
@@ -41,7 +57,7 @@ export async function safeStorageUpload(
   const maxRetries = opts.retries ?? DEFAULT_RETRIES
 
   let attempt = 0
-  let lastError: { message: string; code: 'timeout' | 'network' | 'storage'; cause?: unknown } | null = null
+  let lastError: { message: string; code: SafeUploadErrorCode; cause?: unknown } | null = null
 
   while (attempt <= maxRetries) {
     const controller = new AbortController()
@@ -55,13 +71,22 @@ export async function safeStorageUpload(
       clearTimeout(timer)
 
       if (error) {
-        // 4xx: 즉시 실패 (재시도해도 의미 없음)
+        // 4xx: 즉시 실패 (재시도해도 의미 없음) — RLS/Auth 별도 분류
         const status = (error as { statusCode?: string | number }).statusCode
         const numeric = typeof status === 'string' ? parseInt(status, 10) : status
         if (numeric && numeric >= 400 && numeric < 500) {
+          const code = classifyStorageError(error.message)
           return {
             data: null,
-            error: { message: error.message, code: 'storage', cause: error },
+            error: { message: error.message, code, cause: error },
+          }
+        }
+        // 메시지에 RLS 가 명시되어 있으면 status 와 무관하게 즉시 실패
+        const inferredCode = classifyStorageError(error.message)
+        if (inferredCode === 'rls' || inferredCode === 'auth') {
+          return {
+            data: null,
+            error: { message: error.message, code: inferredCode, cause: error },
           }
         }
         // 5xx/네트워크 — retry 가능
@@ -106,12 +131,16 @@ export async function safeStorageUpload(
 /**
  * 사용자 토스트용 한글 메시지 변환
  */
-export function describeUploadError(err: { message: string; code: 'timeout' | 'network' | 'storage' }): string {
+export function describeUploadError(err: { message: string; code: SafeUploadErrorCode }): string {
   switch (err.code) {
     case 'timeout':
       return `${err.message} 파일 크기 또는 네트워크를 확인 후 다시 시도해주세요.`
     case 'network':
       return `네트워크 오류로 업로드에 실패했습니다: ${err.message}`
+    case 'rls':
+      return `파일 저장소 접근 권한이 없습니다. 시스템 관리자에게 마이그레이션 128 적용 여부를 확인 요청해주세요. (원본: ${err.message})`
+    case 'auth':
+      return `로그인 세션이 만료되었거나 권한이 부족합니다. 다시 로그인 후 시도해주세요. (원본: ${err.message})`
     case 'storage':
     default:
       return `업로드 실패: ${err.message}`
