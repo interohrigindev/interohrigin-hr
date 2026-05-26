@@ -493,6 +493,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const visibleBottomItems = bottomItems.filter(isItemVisible)
 
   // standalone 항목 렌더링 헬퍼
+  // data-tour="nav:<path>" — 매뉴얼 시스템이 메뉴 항목을 식별할 수 있도록 부여
   const renderStandaloneItem = (item: typeof standaloneItems[number]) => {
     const path = resolvePath(item)
     return (
@@ -501,6 +502,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         to={path}
         end={item.end}
         onClick={onClose}
+        data-tour={`nav:${typeof item.to === 'string' ? item.to : path}`}
         className={({ isActive }) =>
           cn(
             'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
@@ -576,6 +578,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       to={path}
                       end={item.end}
                       onClick={onClose}
+                      data-tour={`nav:${typeof item.to === 'string' ? item.to : path}`}
                       className={({ isActive }) =>
                         cn(
                           'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',

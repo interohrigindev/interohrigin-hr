@@ -45,12 +45,15 @@ export function Header({ onMenuToggle }: HeaderProps) {
 
         {/* Right: user info + logout */}
         {profile && (
-          <div className="flex items-center gap-3">
+          <div data-tour="profile-menu" className="flex items-center gap-3">
             {/* 알림 종 */}
-            <NotificationBell />
+            <div data-tour="notification-bell">
+              <NotificationBell />
+            </div>
             {/* 내 정보 링크 */}
             <button
               onClick={() => navigate('/my-profile')}
+              data-tour="my-profile-link"
               className="hidden sm:flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
               title="내 정보"
             >
@@ -63,6 +66,7 @@ export function Header({ onMenuToggle }: HeaderProps) {
 
             <button
               onClick={signOut}
+              data-tour="logout-button"
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 transition-colors"
             >
               <LogOut className="h-4 w-4" />
