@@ -14,6 +14,14 @@ import PbdResultView, { type PbdResultRow } from '@/components/recruitment/PbdRe
 interface PortfolioFile { path: string; filename: string; size?: number }
 interface PortfolioLink { url: string; label: string }
 interface InterviewerComment { author_id?: string; author_name?: string; content?: string; created_at?: string; text?: string; comment?: string }
+interface AnswerEntry {
+  id: string
+  author_id?: string | null
+  author_name?: string | null
+  author_role?: string | null
+  content: string
+  created_at: string
+}
 
 type ShareData = {
   candidate: {
@@ -39,6 +47,7 @@ type ShareData = {
     second_interview_questions: string[] | null
     second_interview_questions_generated_at: string | null
     interview_answers: Record<string, string> | null
+    interview_answer_entries: Record<string, AnswerEntry[]> | null
     created_at: string
   }
   job: {
@@ -109,7 +118,11 @@ export default function CandidateSharePage() {
   const [portfolioSignedUrls, setPortfolioSignedUrls] = useState<Record<number, FileInfo>>({})
   const [surveyQuestions, setSurveyQuestions] = useState<{ id: string; question: string }[]>([])
   const [fallbackAiQuestions, setFallbackAiQuestions] = useState<string[]>([])
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [answers, setAnswers] = useState<Record<string, string>>({}) // legacy (자동저장 마지막 1건 표시용)
+  // 명시 저장 모드 — 현재 입력 중인 텍스트 (저장 후 비움)
+  const [inputDraft, setInputDraft] = useState<Record<string, string>>({})
+  // 누적 답변 이력 (작성자/시각/내용 포함) — interview_answer_entries
+  const [answerEntries, setAnswerEntries] = useState<Record<string, AnswerEntry[]>>({})
   const [savingAnswerKey, setSavingAnswerKey] = useState<string | null>(null)
   const [answerError, setAnswerError] = useState<string | null>(null)
   const [commentsState, setCommentsState] = useState<InterviewerComment[]>([])
@@ -133,9 +146,13 @@ export default function CandidateSharePage() {
       const sd = rpcData as ShareData
       setData(sd)
       setLoading(false)
-      // 저장된 답변 동기화
+      // 저장된 답변 동기화 (legacy)
       if (sd?.candidate?.interview_answers && typeof sd.candidate.interview_answers === 'object') {
         setAnswers(sd.candidate.interview_answers as Record<string, string>)
+      }
+      // 누적 답변 이력 동기화 (신규)
+      if (sd?.candidate?.interview_answer_entries && typeof sd.candidate.interview_answer_entries === 'object') {
+        setAnswerEntries(sd.candidate.interview_answer_entries as Record<string, AnswerEntry[]>)
       }
       // 면접관 코멘트 동기화 (이후 추가/삭제로 갱신)
       if (Array.isArray(sd?.candidate?.interviewer_comments)) {
@@ -208,29 +225,61 @@ export default function CandidateSharePage() {
   }, [token])
 
   function updateAnswerLocal(key: string, value: string) {
-    setAnswers((prev) => ({ ...prev, [key]: value }))
+    setInputDraft((prev) => ({ ...prev, [key]: value }))
   }
 
-  async function saveAnswer(key: string, value: string) {
+  // 명시 저장 모드 — 작성자(로그인 세션) 자동 기록 + 답변 이력에 누적 추가
+  async function submitAnswerEntry(key: string) {
     if (!token) return
+    const content = (inputDraft[key] || '').trim()
+    if (!content) {
+      setAnswerError('답변 내용을 입력하세요')
+      return
+    }
     setSavingAnswerKey(key)
     setAnswerError(null)
     try {
-      const { data, error } = await supabase.rpc('save_shared_interview_answer', {
+      const { data, error } = await supabase.rpc('add_shared_interview_answer', {
         p_token: token,
         p_key: key,
-        p_answer: value,
+        p_content: content,
       })
       if (error) {
         setAnswerError(error.message || '답변 저장 실패')
-      } else if (data && (data as any).interview_answers) {
-        // 응답의 전체 최신 답변 객체로 동기화 (다른 세션 변경분 반영)
-        setAnswers((data as any).interview_answers as Record<string, string>)
+        return
       }
+      if (data && (data as any).interview_answer_entries) {
+        setAnswerEntries((data as any).interview_answer_entries as Record<string, AnswerEntry[]>)
+      }
+      // 입력란 비움
+      setInputDraft((prev) => ({ ...prev, [key]: '' }))
     } catch (err: any) {
       setAnswerError(err?.message || '답변 저장 실패')
     } finally {
       setSavingAnswerKey(null)
+    }
+  }
+
+  // 본인이 작성한 답변만 삭제 가능
+  async function deleteAnswerEntry(key: string, entryId: string) {
+    if (!token) return
+    if (!confirm('이 답변을 삭제하시겠습니까?')) return
+    setAnswerError(null)
+    try {
+      const { data, error } = await supabase.rpc('delete_shared_interview_answer', {
+        p_token: token,
+        p_key: key,
+        p_entry_id: entryId,
+      })
+      if (error) {
+        setAnswerError(error.message || '삭제 실패')
+        return
+      }
+      if (data && (data as any).interview_answer_entries) {
+        setAnswerEntries((data as any).interview_answer_entries as Record<string, AnswerEntry[]>)
+      }
+    } catch (err: any) {
+      setAnswerError(err?.message || '삭제 실패')
     }
   }
 
@@ -611,11 +660,14 @@ export default function CandidateSharePage() {
           </h2>
           {aiQuestions.length > 0 ? (
             <>
-              <p className="text-xs text-gray-500 mb-3">면접 답변을 입력하면 자동 저장됩니다.</p>
+              <p className="text-xs text-gray-500 mb-3">
+                답변을 작성하고 <strong>저장</strong> 버튼을 누르면 아래에 누적됩니다.
+                작성자(로그인 세션)도 함께 기록됩니다.
+              </p>
               {answerError && (
                 <p className="text-[11px] text-red-500 mb-2">{answerError}</p>
               )}
-              <ol className="space-y-4">
+              <ol className="space-y-5">
                 {aiQuestions.map((q, i) => {
                   const key = `ai:${i}`
                   return (
@@ -624,24 +676,35 @@ export default function CandidateSharePage() {
                         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold">{i + 1}</span>
                         <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
                       </div>
-                      <div className="pl-9 relative">
-                        <textarea
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 resize-y"
-                          rows={2}
-                          value={answers[key] || ''}
-                          onChange={(e) => updateAnswerLocal(key, e.target.value)}
-                          onBlur={(e) => {
-                            const orig = ((data?.candidate?.interview_answers?.[key]) || '').trim()
-                            const cur = (e.target.value || '').trim()
-                            if (orig !== cur) saveAnswer(key, e.target.value)
-                          }}
-                          placeholder="면접 답변을 기재하세요 (입력란을 벗어나면 자동 저장)"
+                      <div className="pl-9 space-y-2">
+                        <div className="relative">
+                          <textarea
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 resize-y"
+                            rows={2}
+                            value={inputDraft[key] || ''}
+                            onChange={(e) => updateAnswerLocal(key, e.target.value)}
+                            placeholder="면접 답변을 기재한 후 우측 [저장] 버튼을 눌러주세요"
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => submitAnswerEntry(key)}
+                            disabled={savingAnswerKey === key || !(inputDraft[key] || '').trim()}
+                            className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {savingAnswerKey === key ? (
+                              <><Loader2 className="h-3 w-3 animate-spin" /> 저장 중</>
+                            ) : (
+                              <>저장</>
+                            )}
+                          </button>
+                        </div>
+                        <AnswerHistory
+                          entries={answerEntries[key] || []}
+                          legacyAnswer={!answerEntries[key]?.length ? answers[key] : undefined}
+                          onDelete={(eid) => deleteAnswerEntry(key, eid)}
                         />
-                        {savingAnswerKey === key && (
-                          <span className="absolute right-2 top-2 text-[11px] text-gray-400 flex items-center gap-1">
-                            <Loader2 className="h-3 w-3 animate-spin" /> 저장 중
-                          </span>
-                        )}
                       </div>
                     </li>
                   )
@@ -674,7 +737,7 @@ export default function CandidateSharePage() {
                     마지막 생성: {formatDate(candidate.second_interview_questions_generated_at, 'yyyy.MM.dd HH:mm')}
                   </p>
                 )}
-                <ol className="space-y-4">
+                <ol className="space-y-5">
                   {candidate.second_interview_questions.map((q, i) => {
                     const key = `second:${i}`
                     return (
@@ -683,24 +746,35 @@ export default function CandidateSharePage() {
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-bold">{i + 1}</span>
                           <span className="text-gray-700 pt-0.5 whitespace-pre-line">{q}</span>
                         </div>
-                        <div className="pl-9 relative">
-                          <textarea
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 resize-y"
-                            rows={2}
-                            value={answers[key] || ''}
-                            onChange={(e) => updateAnswerLocal(key, e.target.value)}
-                            onBlur={(e) => {
-                              const orig = ((data?.candidate?.interview_answers?.[key]) || '').trim()
-                              const cur = (e.target.value || '').trim()
-                              if (orig !== cur) saveAnswer(key, e.target.value)
-                            }}
-                            placeholder="2차 면접 답변을 기재하세요 (자동 저장)"
+                        <div className="pl-9 space-y-2">
+                          <div className="relative">
+                            <textarea
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 resize-y"
+                              rows={2}
+                              value={inputDraft[key] || ''}
+                              onChange={(e) => updateAnswerLocal(key, e.target.value)}
+                              placeholder="2차 면접 답변을 기재한 후 우측 [저장] 버튼을 눌러주세요"
+                            />
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => submitAnswerEntry(key)}
+                              disabled={savingAnswerKey === key || !(inputDraft[key] || '').trim()}
+                              className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {savingAnswerKey === key ? (
+                                <><Loader2 className="h-3 w-3 animate-spin" /> 저장 중</>
+                              ) : (
+                                <>저장</>
+                              )}
+                            </button>
+                          </div>
+                          <AnswerHistory
+                            entries={answerEntries[key] || []}
+                            legacyAnswer={!answerEntries[key]?.length ? answers[key] : undefined}
+                            onDelete={(eid) => deleteAnswerEntry(key, eid)}
                           />
-                          {savingAnswerKey === key && (
-                            <span className="absolute right-2 top-2 text-[11px] text-gray-400 flex items-center gap-1">
-                              <Loader2 className="h-3 w-3 animate-spin" /> 저장 중
-                            </span>
-                          )}
                         </div>
                       </li>
                     )
@@ -863,6 +937,70 @@ function FilePreview({ file }: { file: FileInfo | null }) {
          className="inline-flex items-center gap-1.5 text-sm text-brand-600 hover:underline">
         <Download className="h-3.5 w-3.5" /> 다운로드
       </a>
+    </div>
+  )
+}
+
+// 면접 답변 누적 이력 — 작성자/시각/내용 표시 + 본인 작성만 삭제 가능
+function AnswerHistory({
+  entries, legacyAnswer, onDelete,
+}: {
+  entries: AnswerEntry[]
+  legacyAnswer?: string
+  onDelete: (entryId: string) => void
+}) {
+  // 신규 entries 가 없고 legacy 답변만 있으면 표시 (작성자 미상)
+  if (entries.length === 0 && !legacyAnswer) return null
+
+  return (
+    <div className="space-y-2 mt-1">
+      {entries.length > 0 && (
+        <p className="text-[11px] font-semibold text-gray-500">
+          저장된 답변 ({entries.length}건)
+        </p>
+      )}
+
+      {entries.map((e) => (
+        <div key={e.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="font-semibold text-gray-800">
+                {e.author_name || '작성자 미상'}
+              </span>
+              {e.author_role && (
+                <span className="text-gray-400">· {e.author_role}</span>
+              )}
+              <span className="text-gray-400">
+                · {formatDate(e.created_at, 'yyyy.MM.dd HH:mm')}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onDelete(e.id)}
+              className="text-[11px] text-gray-400 hover:text-red-600"
+              title="본인이 작성한 답변만 삭제할 수 있습니다"
+            >
+              삭제
+            </button>
+          </div>
+          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words leading-relaxed">
+            {e.content}
+          </p>
+        </div>
+      ))}
+
+      {/* legacy 답변 호환 표시 (entries 없을 때만) */}
+      {entries.length === 0 && legacyAnswer && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-center gap-1.5 text-xs text-amber-700 mb-1">
+            <span className="font-semibold">이전 자동 저장 답변</span>
+            <span className="text-amber-600">· 작성자 미상</span>
+          </div>
+          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words leading-relaxed">
+            {legacyAnswer}
+          </p>
+        </div>
+      )}
     </div>
   )
 }
