@@ -431,10 +431,27 @@ export default function CandidateSharePage() {
           )
         })()}
 
-        {/* 유입 경로 */}
+        {/* 유입 경로 — 직접/인사팀/파견업체 3대 구분 + 파견업체 상세 파싱 */}
         {(candidate.source_channel || candidate.source_detail) && (() => {
-          const ch = candidate.source_channel as SourceChannel | null
+          let ch = candidate.source_channel as SourceChannel | null
+
+          // source_detail 이 파견업체 JSON 이면 채널 자동 보정 (과거 잘못 분류된 데이터 복구)
+          let agencyInfo: { agency?: string; contact?: string; email?: string } | null = null
+          const detail = candidate.source_detail
+          if (detail && typeof detail === 'string' && detail.trim().startsWith('{')) {
+            try {
+              const parsed = JSON.parse(detail)
+              if (parsed && (parsed.agency || parsed.contact || parsed.email)) {
+                agencyInfo = parsed
+                // 채널이 direct/null 인데 agency JSON 이 있다 → 파견업체로 표시
+                if (!ch || ch === 'direct') ch = 'agency'
+              }
+            } catch { /* JSON 아님 — plain text 로 처리 */ }
+          }
+
           const label = ch ? (SOURCE_CHANNEL_LABELS[ch] || candidate.source_channel) : '미상'
+          const isAgencyLike = ch === 'agency' || ch === 'headhunter'
+
           return (
             <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
               <div className="flex items-start gap-3">
@@ -442,10 +459,25 @@ export default function CandidateSharePage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-xs text-gray-400 mb-0.5">유입 경로</p>
                   <p className="text-base font-semibold text-gray-900">{label}</p>
-                  {candidate.source_detail && (
-                    <p className="text-sm text-gray-600 mt-0.5 whitespace-pre-wrap break-words">
-                      {candidate.source_detail}
-                    </p>
+
+                  {agencyInfo ? (
+                    <div className="mt-2 space-y-0.5 text-sm text-gray-700">
+                      {agencyInfo.agency && (
+                        <p><span className="text-gray-400">업체명</span> · <span className="font-medium">{agencyInfo.agency}</span></p>
+                      )}
+                      {agencyInfo.contact && (
+                        <p><span className="text-gray-400">담당자</span> · {agencyInfo.contact}</p>
+                      )}
+                      {agencyInfo.email && (
+                        <p><span className="text-gray-400">담당자 이메일</span> · {agencyInfo.email}</p>
+                      )}
+                    </div>
+                  ) : (
+                    candidate.source_detail && (
+                      <p className="text-sm text-gray-600 mt-0.5 whitespace-pre-wrap break-words">
+                        {isAgencyLike ? `업체: ${candidate.source_detail}` : candidate.source_detail}
+                      </p>
+                    )
                   )}
                 </div>
               </div>

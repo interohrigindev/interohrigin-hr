@@ -2920,13 +2920,37 @@ ${surveyText || '응답 없음'}
                       <span className="font-medium">{candidate.phone}</span>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">유입경로</span>
-                    <span className="font-medium">
-                      {SOURCE_CHANNEL_LABELS[candidate.source_channel as SourceChannel]}
-                      {candidate.source_detail && ` (${candidate.source_detail})`}
-                    </span>
-                  </div>
+                  {(() => {
+                    // 유입경로: 파견업체 JSON 파싱 + 채널 자동 보정
+                    let ch = candidate.source_channel as SourceChannel | null
+                    let agencyInfo: { agency?: string; contact?: string; email?: string } | null = null
+                    const detail = candidate.source_detail
+                    if (detail && typeof detail === 'string' && detail.trim().startsWith('{')) {
+                      try {
+                        const parsed = JSON.parse(detail)
+                        if (parsed && (parsed.agency || parsed.contact || parsed.email)) {
+                          agencyInfo = parsed
+                          if (!ch || ch === 'direct') ch = 'agency'
+                        }
+                      } catch { /* plain text */ }
+                    }
+                    const label = ch ? (SOURCE_CHANNEL_LABELS[ch] || candidate.source_channel) : '미상'
+                    return (
+                      <div className="flex justify-between gap-2">
+                        <span className="text-gray-500 shrink-0">유입경로</span>
+                        <span className="font-medium text-right">
+                          {label}
+                          {agencyInfo ? (
+                            <span className="block text-xs text-gray-600 font-normal mt-0.5">
+                              {[agencyInfo.agency, agencyInfo.contact, agencyInfo.email].filter(Boolean).join(' · ')}
+                            </span>
+                          ) : (
+                            detail && ` (${detail})`
+                          )}
+                        </span>
+                      </div>
+                    )
+                  })()}
                 </>
               )}
             </CardContent>

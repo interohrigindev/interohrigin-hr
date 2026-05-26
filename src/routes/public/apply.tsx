@@ -131,12 +131,17 @@ export default function PublicApply() {
         .map((l) => ({ url: l.url.trim(), label: l.label.trim() }))
         .filter((l) => l.url.length > 0)
 
+      // 에이전시 체크 시 채널 자동 보정 (query string ?source=direct 라도 폼에서 에이전시 동의하면 agency 로 저장)
+      const finalSourceChannel = isAgency
+        ? (source === 'headhunter' ? 'headhunter' : 'agency')
+        : source
+
       const { data: submitRes, error: insertErr } = await supabase.rpc('submit_application', {
         p_job_posting_id: postingId,
         p_name: form.name,
         p_email: form.email,
         p_phone: form.phone || null,
-        p_source_channel: source,
+        p_source_channel: finalSourceChannel,
         p_source_detail: isAgency
           ? JSON.stringify({ agency: form.agency_name, contact: form.agency_contact, email: form.agency_email })
           : (ref || null),

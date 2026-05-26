@@ -1,16 +1,16 @@
 import type { SourceChannel, CandidateStatus, PostingStatus } from '@/types/recruitment'
 
 // ─── 유입 경로 라벨 (임원/대표 열람 시에도 한눈에 이해되도록 한국어 명확화) ─────────
-// 3대 핵심 구분:
-//   1) 지원자 직접 지원 (direct)            — 지원자가 공개 페이지에서 본인 지원
-//   2) 내부 직접 등록 (manual_upload)        — 인사담당이 받은 이력서를 시스템에 수동 업로드
-//   3) 헤드헌터/에이전시 지원 (headhunter, agency) — 외부 채용 대행
+// 3대 핵심 구분 (대표 요청, 2026-05-26):
+//   1) 직접 지원 (direct)            — 지원자가 공개 폼에서 본인 지원
+//   2) 인사팀 지원 (manual_upload)    — 인사담당이 받은 이력서를 시스템에 수동 업로드
+//   3) 파견업체 (agency/headhunter)   — 외부 채용 대행 (상세에 업체명·구분 표기)
 // 그 외: 잡코리아, 지인추천, 대학/커뮤니티, 기타
 export const SOURCE_CHANNEL_LABELS: Record<SourceChannel, string> = {
-  direct:        '지원자 직접 지원',
-  manual_upload: '내부 직접 등록 (인사담당)',
-  headhunter:    '헤드헌터 지원',
-  agency:        '에이전시(파견) 지원',
+  direct:        '직접 지원',
+  manual_upload: '인사팀 지원',
+  headhunter:    '파견업체 (헤드헌팅)',
+  agency:        '파견업체 (파견)',
   referral:      '지인 추천',
   job_korea:     '잡코리아',
   university:    '대학/커뮤니티',
