@@ -56,20 +56,10 @@ export default function SelfEvaluation() {
   const [formData, setFormData] = useState<Record<string, SelfEvalFormData>>({})
   const [confirmOpen, setConfirmOpen] = useState(false)
 
-  // 임원/관리자는 자기평가 대상이 아님
-  if (!loading && profile?.role && ['director', 'division_head', 'ceo', 'admin'].includes(profile.role)) {
-    return (
-      <div className="flex h-64 flex-col items-center justify-center gap-2">
-        <p className="text-lg font-medium text-gray-600">자기평가 대상이 아닙니다</p>
-        <p className="text-sm text-gray-400">이사, 대표이사 및 관리자는 평가를 수행하는 역할입니다</p>
-        <a href="/" className="mt-2 text-sm text-brand-600 hover:underline">
-          대시보드로 돌아가기
-        </a>
-      </div>
-    )
-  }
-
   // Hydrate form from loaded selfEvals
+  // ⚠️ Rules of Hooks: 모든 hook 호출은 early return 보다 위에 있어야 함.
+  //   이전 버전: 아래 임원/관리자 early return 다음에 이 useEffect 가 있어
+  //   admin/임원 계정에서 React #300 (Rendered fewer hooks than expected) 발생.
   useEffect(() => {
     const map: Record<string, SelfEvalFormData> = {}
     items.forEach((item) => {
@@ -83,6 +73,19 @@ export default function SelfEvaluation() {
     })
     setFormData(map)
   }, [items, selfEvals])
+
+  // 임원/관리자는 자기평가 대상이 아님
+  if (!loading && profile?.role && ['director', 'division_head', 'ceo', 'admin'].includes(profile.role)) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-2">
+        <p className="text-lg font-medium text-gray-600">자기평가 대상이 아닙니다</p>
+        <p className="text-sm text-gray-400">이사, 대표이사 및 관리자는 평가를 수행하는 역할입니다</p>
+        <a href="/" className="mt-2 text-sm text-brand-600 hover:underline">
+          대시보드로 돌아가기
+        </a>
+      </div>
+    )
+  }
 
   if (loading || periodsLoading) return <PageSpinner />
 

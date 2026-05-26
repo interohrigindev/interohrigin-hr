@@ -27,8 +27,16 @@ import {
   KeyRound,
 } from 'lucide-react'
 
-/** 자기평가 대상이 될 수 있는 역할 */
-const SELF_EVAL_ELIGIBLE_ROLES: string[] = ['employee', 'leader']
+/**
+ * 자기평가 대상이 될 수 있는 역할
+ * - employee: 일반 직원
+ * - leader:   리더 (본인도 평가받음 + 팀원도 평가)
+ * - hr_admin: 인사담당 — 평가 진행자 + 본인도 평가 받음 (양쪽 모두)
+ *
+ * 제외: director / division_head / ceo / admin
+ *       (조직 의사결정 권한자는 평가받는 대상이 아니라 평가하는 역할)
+ */
+const SELF_EVAL_ELIGIBLE_ROLES: string[] = ['employee', 'leader', 'hr_admin']
 
 const ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: 'employee', label: '직원' },
