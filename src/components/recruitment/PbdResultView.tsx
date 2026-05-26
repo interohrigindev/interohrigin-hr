@@ -26,9 +26,10 @@ export interface PbdResultRow {
 interface Props {
   row: PbdResultRow
   showHeader?: boolean // false 면 응답자 프로필 카드 생략 (지원자 상세에서는 이미 표시되므로)
+  showQuestionBreakdown?: boolean // false 면 P1~P20 문항별 응답 섹션 생략 (외부 공유 페이지에서는 비공개)
 }
 
-export default function PbdResultView({ row, showHeader = true }: Props) {
+export default function PbdResultView({ row, showHeader = true, showQuestionBreakdown = true }: Props) {
   const scores: PbdScores | null = scorePbd(row.pbd_answers || {})
   const meta = (row.meta as Record<string, unknown>) || {}
   const consent = (row.consent as Record<string, unknown>) || {}
@@ -116,25 +117,27 @@ export default function PbdResultView({ row, showHeader = true }: Props) {
         </dl>
       </section>
 
-      <section>
-        <h3 className="text-sm font-semibold text-slate-900 mb-3">문항별 응답 (P1~P20)</h3>
-        <div className="space-y-1.5 text-xs">
-          {PBD_QUESTIONS.map(q => {
-            const raw = row.pbd_answers?.[q.id]
-            const adjusted = q.reversed && typeof raw === 'number' ? 6 - raw : raw
-            return (
-              <div key={q.id} className="flex items-center gap-2 py-1 border-b border-slate-100">
-                <span className="w-10 font-mono text-slate-400">{q.id}{q.reversed && '✦'}</span>
-                <span className="text-slate-600 truncate flex-1">{q.a_label} ↔ {q.b_label}</span>
-                <span className="font-mono font-bold text-slate-900 w-6 text-center">{raw ?? '-'}</span>
-                {q.reversed && (
-                  <span className="text-[10px] text-slate-400 w-12 text-right">(역산 {adjusted})</span>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </section>
+      {showQuestionBreakdown && (
+        <section>
+          <h3 className="text-sm font-semibold text-slate-900 mb-3">문항별 응답 (P1~P20)</h3>
+          <div className="space-y-1.5 text-xs">
+            {PBD_QUESTIONS.map(q => {
+              const raw = row.pbd_answers?.[q.id]
+              const adjusted = q.reversed && typeof raw === 'number' ? 6 - raw : raw
+              return (
+                <div key={q.id} className="flex items-center gap-2 py-1 border-b border-slate-100">
+                  <span className="w-10 font-mono text-slate-400">{q.id}{q.reversed && '✦'}</span>
+                  <span className="text-slate-600 truncate flex-1">{q.a_label} ↔ {q.b_label}</span>
+                  <span className="font-mono font-bold text-slate-900 w-6 text-center">{raw ?? '-'}</span>
+                  {q.reversed && (
+                    <span className="text-[10px] text-slate-400 w-12 text-right">(역산 {adjusted})</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {row.feedback && (
         <section>

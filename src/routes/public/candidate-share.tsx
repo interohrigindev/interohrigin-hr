@@ -553,7 +553,7 @@ export default function CandidateSharePage() {
                 </span>
               )}
             </h2>
-            <PbdResultView row={data.pbd_response as PbdResultRow} showHeader={false} />
+            <PbdResultView row={data.pbd_response as PbdResultRow} showHeader={false} showQuestionBreakdown={false} />
           </div>
         )}
 
