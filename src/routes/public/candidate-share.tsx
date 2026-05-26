@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 import { SOURCE_CHANNEL_LABELS, EMPLOYMENT_TYPE_LABELS, EXPERIENCE_LEVEL_LABELS } from '@/lib/recruitment-constants'
 import type { SourceChannel } from '@/types/recruitment'
+import PbdResultView, { type PbdResultRow } from '@/components/recruitment/PbdResultView'
 
 interface PortfolioFile { path: string; filename: string; size?: number }
 interface PortfolioLink { url: string; label: string }
@@ -541,7 +542,22 @@ export default function CandidateSharePage() {
           </div>
         )}
 
-        {/* 사전질의서 응답 */}
+        {/* 사전질의서 v2.0 (PBD) 응답 — survey_test_responses 기반 (121 마이그레이션 fix) */}
+        {data?.pbd_response && (
+          <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-brand-500" /> 사전질의서 v2.0 응답
+              {candidate.pbd_survey_completed_at && (
+                <span className="text-xs font-normal text-gray-500 ml-1">
+                  ({formatDate(candidate.pbd_survey_completed_at, 'yyyy.MM.dd HH:mm')} 제출)
+                </span>
+              )}
+            </h2>
+            <PbdResultView row={data.pbd_response as PbdResultRow} showHeader={false} />
+          </div>
+        )}
+
+        {/* 사전질의서 v1 응답 */}
         {(Object.keys(surveyAnswers).length > 0 || Object.keys(surveyMeta).length > 0) && (
           <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
             <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
