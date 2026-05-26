@@ -38,7 +38,7 @@ export interface JobPosting {
 }
 
 // ─── 지원자 ───────────────────────────────────────────────────────
-export type SourceChannel = 'job_korea' | 'headhunter' | 'referral' | 'university' | 'agency' | 'direct' | 'other'
+export type SourceChannel = 'job_korea' | 'headhunter' | 'referral' | 'university' | 'agency' | 'direct' | 'manual_upload' | 'other'
 
 export type CandidateStatus =
   | 'applied'
