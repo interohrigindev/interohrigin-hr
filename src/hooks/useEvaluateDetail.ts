@@ -18,11 +18,15 @@ import type {
 } from '@/types/database'
 
 // ─── 내 역할에 해당하는 evaluator_role 매핑 ─────────────────────
+// 주의: evaluator_scores.evaluator_role CHECK = ('leader','director','ceo')
+//       hr_admin 직원이 평가 진행 시 leader 동급으로 'leader' 매핑
+//       (가중치·계산식 변경 없이 영향 최소화)
 const ROLE_TO_EVALUATOR: Record<string, string> = {
   leader: 'leader',
   director: 'director',
   division_head: 'director',
   ceo: 'ceo',
+  hr_admin: 'leader',   // 126: 인사담당이 평가자로 참여하면 leader 동급으로 기록
 }
 
 // ─── 역할별로 평가해야 할 status 매핑 ───────────────────────────
@@ -31,6 +35,7 @@ const ROLE_TO_REQUIRED_STATUS: Record<string, string> = {
   director: 'leader_done',
   division_head: 'leader_done',
   ceo: 'director_done',
+  hr_admin: 'self_done',  // 126: leader 동급 — 자기평가 완료된 대상 조회
 }
 
 // ─── Types ──────────────────────────────────────────────────────

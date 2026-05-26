@@ -138,6 +138,10 @@ export default function EvaluateList() {
   const filteredTargets = targets.filter((t) => {
     if (!myRole || !requiredStatus) return false
 
+    // 126: 본인이 본인을 평가하는 자기-평가 차단 (hr_admin 직원이 자기평가 대상이면서
+    //      평가 진행자로도 등록된 경우 본인 평가 리스트에서 본인 제외)
+    if (t.employee.id === profile?.id) return false
+
     // leader / director / division_head — 본인 부서 및 하위 부서 트리만 노출
     if (mySubtree && mySubtree.size > 0) {
       const empDeptId = t.employee.department_id
