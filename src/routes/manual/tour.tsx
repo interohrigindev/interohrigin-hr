@@ -1,51 +1,32 @@
 /**
- * /manual/tour/:chapterId — Tour 시연 모드
+ * /manual/tour/:chapterId — Tour 진입 트리거
  *
- * 진입 즉시:
+ * 단순 redirect 컴포넌트:
  *  1) chapterId 로 챕터 조회
- *  2) startRoute 로 navigate (실제 화면 이동)
- *  3) TourOverlay 활성화 + step 0 부터 시작
- *
- * 종료 시:
- *  - /manual/employee 로 복귀
+ *  2) TourContext.start(chapter) 호출 → 전역 활성화 + startRoute navigate
+ *  3) 이 컴포넌트는 startRoute navigate 직후 unmount 되어도 OK
+ *     (Overlay 는 GlobalTourOverlay 가 Layout 안에서 유지)
  */
 import { useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { TourOverlay } from '@/components/manual/TourOverlay'
-import { useTour } from '@/hooks/useTour'
+import { useTourContext } from '@/contexts/TourContext'
 import { getChapterById } from '@/lib/manual/chapters'
-import { useToast } from '@/components/ui/Toast'
 
 export default function ManualTour() {
   const { chapterId } = useParams<{ chapterId: string }>()
   const navigate = useNavigate()
-  const { toast } = useToast()
-  const startedRef = useRef(false)
+  const tour = useTourContext()
+  const triggered = useRef(false)
 
   const chapter = chapterId ? getChapterById(chapterId) : null
 
-  const tour = useTour(chapter, () => {
-    toast(`"${chapter?.title}" 챕터를 완료했습니다! 🎉`, 'success')
-    navigate('/manual/employee')
-  })
-
-  // 진입 즉시 자동 시작 (1회만)
   useEffect(() => {
-    if (!chapter || startedRef.current) return
-    startedRef.current = true
-    // 약간 지연: route navigate + DOM mount 시간 확보
-    const timer = setTimeout(() => tour.start(), 200)
-    return () => clearTimeout(timer)
+    if (triggered.current) return
+    if (!chapter) return
+    triggered.current = true
+    // 한 프레임 지연 후 시작 (Layout mount 보장)
+    requestAnimationFrame(() => tour.start(chapter))
   }, [chapter, tour])
-
-  // 종료 시 라우트 복귀
-  useEffect(() => {
-    if (startedRef.current && !tour.active) {
-      // active 가 false 가 되면 종료 — onComplete 콜백이 아닌 종료(Esc)도 처리
-      const t = setTimeout(() => navigate('/manual/employee'), 100)
-      return () => clearTimeout(t)
-    }
-  }, [tour.active, navigate])
 
   if (!chapter) {
     return (
@@ -63,18 +44,11 @@ export default function ManualTour() {
     )
   }
 
-  // tour.active = false 인 경우 (시작 전 / 종료 후) — 빈 화면
-  if (!tour.active || !tour.currentStep) return null
-
   return (
-    <TourOverlay
-      step={tour.currentStep}
-      stepIndex={tour.stepIndex}
-      totalSteps={tour.totalSteps}
-      progress={tour.progress}
-      onNext={tour.next}
-      onPrev={tour.prev}
-      onFinish={() => tour.finish(false)}
-    />
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center text-gray-500 text-sm">
+        <p>"{chapter.title}" 시작 중...</p>
+      </div>
+    </div>
   )
 }

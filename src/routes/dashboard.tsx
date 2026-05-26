@@ -4,6 +4,7 @@ import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 import { usePushSubscription } from '@/hooks/usePushSubscription'
+import { GlobalTourOverlay } from '@/components/manual/GlobalTourOverlay'
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -23,6 +24,9 @@ export default function DashboardLayout() {
       </div>
 
       <MobileBottomNav />
+
+      {/* 매뉴얼 Tour 글로벌 오버레이 — 어느 라우트에서든 활성 유지 */}
+      <GlobalTourOverlay />
     </div>
   )
 }

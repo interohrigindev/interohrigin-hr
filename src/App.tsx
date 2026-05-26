@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { ToastProvider } from '@/components/ui/Toast'
+import { TourProvider } from '@/contexts/TourContext'
 import FloatingAIAgent from '@/components/ai-agent/FloatingAIAgent'
 import { UrgentTaskPopup } from '@/components/urgent/UrgentTaskPopup'
 import { PwaInit } from '@/components/PwaInit'
@@ -151,6 +152,7 @@ function App() {
     <AuthProvider>
       <ToastProvider>
         <BrowserRouter>
+          <TourProvider>
           <Routes>
             {/* 로그인 / 비밀번호 설정 */}
             <Route path="/login" element={<Login />} />
@@ -379,6 +381,7 @@ function App() {
           <UrgentTaskPopup />
           <PwaInit />
           <MobileBottomNav />
+          </TourProvider>
         </BrowserRouter>
       </ToastProvider>
     </AuthProvider>
