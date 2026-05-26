@@ -120,6 +120,12 @@ const standaloneItems: NavItem[] = [
     label: '내 OJT',
     icon: <GraduationCap className="h-5 w-5" />,
   },
+  // 인터랙티브 온라인 매뉴얼 (전 직원 노출 — 자기 학습 도구)
+  {
+    to: '/manual',
+    label: '매뉴얼',
+    icon: <BookOpen className="h-5 w-5" />,
+  },
   // 법적 리스크 대응 P1-1: 직원 본인의 연장근로 신청 (feature toggle 로 노출)
   {
     to: '/my/overtime',
@@ -676,7 +682,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   return (
     <>
       {/* ─── Desktop sidebar ──────────────────────────────────── */}
-      <aside className="hidden w-60 shrink-0 border-r border-gray-200 bg-white md:flex md:flex-col md:h-full">
+      <aside data-tour="sidebar" className="hidden w-60 shrink-0 border-r border-gray-200 bg-white md:flex md:flex-col md:h-full">
         {navContent}
       </aside>
 
