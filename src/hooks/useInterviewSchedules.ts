@@ -17,7 +17,10 @@ export function useInterviewSchedules(candidateId?: string) {
       query = query.eq('candidate_id', candidateId)
     }
 
-    const { data } = await query
+    const { data, error } = await query
+    if (error) {
+      console.error('[useInterviewSchedules] fetch failed:', error)
+    }
     if (data) setSchedules(data as InterviewSchedule[])
     setLoading(false)
   }, [candidateId])
@@ -49,7 +52,31 @@ export function useAllSchedules(dateFrom?: string, dateTo?: string) {
     if (dateFrom) query = query.gte('scheduled_at', dateFrom)
     if (dateTo) query = query.lte('scheduled_at', dateTo)
 
-    const { data } = await query
+    let { data, error } = await query
+    if (error) {
+      // 긴급 진단용 — silent fail 방지. join (candidates, job_postings) 실패 시
+      // 전체 결과가 null 반환되어 면접 일정이 0건으로 보이는 회귀 추적.
+      console.error('[useAllSchedules] join fetch failed — fallback to plain select:', error, {
+        code: (error as { code?: string }).code,
+        details: (error as { details?: string }).details,
+        hint: (error as { hint?: string }).hint,
+        message: error.message,
+      })
+
+      // Fallback: join 없이 단순 select — 일정만이라도 화면에 표시되도록 복구
+      let plainQuery = supabase
+        .from('interview_schedules')
+        .select('*')
+        .order('scheduled_at', { ascending: true })
+      if (dateFrom) plainQuery = plainQuery.gte('scheduled_at', dateFrom)
+      if (dateTo) plainQuery = plainQuery.lte('scheduled_at', dateTo)
+      const plain = await plainQuery
+      if (plain.error) {
+        console.error('[useAllSchedules] plain fetch also failed:', plain.error)
+      } else {
+        data = plain.data as unknown as any[]
+      }
+    }
     if (data) {
       setSchedules(
         data.map((s: any) => {
