@@ -2936,18 +2936,43 @@ ${surveyText || '응답 없음'}
                     }
                     const label = ch ? (SOURCE_CHANNEL_LABELS[ch] || candidate.source_channel) : '미상'
                     return (
-                      <div className="flex justify-between gap-2">
-                        <span className="text-gray-500 shrink-0">유입경로</span>
-                        <span className="font-medium text-right">
-                          {label}
-                          {agencyInfo ? (
-                            <span className="block text-xs text-gray-600 font-normal mt-0.5">
-                              {[agencyInfo.agency, agencyInfo.contact, agencyInfo.email].filter(Boolean).join(' · ')}
-                            </span>
-                          ) : (
-                            detail && ` (${detail})`
-                          )}
-                        </span>
+                      <div>
+                        <div className="flex justify-between gap-2 mb-1.5">
+                          <span className="text-gray-500 shrink-0">유입경로</span>
+                          <span className="font-medium text-right">{label}</span>
+                        </div>
+                        {agencyInfo ? (
+                          <div className="mt-1.5 overflow-hidden rounded-md border border-gray-200">
+                            <table className="w-full text-xs">
+                              <tbody className="divide-y divide-gray-100">
+                                {agencyInfo.agency && (
+                                  <tr>
+                                    <th className="bg-gray-50 px-2 py-1.5 text-left font-medium text-gray-500 w-20 align-top whitespace-nowrap">업체명</th>
+                                    <td className="px-2 py-1.5 text-gray-900 font-medium break-all">{agencyInfo.agency}</td>
+                                  </tr>
+                                )}
+                                {agencyInfo.contact && (
+                                  <tr>
+                                    <th className="bg-gray-50 px-2 py-1.5 text-left font-medium text-gray-500 w-20 align-top whitespace-nowrap">담당자</th>
+                                    <td className="px-2 py-1.5 text-gray-800 break-all">{agencyInfo.contact}</td>
+                                  </tr>
+                                )}
+                                {agencyInfo.email && (
+                                  <tr>
+                                    <th className="bg-gray-50 px-2 py-1.5 text-left font-medium text-gray-500 w-20 align-top whitespace-nowrap">이메일</th>
+                                    <td className="px-2 py-1.5 text-gray-800 break-all">
+                                      <a href={`mailto:${agencyInfo.email}`} className="text-brand-600 hover:underline">{agencyInfo.email}</a>
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          detail && (
+                            <p className="text-xs text-gray-600 mt-0.5 break-all">{detail}</p>
+                          )
+                        )}
                       </div>
                     )
                   })()}

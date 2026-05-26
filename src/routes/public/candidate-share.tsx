@@ -461,16 +461,31 @@ export default function CandidateSharePage() {
                   <p className="text-base font-semibold text-gray-900">{label}</p>
 
                   {agencyInfo ? (
-                    <div className="mt-2 space-y-0.5 text-sm text-gray-700">
-                      {agencyInfo.agency && (
-                        <p><span className="text-gray-400">업체명</span> · <span className="font-medium">{agencyInfo.agency}</span></p>
-                      )}
-                      {agencyInfo.contact && (
-                        <p><span className="text-gray-400">담당자</span> · {agencyInfo.contact}</p>
-                      )}
-                      {agencyInfo.email && (
-                        <p><span className="text-gray-400">담당자 이메일</span> · {agencyInfo.email}</p>
-                      )}
+                    <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+                      <table className="w-full text-sm">
+                        <tbody className="divide-y divide-gray-100">
+                          {agencyInfo.agency && (
+                            <tr>
+                              <th className="bg-gray-50 px-3 py-2 text-left text-xs font-medium text-gray-500 w-28 align-top whitespace-nowrap">업체명</th>
+                              <td className="px-3 py-2 text-gray-900 font-medium break-all">{agencyInfo.agency}</td>
+                            </tr>
+                          )}
+                          {agencyInfo.contact && (
+                            <tr>
+                              <th className="bg-gray-50 px-3 py-2 text-left text-xs font-medium text-gray-500 w-28 align-top whitespace-nowrap">담당자</th>
+                              <td className="px-3 py-2 text-gray-800 break-all">{agencyInfo.contact}</td>
+                            </tr>
+                          )}
+                          {agencyInfo.email && (
+                            <tr>
+                              <th className="bg-gray-50 px-3 py-2 text-left text-xs font-medium text-gray-500 w-28 align-top whitespace-nowrap">담당자 이메일</th>
+                              <td className="px-3 py-2 text-gray-800 break-all">
+                                <a href={`mailto:${agencyInfo.email}`} className="text-brand-600 hover:underline">{agencyInfo.email}</a>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   ) : (
                     candidate.source_detail && (
