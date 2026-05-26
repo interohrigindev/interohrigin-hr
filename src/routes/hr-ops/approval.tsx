@@ -1170,7 +1170,8 @@ export default function ApprovalManagementPage() {
                 {doc.doc_number && (
                   <span className="font-mono text-gray-400">{doc.doc_number}</span>
                 )}
-                <span>신청자: {getEmpName(doc.requester_id)}</span>
+                {/* 0522 #15: 신청자 이름 강조 (PC/모바일 공통) */}
+                <span className="text-sm font-semibold text-gray-800">신청자: {getEmpName(doc.requester_id)}</span>
                 {doc.department && <span>부서: {doc.department}</span>}
                 <span>유형: {getDocTypeLabel(doc.doc_type)}</span>
                 <span>신청일: {doc.submitted_at ? fmtDate(doc.submitted_at) : fmtDate(doc.created_at)}</span>
@@ -1773,7 +1774,8 @@ export default function ApprovalManagementPage() {
                   {doc.doc_number && (
                     <span className="font-mono text-gray-400">{doc.doc_number}</span>
                   )}
-                  <span>신청자: {getEmpName(doc.requester_id)}</span>
+                  {/* 0522 #15: 신청자 이름 강조 */}
+                  <span className="text-sm font-semibold text-gray-800">신청자: {getEmpName(doc.requester_id)}</span>
                   {doc.department && <span>부서: {doc.department}</span>}
                   <span>유형: {getDocTypeLabel(doc.doc_type)}</span>
                   <span>신청일: {doc.submitted_at ? fmtDate(doc.submitted_at) : fmtDate(doc.created_at)}</span>

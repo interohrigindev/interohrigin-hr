@@ -696,7 +696,8 @@ export default function TabEmployees() {
             <div className="space-y-2">
               {/* 상위 부서 (parent_id 없는 것) */}
               {departments.filter((d) => !d.parent_id).map((dept) => {
-                const count = employees.filter((e) => e.department_id === dept.id).length
+                // 퇴사자(is_active=false) 는 부서 인원수 카운트에서 제외 (2026-05-26 정책)
+                const count = employees.filter((e) => e.department_id === dept.id && e.is_active !== false).length
                 const childDepts = departments.filter((d) => d.parent_id === dept.id)
                 return (
                   <div key={dept.id}>
@@ -722,7 +723,8 @@ export default function TabEmployees() {
                     </div>
                     {/* 하위 팀 */}
                     {childDepts.map((child) => {
-                      const childCount = employees.filter((e) => e.department_id === child.id).length
+                      // 퇴사자 제외 (2026-05-26)
+                      const childCount = employees.filter((e) => e.department_id === child.id && e.is_active !== false).length
                       return (
                         <div key={child.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/50 px-4 py-2.5 ml-6 mt-1">
                           <div className="flex items-center gap-2">
@@ -748,7 +750,8 @@ export default function TabEmployees() {
               })}
               {/* parent_id가 있는데 부모가 삭제된 고아 부서 */}
               {departments.filter((d) => d.parent_id && !departments.find((p) => p.id === d.parent_id)).map((dept) => {
-                const count = employees.filter((e) => e.department_id === dept.id).length
+                // 퇴사자(is_active=false) 는 부서 인원수 카운트에서 제외 (2026-05-26 정책)
+                const count = employees.filter((e) => e.department_id === dept.id && e.is_active !== false).length
                 return (
                   <div key={dept.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3">
                     <div>
