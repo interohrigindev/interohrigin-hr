@@ -841,19 +841,26 @@ ${candidateList}
                                 .filter(Boolean)
                                 .join(', ')
                             : ''
-                          // 색상: 불합격 = 회색+취소선 / 합격 = 에메랄드 / 그 외 = 브랜드
+                          // 색상: 불합격 = 빨강+취소선 / 합격 = 에메랄드 / 그 외 = 브랜드
+                          // (불합격자는 한눈에 구분되도록 회색 → 빨강 강조로 변경)
                           const cls = isRejected
-                            ? 'bg-gray-100 text-gray-400 line-through hover:bg-gray-200'
+                            ? 'bg-red-100 text-red-700 line-through hover:bg-red-200 ring-1 ring-red-300'
                             : isHired
                               ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                               : 'bg-brand-50 text-brand-700 hover:bg-brand-100'
+                          // 셀에 직접 노출할 구분 표시 (호버 없이도 한눈에)
+                          const statusBadge = isRejected
+                            ? <span className="font-bold ml-0.5">❌</span>
+                            : isHired
+                              ? <span className="font-bold ml-0.5">✅</span>
+                              : null
                           return (
                             <div key={s.id} className="relative group">
                               <button
                                 onClick={() => navigate(`/admin/recruitment/candidates/${s.candidate_id}`)}
                                 className={`block w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${cls}`}
                               >
-                                {format(new Date(s.scheduled_at), 'HH:mm')} {name}
+                                {format(new Date(s.scheduled_at), 'HH:mm')} {name}{statusBadge}
                               </button>
                               {/* 커스텀 hover 툴팁 — 퀵 + 심플 */}
                               <div className="pointer-events-none absolute left-0 top-full mt-1 z-30 hidden group-hover:block w-56 rounded-md bg-gray-900 text-white text-[11px] shadow-lg p-2 space-y-1">

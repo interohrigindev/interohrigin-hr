@@ -46,7 +46,8 @@ export function useAllSchedules(dateFrom?: string, dateTo?: string) {
     let query = supabase
       .from('interview_schedules')
       // 불합격(rejected) 지원자의 이름·직무 정보도 캘린더에 노출되어야 하므로 schedule 단에서 join
-      .select('*, candidates(name, status, position, job_postings(title))')
+      // 주의: candidates 에는 position 컬럼이 없음 — 직무는 job_postings.position 에서 가져옴 (42703 회귀 fix)
+      .select('*, candidates(name, status, job_postings(title, position))')
       .order('scheduled_at', { ascending: true })
 
     if (dateFrom) query = query.gte('scheduled_at', dateFrom)
@@ -86,7 +87,8 @@ export function useAllSchedules(dateFrom?: string, dateTo?: string) {
             ...s,
             candidate_name: cand?.name || '알 수 없음',
             candidate_status: cand?.status ?? null,
-            candidate_position: cand?.position ?? null,
+            // candidates.position 은 존재하지 않으므로 job_postings.position 사용
+            candidate_position: posting?.position ?? null,
             job_title: posting?.title ?? null,
           }
         })
