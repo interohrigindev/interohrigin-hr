@@ -41,9 +41,9 @@ import MenuPermissions from '@/routes/settings/menu-permissions'
 import BillingDashboard from '@/routes/settings/billing'
 import MeetingNotes from '@/routes/meeting-notes'
 
-// 매뉴얼 (인터랙티브 가이드)
+// 도움말 센터 (Help Center)
 import ManualHub from '@/routes/manual'
-import ManualEmployee from '@/routes/manual/employee'
+import ManualArticle from '@/routes/manual/article'
 import ManualTour from '@/routes/manual/tour'
 
 // 채용관리
@@ -247,9 +247,9 @@ function App() {
               />
               <Route path="meeting-notes" element={<MeetingNotes />} />
 
-              {/* 인터랙티브 매뉴얼 */}
+              {/* 도움말 센터 (Help Center) */}
               <Route path="manual" element={<ManualHub />} />
-              <Route path="manual/employee" element={<ManualEmployee />} />
+              <Route path="manual/article/:articleId" element={<ManualArticle />} />
               <Route path="manual/tour/:chapterId" element={<ManualTour />} />
 
               {/* 채용관리 (관리자/임원) */}
