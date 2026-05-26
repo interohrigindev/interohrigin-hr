@@ -26,9 +26,18 @@ const ROLE_REQUIRED_STATUS: Record<string, string> = {
   hr_admin: 'self_done',
 }
 
-// director / division_head 는 본인 본부(division) 산하 직원만 평가
-// leader 는 본인 팀/부서 + 하위 부서 트리까지 포함
-// admin / hr_admin / ceo 는 전체 스코프
+// 평가 스코프 정책 (원래 로직 복구 — 2026-05-26):
+//   · leader              → 본인 팀/부서 + 하위 부서 트리 (부서 제한)
+//   · director            → 전사 모든 직원 (본부 무관, 임원 평가 단계)
+//   · division_head       → 전사 모든 직원 (본부 무관, 임원 평가 단계)
+//   · admin / hr_admin / ceo → 전체 스코프
+//
+// 회귀 이력:
+//   0512 PR3 (7134b3d) 이후 director/division_head 까지 부서 트리 필터가 적용됨.
+//   결과: 강제묵 경영관리본부 이사가 다른 본부 직원(유지혜) 평가 불가.
+//   원래 정책은 "이사/임원은 부서 무관 전사 평가 + 전원 평가 완료 시 다음 단계 전이"
+//   (074 evaluation_executive_parallel + dfa976d 병렬 fan-out).
+//   본 fix 로 director/division_head 부서 필터 제거 → 원래 로직 복구.
 
 const STATUS_ORDER = [
   'pending', 'self_done', 'leader_done',
@@ -128,8 +137,10 @@ export default function EvaluateList() {
     )
   }
 
-  // 내 관할 부서 트리 (leader/director/division_head 용)
-  const mySubtree = (myRole === 'leader' || myRole === 'director' || myRole === 'division_head')
+  // 내 관할 부서 트리 — leader 만 적용 (director/division_head 는 전사 평가)
+  // 회귀 fix 2026-05-26: 이전엔 director/division_head 도 mySubtree 에 포함되어
+  // 다른 본부 직원이 누락됐음. 원래 정책 복구.
+  const mySubtree = (myRole === 'leader')
     ? collectSubtreeIds(profile?.department_id)
     : null
 
@@ -142,7 +153,8 @@ export default function EvaluateList() {
     //      평가 진행자로도 등록된 경우 본인 평가 리스트에서 본인 제외)
     if (t.employee.id === profile?.id) return false
 
-    // leader / director / division_head — 본인 부서 및 하위 부서 트리만 노출
+    // leader 만 본인 부서 및 하위 부서 트리로 제한
+    // director / division_head 는 전사 평가 (위 mySubtree 가 null 이므로 건너뜀)
     if (mySubtree && mySubtree.size > 0) {
       const empDeptId = t.employee.department_id
       if (!empDeptId || !mySubtree.has(empDeptId)) return false
