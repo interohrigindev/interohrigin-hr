@@ -125,6 +125,94 @@ export interface SurveyQuestion {
   required?: boolean
 }
 
+// ─── 사전 질의서 응답 entries (PDCA #2 external-pre-survey-import) ─────
+// Design Ref: §3 — entries 배열 통합 + v1 deprecate 동시 처리 (Option C)
+// Plan SC: R1 (덮어쓰기) / R3 (id 매칭) 모두 해결.
+//
+// 데이터 모델 핵심:
+//   - pre_survey_data jsonb 안에 entries: PreSurveyEntry[] 배열 추가
+//   - 기존 top-level answers/meta/completed_at 은 backward-compat 유지
+//     (readPreSurveyEntries 헬퍼가 읽기 시점에 entry 1개로 변환)
+//   - DB ALTER 없음 — CLAUDE.md 절대 규칙 준수
+
+/** 사전질의서 응답 출처. 신규 source 추가 시 여기에만 확장 */
+export type PreSurveySource = 'pbd' | 'manual_upload'
+
+/** 사용자 친화적 출처 배지 텍스트 (UI 표시용) */
+export const PRE_SURVEY_SOURCE_LABEL: Record<PreSurveySource, string> = {
+  pbd: 'v2.0 PBD',
+  manual_upload: 'Google Form (수동 업로드)',
+}
+
+/** 사전질의서 응답 1건 (source 별) */
+export interface PreSurveyEntry {
+  /** 안정적 식별자. 패턴: `{source}_{timestamp}` (예: `manual_upload_1716800000`, `pbd_legacy`) */
+  id: string
+  /** 응답 출처 */
+  source: PreSurveySource
+  /** 사용자 친화적 배지 텍스트. UI 에 그대로 표시 */
+  source_label: string
+  /** 답변 — key 는 entry 안의 questions[i].id 와 매칭 */
+  answers: Record<string, string>
+  /** 질문 텍스트 (self-contained, 외부 출처는 필수, pbd legacy 는 생략 가능) */
+  questions?: PreSurveyEntryQuestion[]
+  /** 출처별 추가 메타데이터 */
+  source_meta?: PreSurveyEntrySourceMeta
+  /** entry 생성 시각 (정렬 기준, ISO timestamp) */
+  created_at: string
+}
+
+/** entry 안의 self-contained 질문 */
+export interface PreSurveyEntryQuestion {
+  /** entry 내부에서만 유일한 id (예: `manual_${ts}_${i}`) */
+  id: string
+  /** 질문 텍스트 (원문) */
+  text: string
+  /** 표시 순서 (0-based) */
+  order: number
+  /** 필수 응답 여부 (manual_upload 는 보통 미지정) */
+  required?: boolean
+}
+
+/** entry 출처별 메타데이터 */
+export interface PreSurveyEntrySourceMeta {
+  // ── manual_upload 전용 ──────────────────────────────
+  /** 원본 PDF Storage path (resumes 버킷 기준) */
+  original_pdf_path?: string
+  /** 원본 PDF 파일명 (UI 표시용, 한글 보존) */
+  original_pdf_filename?: string
+  /** 업로더 profile.id */
+  uploaded_by?: string
+  /** 업로더 표시명 (캐시용 — profile 조회 회피) */
+  uploaded_by_name?: string
+  /** 업로드 시각 (ISO timestamp) */
+  uploaded_at?: string
+  /** Gemini 추출 신뢰도 (0.0~1.0). < 0.7 시 UI 에 ⚠️ 경고 */
+  extraction_confidence?: number
+  /** Gemini 가 못 처리한 텍스트 일부 (사람 검수 힌트) */
+  extraction_notes?: string
+  /** admin 이 미리보기에서 questions/answers 를 수정했는지 */
+  edited?: boolean
+  // ── pbd 전용 ────────────────────────────────────────
+  /** survey_test_responses.id 참조 (옵션 — legacy entry 변환 시 미설정) */
+  pbd_response_id?: string
+}
+
+/** pre_survey_data jsonb 의 신규 구조 (Option C) */
+export interface PreSurveyData {
+  /** 모든 응답 entries 배열 (정렬 안 됨 — 헬퍼가 정렬) */
+  entries?: PreSurveyEntry[]
+  // ── 기존 v2.0 top-level 필드 (backward compat, 신규 코드는 entries 만 사용) ──
+  answers?: Record<string, string>
+  meta?: {
+    birth_date?: string
+    mbti?: string
+    hanja_name?: string
+    blood_type?: string
+  }
+  completed_at?: string
+}
+
 // ─── 면접 일정 ───────────────────────────────────────────────────
 export type InterviewType = 'video' | 'face_to_face'
 export type InterviewPriority = 'urgent' | 'normal' | 'low'
