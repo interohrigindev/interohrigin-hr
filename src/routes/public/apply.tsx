@@ -347,9 +347,12 @@ export default function PublicApply() {
             {/* 포트폴리오 섹션 — 다중 파일 + 외부 링크 */}
             <div className="border-t border-gray-100 pt-5">
               <label className="block text-sm font-medium text-gray-700 mb-1">포트폴리오 (선택)</label>
-              <p className="text-xs text-gray-500 mb-3">
-                디자이너·콘텐츠 직무는 여러 작품을 첨부할 수 있습니다. 50MB 초과 파일은 Google Drive 등 외부 링크로 등록해주세요.
+              <p className="text-xs text-gray-500 mb-2">
+                디자이너·콘텐츠 직무는 여러 작품을 첨부할 수 있습니다.
               </p>
+              <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800">
+                ⚠️ <b>20MB 초과 파일</b>은 미리보기에 오류가 발생할 수 있어요. 큰 파일은 아래의 <b>외부 링크</b>(Google Drive, Dropbox 등)로 등록해주세요.
+              </div>
 
               {/* 파일 목록 */}
               {portfolioFiles.length > 0 && (

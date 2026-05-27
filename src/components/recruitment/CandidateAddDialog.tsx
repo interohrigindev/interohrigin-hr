@@ -404,6 +404,9 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
               </p>
               <p className="text-[11px] text-gray-400 mt-1">파일 형식 무관 · 개당 최대 50MB</p>
             </div>
+            <p className="mt-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800">
+              ⚠️ <b>20MB 초과 파일</b>은 미리보기에 오류가 발생할 수 있어요. 큰 파일은 아래의 <b>포트폴리오 링크</b>(Google Drive, Dropbox 등)로 등록해주세요.
+            </p>
             <input
               ref={portfolioInputRef}
               type="file"

@@ -1665,6 +1665,9 @@ ${surveyText || '응답 없음'}
                         />
                       </label>
                     </div>
+                    <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800">
+                      ⚠️ <b>20MB 초과 파일</b>은 미리보기에 오류가 발생할 수 있어요. 큰 파일은 아래의 <b>링크 추가</b>(Google Drive, Dropbox 등)로 등록해주세요.
+                    </div>
 
                     {/* 링크 추가 폼 (인라인) */}
                     <div className="flex items-center gap-1.5 p-2 bg-blue-50/60 border border-dashed border-blue-200 rounded-lg">
