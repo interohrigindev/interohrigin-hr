@@ -19,6 +19,9 @@ export type CandidateFileKind = 'resume' | 'cover_letter' | 'portfolio'
 const PRIMARY_BUCKET = 'resumes'
 const FALLBACK_BUCKETS = ['recruitment-files']  // 레거시 fallback (방어용)
 
+/** 외부 사전질의서 PDF 업로드 제약 (Design §4 — 토큰 한계 + UX) */
+export const EXTERNAL_SURVEY_PDF_MAX_BYTES = 20 * 1024 * 1024  // 20MB
+
 /**
  * Supabase Storage 키 안전 변환 — 한글/특수문자 → ASCII safe
  *
@@ -139,6 +142,69 @@ export async function deleteCandidateFile(path: string): Promise<{ ok: boolean; 
     await supabase.storage.from(bucket).remove([path]).catch(() => {})
   }
   return { ok: true }
+}
+
+/**
+ * 외부 사전질의서 PDF 업로드 (PDCA #2 external-pre-survey-import)
+ *
+ * Design Ref: §7 Storage Design — resumes 버킷 재사용, 신규 path 패턴.
+ * Plan SC: SC-04 (출처/원본 PDF 추적 가능). CLAUDE.md 절대 규칙 (candidate-storage 진입점).
+ *
+ * Path 규칙:
+ *   pre-survey-uploads/{candidate_id}/{timestamp}_{sanitized_filename}.pdf
+ *
+ * 가드:
+ *   - mime: application/pdf 또는 .pdf 확장자
+ *   - size: <= EXTERNAL_SURVEY_PDF_MAX_BYTES (20MB)
+ *
+ * @returns { path: 저장된 상대 path, error?: 한국어 에러 메시지 }
+ *          path 는 entry.source_meta.original_pdf_path 에 저장. 다운로드는 getCandidateFileUrl 사용.
+ */
+export async function uploadExternalSurveyPdf(
+  candidateId: string,
+  file: File,
+): Promise<{ path: string; error?: string }> {
+  // 1) 입력 가드
+  if (!candidateId) return { path: '', error: '지원자 ID 가 필요합니다.' }
+  const isPdfMime = file.type === 'application/pdf'
+  const isPdfExt = file.name.toLowerCase().endsWith('.pdf')
+  if (!isPdfMime && !isPdfExt) {
+    return { path: '', error: 'PDF 파일만 업로드 가능합니다.' }
+  }
+  if (file.size > EXTERNAL_SURVEY_PDF_MAX_BYTES) {
+    const mb = Math.round(EXTERNAL_SURVEY_PDF_MAX_BYTES / 1024 / 1024)
+    return { path: '', error: `PDF 크기는 ${mb}MB 이하여야 합니다.` }
+  }
+  if (file.size === 0) {
+    return { path: '', error: '빈 파일은 업로드할 수 없습니다.' }
+  }
+
+  // 2) path 생성 — sanitizeStorageKey 로 ASCII safe 변환 후 timestamp prefix
+  const sanitized = sanitizeStorageKey(file.name)
+  const lastDot = sanitized.lastIndexOf('.')
+  const baseAscii = lastDot > 0 ? sanitized.slice(0, lastDot) : sanitized
+  const ts = Date.now()
+  // 확장자는 .pdf 로 고정 (mime/확장자 검증 통과 후)
+  const path = `pre-survey-uploads/${candidateId}/${ts}_${baseAscii}.pdf`
+
+  // 3) 업로드 — 기존 safeStorageUpload 재사용 (RLS / 타임아웃 / 에러 표준화)
+  const { error } = await safeStorageUpload(PRIMARY_BUCKET, path, file, { upsert: false })
+  if (error) return { path: '', error: describeUploadError(error) }
+  return { path }
+}
+
+/**
+ * 외부 사전질의서 PDF 삭제 — manual_upload entry 제거 시 함께 호출.
+ *
+ * Design §10.6 — Storage 정합성: entry 삭제와 Storage 파일 정리를 호출자가 함께 수행.
+ * 본 함수는 PRIMARY_BUCKET + FALLBACK_BUCKETS 모두 시도해 어디 있든 정리 (deleteCandidateFile 위임).
+ *
+ * @param path uploadExternalSurveyPdf 가 반환한 상대 path. 외부 URL 은 미지원.
+ */
+export async function deleteExternalSurveyPdf(path: string): Promise<{ ok: boolean; error?: string }> {
+  if (!path) return { ok: false, error: 'path 가 비어 있습니다.' }
+  // 기존 deleteCandidateFile 재사용 — 양쪽 버킷 best-effort 정리
+  return deleteCandidateFile(path)
 }
 
 /**
