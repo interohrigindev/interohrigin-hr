@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type MouseEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer, Link2, Copy, EyeOff, Pencil, Upload, RotateCcw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -10,8 +10,17 @@ import { useToast } from '@/components/ui/Toast'
 import { FileRetentionBadge } from '@/components/ui/FileRetentionBadge'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { getCandidateFileUrl, sanitizeStorageKey } from '@/lib/candidate-storage'
+import { getCandidateFileUrl, sanitizeStorageKey, deleteExternalSurveyPdf } from '@/lib/candidate-storage'
 import { generateAIContent, getAIConfigForFeature, type AIFileAttachment } from '@/lib/ai-client'
+import {
+  readPreSurveyEntries,
+  createManualEntry,
+  addEntry,
+  removeEntryById,
+  removeEntriesBySource,
+} from '@/lib/pre-survey-entries'
+import { ExternalSurveyImportDialog, type ExternalSurveyImportPayload } from '@/components/recruitment/ExternalSurveyImportDialog'
+import type { PreSurveyData, PreSurveyEntry } from '@/types/recruitment'
 import { runComprehensiveAnalysis, generateSecondInterviewQuestions } from '@/lib/recruitment-ai'
 import { PUBLIC_APP_URL } from '@/lib/app-url'
 import { CANDIDATE_STATUS_LABELS, CANDIDATE_STATUS_COLORS, SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
@@ -88,6 +97,9 @@ export default function CandidateReport() {
   const [shareNote, setShareNote] = useState('')
   const [shareExpiresDays, setShareExpiresDays] = useState<string>('14')
   const [creatingShare, setCreatingShare] = useState(false)
+  // 외부 사전질의서 PDF 업로드 Dialog (PDCA #2 external-pre-survey-import)
+  const [externalSurveyDialogOpen, setExternalSurveyDialogOpen] = useState(false)
+  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -979,6 +991,58 @@ ${fileInfo}
     toast('링크가 삭제되었습니다.', 'success')
   }
 
+  // ─── 외부 사전질의서 PDF 업로드 — PDCA #2 external-pre-survey-import ───
+  // Design Ref: §5 UI Flow / Plan SC-02 (수정/확정 즉시 반영)
+  async function handleExternalSurveyConfirm(payload: ExternalSurveyImportPayload) {
+    if (!candidate || !id) throw new Error('지원자 정보가 없습니다.')
+    const entry: PreSurveyEntry = createManualEntry({
+      questions: payload.questions,
+      answers: payload.answers,
+      sourceMeta: {
+        original_pdf_path: payload.originalPdfPath,
+        original_pdf_filename: payload.originalPdfFilename,
+        uploaded_by: profile?.id,
+        uploaded_by_name: profile?.name || undefined,
+        uploaded_at: new Date().toISOString(),
+        extraction_confidence: payload.extractionConfidence,
+        extraction_notes: payload.extractionNotes,
+        edited: payload.edited,
+      },
+    })
+    const nextData = addEntry(candidate.pre_survey_data as PreSurveyData | null, entry)
+    const { error } = await supabase.from('candidates').update({ pre_survey_data: nextData }).eq('id', id)
+    if (error) throw new Error(error.message)
+    setCandidate((prev) => prev ? ({ ...prev, pre_survey_data: nextData as Record<string, unknown> }) : prev)
+  }
+
+  // 외부 사전질의서 entry 삭제 — Storage PDF 도 함께 정리 (Design §10.6 정합성)
+  async function handleDeleteExternalEntry(entry: PreSurveyEntry) {
+    if (!candidate || !id) return
+    if (!confirm(`이 외부 사전질의서 응답을 삭제하시겠습니까?\n질문 ${entry.questions?.length || 0}개와 원본 PDF 가 함께 삭제됩니다.`)) return
+    setDeletingEntryId(entry.id)
+    try {
+      // 1) DB: entries 에서 제거
+      const nextData = removeEntryById(candidate.pre_survey_data as PreSurveyData | null, entry.id)
+      const { error } = await supabase.from('candidates').update({ pre_survey_data: nextData }).eq('id', id)
+      if (error) {
+        toast('삭제 실패: ' + error.message, 'error')
+        return
+      }
+      // 2) Storage: 원본 PDF 삭제 (best-effort, 실패해도 DB 는 이미 정리됨)
+      const pdfPath = entry.source_meta?.original_pdf_path
+      if (pdfPath) {
+        await deleteExternalSurveyPdf(pdfPath).catch(() => { /* best-effort */ })
+      }
+      setCandidate((prev) => prev ? ({ ...prev, pre_survey_data: nextData as Record<string, unknown> }) : prev)
+      toast('외부 사전질의서가 삭제되었습니다.', 'success')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '알 수 없는 오류'
+      toast('삭제 실패: ' + msg, 'error')
+    } finally {
+      setDeletingEntryId(null)
+    }
+  }
+
   // 사전질의서 v2.0 (PBD) 재발송 — 새 토큰 + 기존 응답 초기화 + 이메일 재발송
   async function handleResendSurvey() {
     if (!candidate) return
@@ -1009,16 +1073,22 @@ ${fileInfo}
         .eq('candidate_id', candidate.id)
 
       // 상태 리셋 + 새 토큰/타임스탬프 저장
+      // R1 가드 (PDCA #2 external-pre-survey-import): pre_survey_data: null 대신
+      // removeEntriesBySource(prev, 'pbd') 로 pbd 만 정리 — manual_upload entries 자동 보존.
       const sentAt = new Date().toISOString()
       const updatedHistory = [
         ...((candidate.survey_send_history as { sent_at: string }[] | undefined) || []),
         { sent_at: sentAt, version: 'v2.0_pbd' as const, resent: true },
       ]
+      const nextPreSurveyData = removeEntriesBySource(
+        candidate.pre_survey_data as PreSurveyData | null,
+        'pbd',
+      )
       await supabase
         .from('candidates')
         .update({
           status: 'survey_sent',
-          pre_survey_data: null,
+          pre_survey_data: nextPreSurveyData,
           survey_send_history: updatedHistory,
           pbd_survey_token: newToken,
           pbd_survey_sent_at: sentAt,
@@ -1029,7 +1099,7 @@ ${fileInfo}
       setCandidate((prev) => prev ? {
         ...prev,
         status: 'survey_sent' as CandidateStatus,
-        pre_survey_data: null,
+        pre_survey_data: nextPreSurveyData as Record<string, unknown>,
         survey_send_history: updatedHistory,
       } : prev)
       toast('사전질의서가 재발송되었습니다.', 'success')
@@ -1040,14 +1110,22 @@ ${fileInfo}
     setResendingSurvey(false)
   }
 
-  // 사전질의서 인쇄
+  // 사전질의서 인쇄 — PDCA #2: entries 기반 manual_upload 도 함께 인쇄 (legacy 호환 유지)
   function handlePrintSurvey() {
-    if (!candidate || !candidate.pre_survey_data) return
-    const surveyData = candidate.pre_survey_data as {
+    if (!candidate) return
+    const surveyData = (candidate.pre_survey_data as {
       answers?: Record<string, string>
       meta?: { birth_date?: string; mbti?: string; hanja_name?: string; blood_type?: string }
       completed_at?: string
-    }
+    } | null) || {}
+    const manualEntries = readPreSurveyEntries(candidate.pre_survey_data as PreSurveyData | null)
+      .filter((e) => e.source === 'manual_upload')
+
+    // 적어도 legacy 응답 또는 manual entry 1건이 있어야 인쇄
+    const hasLegacy = (surveyData.answers && Object.keys(surveyData.answers).length > 0) || (surveyData.meta && Object.keys(surveyData.meta).length > 0)
+    if (!hasLegacy && manualEntries.length === 0) return
+
+    const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
 
     const metaRows: string[] = []
     if (surveyData.meta?.birth_date) metaRows.push(`<td><strong>생년월일</strong><br/>${surveyData.meta.birth_date}</td>`)
@@ -1067,6 +1145,22 @@ ${fileInfo}
           `<div class="qa"><p class="q">질문 ${i + 1}</p><p class="a">${answer}</p></div>`
         ).join('')
       }
+    }
+
+    // 외부 업로드 entries 별도 섹션
+    let externalHtml = ''
+    if (manualEntries.length > 0) {
+      externalHtml = manualEntries.map((entry) => {
+        const qs = (entry.questions || []).slice().sort((a, b) => a.order - b.order)
+        const entryQa = qs.map((q, i) => {
+          const ans = entry.answers[q.id] || '미응답'
+          return `<div class="qa"><p class="q">Q${i + 1}. ${escapeHtml(q.text)}</p><p class="a">${escapeHtml(ans)}</p></div>`
+        }).join('')
+        const uploadedAt = entry.source_meta?.uploaded_at
+          ? `<p class="ext-meta">업로드: ${formatDate(entry.source_meta.uploaded_at, 'yyyy.MM.dd HH:mm')}${entry.source_meta.uploaded_by_name ? ` · ${escapeHtml(entry.source_meta.uploaded_by_name)}` : ''}</p>`
+          : ''
+        return `<div class="ext-section"><h2 class="ext-title">${escapeHtml(entry.source_label)}</h2>${uploadedAt}${entryQa}</div>`
+      }).join('')
     }
 
     let insightHtml = ''
@@ -1092,12 +1186,16 @@ ${fileInfo}
   .insight-title { font-size: 12px; font-weight: 600; color: #2563eb; margin: 0 0 4px 0; }
   .insight p:last-child { font-size: 13px; margin: 0; }
   .completed { font-size: 11px; color: #999; text-align: right; margin-top: 16px; }
+  .ext-section { margin-top: 24px; padding-top: 16px; border-top: 1px dashed #ccc; }
+  .ext-title { font-size: 14px; color: #065f46; margin: 0 0 4px 0; }
+  .ext-meta { font-size: 11px; color: #888; margin: 0 0 10px 0; }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style></head><body>
   <h1>사전 질의서</h1>
   <p class="sub">${candidate.name} · ${candidate.email || ''}</p>
   ${metaRows.length > 0 ? `<table class="meta-table"><tr>${metaRows.join('')}</tr></table>` : ''}
   ${qaHtml}
+  ${externalHtml}
   ${insightHtml}
   ${completedAt}
 </body></html>`
@@ -1752,8 +1850,11 @@ ${surveyText || '응답 없음'}
             </CardContent>
           </Card>
 
-          {/* 사전질의서 응답 상세 */}
-          {candidate.pre_survey_data && (
+          {/* 사전질의서 응답 상세 — top-level answers/meta 가 있을 때만 (legacy v2.0/v1) */}
+          {candidate.pre_survey_data && (() => {
+            const _sd = candidate.pre_survey_data as { answers?: Record<string, string>; meta?: Record<string, string> }
+            return (_sd.answers && Object.keys(_sd.answers).length > 0) || (_sd.meta && Object.keys(_sd.meta).length > 0)
+          })() && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -1761,6 +1862,9 @@ ${surveyText || '응답 없음'}
                     <ClipboardList className="h-4 w-4" /> 사전 질의서 응답
                   </CardTitle>
                   <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setExternalSurveyDialogOpen(true)}>
+                      <Upload className="h-3 w-3 mr-1" /> PDF 업로드
+                    </Button>
                     <Button size="sm" variant="outline" onClick={handlePrintSurvey}>
                       <Printer className="h-3 w-3 mr-1" /> 인쇄
                     </Button>
@@ -1944,6 +2048,105 @@ ${surveyText || '응답 없음'}
               </CardContent>
             </Card>
           )}
+
+          {/* 외부 사전질의서 (Google Form 수동 업로드) — PDCA #2 external-pre-survey-import
+              Design Ref §5.1 + Plan SC-03/SC-04. PBD/v1 와 별도 Card 로 노출 (둘 다 표시 정책). */}
+          {(() => {
+            const entries = readPreSurveyEntries(candidate.pre_survey_data as PreSurveyData | null)
+              .filter((e) => e.source === 'manual_upload')
+            // 외부 entry 없을 때도 PBD/v1 응답이 모두 없으면 "업로드 진입" 안내 카드 노출
+            const sd = candidate.pre_survey_data as { answers?: Record<string, string>; meta?: Record<string, string> } | null
+            const hasLegacy = sd && ((sd.answers && Object.keys(sd.answers).length > 0) || (sd.meta && Object.keys(sd.meta).length > 0))
+            const hasPbd = !!pbdResponse
+            if (entries.length === 0 && (hasLegacy || hasPbd)) return null  // legacy/PBD 카드가 이미 업로드 버튼 제공
+            return (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Upload className="h-4 w-4" /> 외부 사전질의서 응답
+                      <span className="text-[11px] font-normal bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5">
+                        Google Form (수동 업로드)
+                      </span>
+                    </CardTitle>
+                    <Button size="sm" variant="outline" onClick={() => setExternalSurveyDialogOpen(true)}>
+                      <Upload className="h-3 w-3 mr-1" /> PDF 업로드
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {entries.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      외부에서 받은 사전질의서 PDF 를 업로드하면 AI 가 질문-답변을 자동으로 추출합니다.
+                    </p>
+                  ) : (
+                    entries.map((entry) => {
+                      const conf = entry.source_meta?.extraction_confidence
+                      const lowConf = typeof conf === 'number' && conf < 0.7
+                      return (
+                        <div key={entry.id} className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+                          {/* entry 헤더 */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-xs text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                              <span>업로드: {formatDate(entry.source_meta?.uploaded_at || entry.created_at, 'yyyy.MM.dd HH:mm')}</span>
+                              {entry.source_meta?.uploaded_by_name && (
+                                <span>· 업로더: {entry.source_meta.uploaded_by_name}</span>
+                              )}
+                              {entry.source_meta?.edited && (
+                                <span className="text-[10px] bg-gray-100 text-gray-600 rounded px-1.5 py-0.5">수정됨</span>
+                              )}
+                              {typeof conf === 'number' && (
+                                <span className={lowConf ? 'text-amber-600' : 'text-gray-400'}>
+                                  · AI 신뢰도 {Math.round(conf * 100)}%
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteExternalEntry(entry)}
+                              disabled={deletingEntryId === entry.id}
+                              className="text-gray-400 hover:text-red-500 p-1 disabled:opacity-50"
+                              title="외부 응답 삭제"
+                            >
+                              {deletingEntryId === entry.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          {/* 저신뢰도 경고 */}
+                          {lowConf && (
+                            <div className="rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 text-[11px] text-amber-800 flex items-center gap-1.5">
+                              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                              AI 추출 신뢰도가 낮습니다. 각 항목을 한 번 더 검토해주세요.
+                            </div>
+                          )}
+                          {/* 원본 PDF 다운로드 (admin 전용) */}
+                          {entry.source_meta?.original_pdf_path && (
+                            <ExternalPdfLink
+                              path={entry.source_meta.original_pdf_path}
+                              filename={entry.source_meta.original_pdf_filename || 'survey.pdf'}
+                            />
+                          )}
+                          {/* Q&A 목록 */}
+                          <div className="space-y-2">
+                            {(entry.questions || []).slice().sort((a, b) => a.order - b.order).map((q, i) => (
+                              <div key={q.id} className="p-2.5 bg-gray-50 rounded-lg">
+                                <p className="text-xs font-medium text-gray-600 mb-1">Q{i + 1}. {q.text}</p>
+                                <p className="text-sm text-gray-900 whitespace-pre-line">
+                                  {entry.answers[q.id] || <span className="text-gray-400 italic">미응답</span>}
+                                </p>
+                              </div>
+                            ))}
+                            {(entry.questions || []).length === 0 && (
+                              <p className="text-xs text-gray-500">질문이 비어 있습니다. 삭제 후 다시 업로드해주세요.</p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })()}
 
           {/* 사전질의서 v2.0 (PBD) 응답 결과 — 응답 완료 시 표시 */}
           {pbdResponse && (
@@ -3120,6 +3323,46 @@ ${surveyText || '응답 없음'}
           </div>
         </Dialog>
       )}
+
+      {/* PDCA #2 external-pre-survey-import — 외부 사전질의서 업로드 Dialog */}
+      {id && (
+        <ExternalSurveyImportDialog
+          open={externalSurveyDialogOpen}
+          onClose={() => setExternalSurveyDialogOpen(false)}
+          candidateId={id}
+          onConfirm={handleExternalSurveyConfirm}
+        />
+      )}
     </div>
+  )
+}
+
+// ─── External PDF link (admin only — signed URL on demand) ──────────
+// Design Ref §5.1 — admin 페이지의 manual entry 카드에서만 사용. 공유링크에는 노출 안 함.
+function ExternalPdfLink({ path, filename }: { path: string; filename: string }) {
+  const [resolving, setResolving] = useState(false)
+  const handleClick = async (e: MouseEvent) => {
+    e.preventDefault()
+    if (resolving) return
+    setResolving(true)
+    try {
+      const url = await getCandidateFileUrl(path)
+      if (url) {
+        window.open(url, '_blank', 'noopener')
+      }
+    } finally {
+      setResolving(false)
+    }
+  }
+  return (
+    <a
+      href="#"
+      onClick={handleClick}
+      className="inline-flex items-center gap-1 text-xs text-blue-700 hover:underline"
+      title={filename}
+    >
+      <FileText className="h-3 w-3" />
+      {resolving ? '여는 중...' : `원본 PDF (${filename})`}
+    </a>
   )
 }

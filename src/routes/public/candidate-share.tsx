@@ -8,8 +8,9 @@ import {
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 import { SOURCE_CHANNEL_LABELS, EMPLOYMENT_TYPE_LABELS, EXPERIENCE_LEVEL_LABELS } from '@/lib/recruitment-constants'
-import type { SourceChannel } from '@/types/recruitment'
+import type { SourceChannel, PreSurveyData } from '@/types/recruitment'
 import PbdResultView, { type PbdResultRow } from '@/components/recruitment/PbdResultView'
+import { readPreSurveyEntries } from '@/lib/pre-survey-entries'
 
 interface PortfolioFile { path: string; filename: string; size?: number }
 interface PortfolioLink { url: string; label: string }
@@ -698,6 +699,45 @@ export default function CandidateSharePage() {
             )}
           </div>
         )}
+
+        {/* 외부 사전질의서 (Google Form 수동 업로드) — PDCA #2 external-pre-survey-import
+            Design §5.3 + Plan SC-03: 공유링크에도 동일 표시 (원본 PDF 다운로드는 admin 전용이므로 비노출). */}
+        {(() => {
+          const manualEntries = readPreSurveyEntries(candidate.pre_survey_data as PreSurveyData | null)
+            .filter((e) => e.source === 'manual_upload')
+          if (manualEntries.length === 0) return null
+          return (
+            <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
+              <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-emerald-500" /> 외부 사전질의서 응답
+                <span className="text-[10px] font-normal bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5">
+                  Google Form (수동 업로드)
+                </span>
+              </h2>
+              <div className="space-y-4">
+                {manualEntries.map((entry, idx) => (
+                  <div key={entry.id} className={idx > 0 ? 'pt-4 border-t border-gray-100' : ''}>
+                    {entry.source_meta?.uploaded_at && (
+                      <p className="text-[11px] text-gray-400 mb-2">
+                        업로드: {formatDate(entry.source_meta.uploaded_at, 'yyyy.MM.dd HH:mm')}
+                      </p>
+                    )}
+                    <div className="space-y-2">
+                      {(entry.questions || []).slice().sort((a, b) => a.order - b.order).map((q, i) => (
+                        <div key={q.id} className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs font-medium text-gray-600 mb-1">Q{i + 1}. {q.text}</p>
+                          <p className="text-sm text-gray-900 whitespace-pre-line">
+                            {entry.answers[q.id] || <span className="text-gray-400 italic">미응답</span>}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* 권장 면접 질문 — 1차/2차 모두에서 항상 보임. 미생성 시 안내 표시 */}
         <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
