@@ -1,0 +1,1 @@
+- [의사결정 traceability 6번째 패턴](feedback_decision_traceability_6th_pattern.md) — Architecture-level pivot 보존 5단계 + 외부 리서치 원문 디렉토리(`docs/00-research/{feature}/`) 신설 권고
