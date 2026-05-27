@@ -121,7 +121,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
 · **Q: 결재선이 잘못 표시돼요** → 인사담당에게 부서 정보 확인 요청
     `.trim(),
     relatedTourId: 'daily-report',
-    relatedArticleIds: ['approval-recall', 'approval-resubmit'],
+    relatedArticleIds: ['approval-recall'],
   },
 
   // ─── 연차 ──────────────────────────────────────────────────
@@ -213,7 +213,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
 💡 **알림 종**(우상단 🔔)에서 결재 요청이 바로 떠요.
     `.trim(),
     relatedTourId: 'approval-usage',
-    relatedArticleIds: ['approval-recall', 'approval-resubmit'],
+    relatedArticleIds: ['approval-recall'],
   },
 
   {
