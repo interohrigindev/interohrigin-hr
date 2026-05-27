@@ -1,1 +1,3 @@
 - [의사결정 traceability 6번째 패턴](feedback_decision_traceability_6th_pattern.md) — Architecture-level pivot 보존 5단계 + 외부 리서치 원문 디렉토리(`docs/00-research/{feature}/`) 신설 권고
+- [정적 사전 검증 + 외부 빌드 위임 패턴](feedback_static_check_external_build.md) — Bash 권한 없는 환경에서 매 세션 빌드 한 번에 통과 (PDCA #2 4/4 commits 검증)
+- [PDCA Do 세션 분할 패턴](feedback_session_split_pattern.md) — 큰 기능 (8 파일/+1,254 LOC) 을 4~5세션 분할로 회귀 누적 0 구현 (PDCA #2 실증)
