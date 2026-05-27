@@ -20,6 +20,7 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { safeStorageUpload, describeUploadError } from '@/lib/storage-upload'
+import { scanImagesInHtml, annotatePrivateAuthImages, describeHost } from '@/lib/external-image'
 import { useAuth } from '@/hooks/useAuth'
 import { ApprovalLineViewer } from '@/components/approval/ApprovalLineViewer'
 import { ApprovalLineEditor, type EditableStep } from '@/components/approval/ApprovalLineEditor'
@@ -1224,15 +1225,25 @@ export default function ApprovalManagementPage() {
                       </div>
                     )
                   })}
-                  {bodyHtml && bodyHtml.trim().length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-gray-200">
-                      <p className="text-xs font-medium text-gray-500 mb-1.5">상세 내역 및 품목</p>
-                      <div
-                        className="prose prose-sm max-w-none text-gray-800 [&_img]:rounded-md [&_img]:border [&_img]:border-gray-200 [&_img]:my-2"
-                        dangerouslySetInnerHTML={{ __html: bodyHtml }}
-                      />
-                    </div>
-                  )}
+                  {bodyHtml && bodyHtml.trim().length > 0 && (() => {
+                    const imgScan = scanImagesInHtml(bodyHtml)
+                    const blockedHosts = Array.from(new Set(imgScan.privateAuth.map(describeHost)))
+                    const safeHtml = blockedHosts.length > 0 ? annotatePrivateAuthImages(bodyHtml) : bodyHtml
+                    return (
+                      <div className="mt-2 pt-2 border-t border-gray-200">
+                        <p className="text-xs font-medium text-gray-500 mb-1.5">상세 내역 및 품목</p>
+                        {blockedHosts.length > 0 && (
+                          <div className="mb-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800">
+                            ⚠️ 본문에 외부 협업툴({blockedHosts.join(', ')}) 이미지가 포함되어 있어 결재자에게 표시되지 않습니다. 신청자에게 본문 재첨부를 요청하세요.
+                          </div>
+                        )}
+                        <div
+                          className="prose prose-sm max-w-none text-gray-800 [&_img]:rounded-md [&_img]:border [&_img]:border-gray-200 [&_img]:my-2"
+                          dangerouslySetInnerHTML={{ __html: safeHtml }}
+                        />
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })()}
@@ -1716,15 +1727,25 @@ export default function ApprovalManagementPage() {
                         </div>
                       )
                     })}
-                    {bodyHtml && bodyHtml.trim().length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-200">
-                        <p className="text-xs font-medium text-gray-500 mb-1.5">상세 내역 및 품목</p>
-                        <div
-                          className="prose prose-sm max-w-none text-gray-800 [&_img]:rounded-md [&_img]:border [&_img]:border-gray-200 [&_img]:my-2"
-                          dangerouslySetInnerHTML={{ __html: bodyHtml }}
-                        />
-                      </div>
-                    )}
+                    {bodyHtml && bodyHtml.trim().length > 0 && (() => {
+                      const imgScan = scanImagesInHtml(bodyHtml)
+                      const blockedHosts = Array.from(new Set(imgScan.privateAuth.map(describeHost)))
+                      const safeHtml = blockedHosts.length > 0 ? annotatePrivateAuthImages(bodyHtml) : bodyHtml
+                      return (
+                        <div className="mt-2 pt-2 border-t border-gray-200">
+                          <p className="text-xs font-medium text-gray-500 mb-1.5">상세 내역 및 품목</p>
+                          {blockedHosts.length > 0 && (
+                            <div className="mb-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-800">
+                              ⚠️ 본문에 외부 협업툴({blockedHosts.join(', ')}) 이미지가 포함되어 있어 결재자에게 표시되지 않습니다. 신청자에게 본문 재첨부를 요청하세요.
+                            </div>
+                          )}
+                          <div
+                            className="prose prose-sm max-w-none text-gray-800 [&_img]:rounded-md [&_img]:border [&_img]:border-gray-200 [&_img]:my-2"
+                            dangerouslySetInnerHTML={{ __html: safeHtml }}
+                          />
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })()}

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { safeStorageUpload } from '@/lib/storage-upload'
+import { scanImagesInHtml, describeHost } from '@/lib/external-image'
 
 const FONT_SIZE_OPTIONS: { label: string; px: string }[] = [
   { label: '작게', px: '12px' },
@@ -31,6 +32,10 @@ interface RichEditorProps {
 
 function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 export function RichEditor({ value, onChange, placeholder = '내용을 입력하세요...', minHeight = '120px', onFileUpload }: RichEditorProps) {
@@ -67,6 +72,7 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
 
   // 이미지 붙여넣기 (Ctrl+V)
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    // 1) 클립보드에 image 파일이 직접 있는 경우 (기존 경로) — 우리 storage로 업로드
     const items = e.clipboardData.items
     for (const item of Array.from(items)) {
       if (item.type.startsWith('image/')) {
@@ -80,7 +86,25 @@ export function RichEditor({ value, onChange, placeholder = '내용을 입력하
         return
       }
     }
-    // 일반 텍스트/HTML 붙여넣기는 기본 동작 후 onChange 알림
+    // 2) HTML 붙여넣기 — 외부 협업툴(Works/Slack/Jandi 등) 이미지가 박혀 들어오면
+    //    결재자/타인에게 항상 깨져 보이므로 사전 차단 후 안내 placeholder 로 치환
+    const html = e.clipboardData.getData('text/html')
+    if (html) {
+      const scan = scanImagesInHtml(html)
+      if (scan.privateAuth.length > 0) {
+        e.preventDefault()
+        let sanitized = html
+        for (const src of scan.privateAuth) {
+          const label = describeHost(src)
+          const placeholder = `<div style="padding:10px 14px;background:#fef3c7;border:1px dashed #f59e0b;border-radius:6px;color:#92400e;font-size:13px;margin:6px 0;font-weight:500">⚠️ ${escapeHtml(label)} 이미지가 결재자에게 보이지 않습니다 — 다운로드 후 직접 첨부해주세요</div>`
+          const imgRe = new RegExp(`<img\\b[^>]*\\bsrc=["']${escapeRegex(src)}["'][^>]*>`, 'gi')
+          sanitized = sanitized.replace(imgRe, placeholder)
+        }
+        execCommand('insertHTML', sanitized)
+        return
+      }
+    }
+    // 3) 일반 텍스트/HTML 붙여넣기는 기본 동작 후 onChange 알림
     setTimeout(notifyChange, 0)
   }, [execCommand, notifyChange])
 
