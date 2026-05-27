@@ -617,7 +617,7 @@ export default function CandidateSharePage() {
                         </div>
                         {signed && <FileActions file={signed} />}
                       </div>
-                      {signed && <div className="mt-2"><FilePreview file={signed} /></div>}
+                      {signed && <div className="mt-2"><FilePreview file={signed} size={pf.size} /></div>}
                     </div>
                   )
                 })}
@@ -949,7 +949,12 @@ function FileActions({ file }: { file: FileInfo }) {
   )
 }
 
-function FilePreview({ file }: { file: FileInfo | null }) {
+// Chrome 내장 PDF Viewer (iframe 모드) 는 대략 20MB 이상 PDF 를 안정적으로
+// 렌더하지 못함 (메모리 한계). 큰 PDF 는 inline preview 대신 새 탭/다운로드
+// 카드로 대체해서 사용자 경험을 보호한다.
+const PDF_INLINE_SOFT_LIMIT = 20 * 1024 * 1024
+
+function FilePreview({ file, size }: { file: FileInfo | null; size?: number }) {
   if (!file) {
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center text-xs text-gray-400">
@@ -962,6 +967,29 @@ function FilePreview({ file }: { file: FileInfo | null }) {
   const isPdf = ext === 'pdf'
   const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)
   if (isPdf) {
+    if (typeof size === 'number' && size > PDF_INLINE_SOFT_LIMIT) {
+      const mb = (size / 1024 / 1024).toFixed(1)
+      return (
+        <div className="border border-amber-200 bg-amber-50 rounded-lg p-5 text-center">
+          <FileText className="h-9 w-9 text-amber-600 mx-auto mb-2" />
+          <p className="text-sm font-semibold text-amber-900 mb-1">큰 파일 ({mb}MB)</p>
+          <p className="text-xs text-amber-700 mb-4 leading-relaxed">
+            브라우저 내장 PDF 뷰어가 큰 파일을 못 여는 경우가 있어서<br />
+            아래 버튼으로 열어주세요.
+          </p>
+          <div className="inline-flex items-center gap-2">
+            <a href={file.url} target="_blank" rel="noopener noreferrer"
+               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-md">
+              <ExternalLink className="h-3.5 w-3.5" /> 새 탭에서 보기
+            </a>
+            <a href={file.url} download={file.filename}
+               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-brand-700 border border-brand-300 hover:bg-brand-50 rounded-md">
+              <Download className="h-3.5 w-3.5" /> 다운로드
+            </a>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
         <iframe src={file.url} title={file.filename} className="w-full h-[600px]" />
