@@ -12,6 +12,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
 import { safeStorageUpload, describeUploadError } from '@/lib/storage-upload'
+import { sanitizeStorageKey } from '@/lib/candidate-storage'
 import { useAuth } from '@/hooks/useAuth'
 import { SOURCE_CHANNEL_LABELS } from '@/lib/recruitment-constants'
 import type { SourceChannel } from '@/types/recruitment'
@@ -228,7 +229,7 @@ export function CandidateAddDialog({ open, onClose, onCreated, defaultJobPosting
       //    candidates.portfolio_files: [{ path, filename, size }]
       const uploadedPortfolioFiles: { path: string; filename: string; size: number }[] = []
       for (const f of portfolioFiles) {
-        const safeName = f.name.replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ.\-]/g, '_')
+        const safeName = sanitizeStorageKey(f.name)
         const path = `portfolios/${candidate.id}/${Date.now()}_${safeName}`
         const { error: pfErr } = await safeStorageUpload('resumes', path, f, {
           upsert: false,

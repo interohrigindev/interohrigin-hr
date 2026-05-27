@@ -20,6 +20,36 @@ const PRIMARY_BUCKET = 'resumes'
 const FALLBACK_BUCKETS = ['recruitment-files']  // 레거시 fallback (방어용)
 
 /**
+ * Supabase Storage 키 안전 변환 — 한글/특수문자 → ASCII safe
+ *
+ * 배경 (2026-05-27): 포트폴리오 첨부 시 "Invalid key" 에러. Supabase Storage 는
+ * 객체 키에 ASCII safe set 만 허용하는데 기존 호출처가 한글을 포함한 정규식
+ * `[^\w가-힣ㄱ-ㅎㅏ-ㅣ.\-]` 를 써서 한글 파일명이 그대로 키에 박혔음.
+ *
+ * 본 헬퍼는 *키* 만 ASCII 로 변환. 원본 파일명은 호출처가 DB filename 컬럼에
+ * 별도 보존해서 화면 표시/다운로드명에 사용하므로 사용자 입장에서는 한글 그대로 보임.
+ *
+ * 변환 규칙:
+ *   - 확장자는 lowercase 로 보존 (한글 확장자는 거의 없음, 안전 가정)
+ *   - base 는 [A-Za-z0-9._-] 만 남기고 나머지(한글/공백/특수문자) 는 _ 로 치환
+ *   - 연속 _ 압축, 양끝 _ 제거, 80자 길이 제한
+ *   - 빈 base 방지 (한글 100% 파일명 케이스) → `file` fallback
+ */
+export function sanitizeStorageKey(filename: string): string {
+  const lastDot = filename.lastIndexOf('.')
+  const rawBase = lastDot > 0 ? filename.slice(0, lastDot) : filename
+  const rawExt = lastDot > 0 ? filename.slice(lastDot + 1) : ''
+  const ext = rawExt.replace(/[^A-Za-z0-9]/g, '').toLowerCase() || 'bin'
+  const safeBase = rawBase
+    .replace(/[^A-Za-z0-9._-]/g, '_')
+    .replace(/_{2,}/g, '_')
+    .replace(/^[_.]+|[_.]+$/g, '')
+    .slice(0, 80)
+  const finalBase = safeBase || 'file'
+  return `${finalBase}.${ext}`
+}
+
+/**
  * 업로드 — 신규 업로드는 모두 이 함수만 사용
  * @returns 저장된 상대 path (DB candidates.resume_url 등에 그대로 저장)
  */

@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast'
 import { FileRetentionBadge } from '@/components/ui/FileRetentionBadge'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { getCandidateFileUrl } from '@/lib/candidate-storage'
+import { getCandidateFileUrl, sanitizeStorageKey } from '@/lib/candidate-storage'
 import { generateAIContent, getAIConfigForFeature, type AIFileAttachment } from '@/lib/ai-client'
 import { runComprehensiveAnalysis, generateSecondInterviewQuestions } from '@/lib/recruitment-ai'
 import { PUBLIC_APP_URL } from '@/lib/app-url'
@@ -917,7 +917,7 @@ ${fileInfo}
           toast(`${file.name} — 50MB 초과로 건너뜀`, 'error')
           continue
         }
-        const safeName = file.name.replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ.\-]/g, '_')
+        const safeName = sanitizeStorageKey(file.name)
         const path = `portfolios/${id}/${Date.now()}_${safeName}`
         const { error } = await supabase.storage.from('resumes').upload(path, file, { upsert: false })
         if (error) {
