@@ -1398,6 +1398,28 @@ ${pbdRow.feedback || '없음'}`
         if (surveyText) surveyText = '[버전: v1]\n' + surveyText
       }
 
+      // PDCA #2 외부 업로드(manual_upload) entries 를 surveyText 끝에 append
+      // — PBD/v1 흐름은 그대로 유지 (회귀 0), manual 응답이 있을 때만 별도 섹션 추가
+      {
+        const manualEntries = readPreSurveyEntries(candidate.pre_survey_data as PreSurveyData | null)
+          .filter((e) => e.source === 'manual_upload')
+        if (manualEntries.length > 0) {
+          const manualText = manualEntries.map((entry, idx) => {
+            const qs = (entry.questions || []).slice().sort((a, b) => a.order - b.order)
+            const lines = qs.length === 0
+              ? ['(질문/답변 없음)']
+              : qs.map((q, i) => `Q${i + 1}. ${q.text}\nA${i + 1}. ${entry.answers[q.id] || '(미응답)'}`)
+            const header = manualEntries.length > 1
+              ? `[${entry.source_label} — #${idx + 1}]`
+              : `[${entry.source_label}]`
+            return `${header}\n${lines.join('\n\n')}`
+          }).join('\n\n---\n\n')
+          surveyText = surveyText
+            ? `${surveyText}\n\n--- 외부 사전질의서 (수동 업로드) ---\n${manualText}`
+            : `[버전: 외부 수동 업로드]\n${manualText}`
+        }
+      }
+
       const fileInfo = files.length > 0
         ? `\n첨부된 파일 ${files.length}개가 함께 전달됩니다. 파일 내용을 꼼꼼히 읽고 분석에 반영해주세요.`
         : ''
