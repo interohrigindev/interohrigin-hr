@@ -17,6 +17,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { calculateAnnualLeave } from '@/lib/leave-calculator'
 import { annualLeavePromotionEmail, emergencyLeaveNotificationEmail } from '@/lib/email-templates'
 import { sendNotification } from '@/lib/notification-sender'
+import { safeStorageUpload, describeUploadError } from '@/lib/storage-upload'
+import { sanitizeStorageKey } from '@/lib/candidate-storage'
 import { ApprovalLineViewer } from '@/components/approval/ApprovalLineViewer'
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -114,6 +116,16 @@ const DIRECTOR_ROLES = ['director', 'division_head', 'ceo', 'admin']
 
 // 긴급연차 이메일 수신 임원급 (Q2: hr_admin + ceo + director 한정 — 민감정보 임원 외 비공개)
 const EMERGENCY_NOTIFY_ROLES = ['hr_admin', 'ceo', 'director']
+const EMG_STATUS_LABELS: Record<string, string> = {
+  filed: '통보됨', supplemented: '보완완료', promoted: '정식전환', cancelled: '취소',
+}
+const EMG_STATUS_COLORS: Record<string, string> = {
+  filed: 'bg-red-100 text-red-700',
+  supplemented: 'bg-amber-100 text-amber-700',
+  promoted: 'bg-emerald-100 text-emerald-700',
+  cancelled: 'bg-gray-100 text-gray-500',
+}
+const EMG_KIND_LABELS: Record<string, string> = { emergency: '긴급사유', sick: '병가' }
 // 긴급연차 비상연락망 안내 (Q6: 상수 — 이메일 불가 시 구두 연락처)
 const EMERGENCY_CONTACT_NOTICE = '이메일 발송이 어려운 긴급 상황 시 구두 연락: 평일=경영관리본부 이민지 / 주말=경영관리본부 강은묵 이사'
 
@@ -129,12 +141,13 @@ export default function LeaveManagementPage() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [hrDetails, setHrDetails] = useState<HrDetail[]>([])
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
+  const [emergencyRequests, setEmergencyRequests] = useState<EmergencyLeaveRequest[]>([])  // PDCA #4
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterDept, setFilterDept] = useState('')
   const [currentYear] = useState(new Date().getFullYear())
   const [showRequestDialog, setShowRequestDialog] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'calendar' | 'requests'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'calendar' | 'requests' | 'emergency'>('overview')
 
   // C7: 월간 캘린더 상태
   const now = new Date()
@@ -157,6 +170,14 @@ export default function LeaveManagementPage() {
   const [emgHospitalPlan, setEmgHospitalPlan] = useState('')
   const [emgSameDayFiling, setEmgSameDayFiling] = useState<boolean | null>(null)
   const [emgFilingNote, setEmgFilingNote] = useState('')
+  // S3: 긴급연차 업로드/전환/무급 처리 상태
+  const [emgUploadingId, setEmgUploadingId] = useState<string | null>(null)
+  const [emgPromotingId, setEmgPromotingId] = useState<string | null>(null)
+  // 무급 처리 모달 (관리자) — 대상 건 + 입력값
+  const [payoutTarget, setPayoutTarget] = useState<EmergencyLeaveRequest | null>(null)
+  const [payoutPaid, setPayoutPaid] = useState('0')
+  const [payoutUnpaid, setPayoutUnpaid] = useState('0')
+  const [payoutSaving, setPayoutSaving] = useState(false)
   // 결재라인 (D1-4: 자동 지정 — 수동 선택 제거)
   // approval_templates(doc_type='leave') 활성 전체 로드 후 신청자 부서로 매칭
   // step.approver_ids 가 있으면 그 직원들 우선 사용, 없으면 role 기반 자동 매칭
@@ -294,6 +315,12 @@ export default function LeaveManagementPage() {
     } else {
       setLeaveRequests(reqData)
     }
+
+    // 긴급연차 (PDCA #4) — RLS 가 본인 + 임원급 으로 제한하므로 클라 추가 필터 불필요
+    const emgRes = await supabase.from('emergency_leave_requests')
+      .select('*').order('created_at', { ascending: false }).limit(200)
+    setEmergencyRequests((emgRes.data || []) as EmergencyLeaveRequest[])
+
     setLoading(false)
   }
 
@@ -571,6 +598,138 @@ export default function LeaveManagementPage() {
     fetchData()
   }
 
+  // ─── 긴급연차 보완자료 업로드 (출근 후 진단서/사유서) ─────────
+  async function handleEmergencyUpload(req: EmergencyLeaveRequest, file: File) {
+    if (!profile?.id) return
+    setEmgUploadingId(req.id)
+    // 경로: emergency-leave-files/{employee_id}/{uuid}-{sanitized}
+    const path = `${req.employee_id}/${crypto.randomUUID()}-${sanitizeStorageKey(file.name)}`
+    const { data, error } = await safeStorageUpload('emergency-leave-files', path, file, { upsert: false })
+    if (error || !data) {
+      setEmgUploadingId(null)
+      toast(describeUploadError(error || { message: '업로드 실패', code: 'storage' }), 'error')
+      return
+    }
+    // status: filed → supplemented (이미 promoted/cancelled 면 status 유지)
+    const nextStatus = req.status === 'filed' ? 'supplemented' : req.status
+    const { error: updErr } = await supabase.from('emergency_leave_requests')
+      .update({ attachment_path: data.path, attachment_uploaded_at: new Date().toISOString(), status: nextStatus })
+      .eq('id', req.id)
+    setEmgUploadingId(null)
+    if (updErr) { toast('첨부 정보 저장 실패: ' + updErr.message, 'error'); return }
+    toast('보완자료가 업로드되었습니다.', 'success')
+    fetchData()
+  }
+
+  async function handleEmergencyDownload(req: EmergencyLeaveRequest) {
+    if (!req.attachment_path) return
+    const { data, error } = await supabase.storage.from('emergency-leave-files')
+      .createSignedUrl(req.attachment_path, 3600)
+    if (error || !data?.signedUrl) { toast('다운로드 링크 생성 실패', 'error'); return }
+    window.open(data.signedUrl, '_blank')
+  }
+
+  // ─── 긴급연차 → 정식 연차 전환 (promotion) ─────────
+  // 정식 row 는 in_review 로 INSERT (즉시 차감 X). 결재 최종 승인 시 trigger_leave_balance 가 1회 차감.
+  // 무급분(unpaid_days)은 leave_requests.days_count 에 포함하지 않음 (트리거 과차감 방지 — migration 134 COMMENT 참조).
+  async function handlePromoteEmergency(req: EmergencyLeaveRequest) {
+    if (!profile?.id) return
+    if (req.employee_id !== profile.id) { toast('본인 긴급연차만 전환할 수 있습니다.', 'error'); return }
+    if (req.status === 'promoted') { toast('이미 정식 연차로 전환된 건입니다.', 'error'); return }
+    // 병가(sick)는 진단서(attachment) 미첨부 시 전환 차단 (대표 결정)
+    if (req.leave_kind === 'sick' && !req.attachment_path) {
+      toast('병가는 진료확인서/진단서를 먼저 첨부해야 정식 연차로 전환할 수 있습니다.', 'error'); return
+    }
+    setEmgPromotingId(req.id)
+
+    // 결재라인 — 일반 연차와 동일하게 buildApprovalLine() 재사용
+    const usingLegacy = !(effectiveLeaveTemplate && effectiveLeaveTemplate.steps && effectiveLeaveTemplate.steps.length > 0)
+    if (usingLegacy && !autoLeader) {
+      setEmgPromotingId(null)
+      toast('결재할 리더가 지정되지 않았습니다. 관리자에게 문의하세요.', 'error'); return
+    }
+    const approvalLine = buildApprovalLine()
+    if (approvalLine.length === 0) {
+      setEmgPromotingId(null)
+      toast('결재라인을 구성할 수 없습니다. 관리자에게 문의하세요.', 'error'); return
+    }
+
+    // 1) 정식 leave_requests INSERT (병가는 leave_type='sick', 그 외 'annual')
+    //    days_count: 무급 분리 입력 전이므로 전체 일수로 상신. 무급은 관리자가 별도 처리.
+    const { data: leaveRow, error: insErr } = await supabase.from('leave_requests').insert({
+      employee_id: req.employee_id,
+      leave_type: req.leave_kind === 'sick' ? 'sick' : 'annual',
+      start_date: req.start_date,
+      end_date: req.end_date,
+      days_count: req.days_count,
+      reason: req.reason,
+      approval_status: 'in_review',
+      current_step: 0,
+      approval_line: approvalLine,
+    }).select('id').single()
+
+    if (insErr || !leaveRow) {
+      setEmgPromotingId(null)
+      toast('정식 연차 상신 실패: ' + (insErr?.message || '알 수 없는 오류'), 'error'); return
+    }
+
+    // 2) 긴급연차 → promoted 링크
+    const { error: linkErr } = await supabase.from('emergency_leave_requests')
+      .update({ status: 'promoted', promoted_to_leave_id: leaveRow.id, promoted_at: new Date().toISOString() })
+      .eq('id', req.id)
+
+    setEmgPromotingId(null)
+    if (linkErr) { toast('전환 링크 저장 실패: ' + linkErr.message, 'error'); return }
+    toast('정식 연차로 전환되어 전자결재가 상신되었습니다. 승인 시 연차가 차감됩니다.', 'success')
+    fetchData()
+  }
+
+  // ─── 긴급연차 무급 처리 (관리자) — 차감/무급 분리 입력 (자동 X) ─────────
+  function openPayoutModal(req: EmergencyLeaveRequest) {
+    setPayoutTarget(req)
+    // 기본값: 전체를 연차 차감으로 제안 (관리자가 부족분만큼 무급으로 조정)
+    setPayoutPaid(String(req.paid_deduct_days || req.days_count))
+    setPayoutUnpaid(String(req.unpaid_days || 0))
+  }
+
+  async function handleSavePayout() {
+    if (!payoutTarget || !profile?.id) return
+    const paid = Number(payoutPaid)
+    const unpaid = Number(payoutUnpaid)
+    if (isNaN(paid) || isNaN(unpaid) || paid < 0 || unpaid < 0) { toast('차감/무급 일수를 올바르게 입력하세요', 'error'); return }
+    if (paid + unpaid !== payoutTarget.days_count) {
+      toast(`차감(${paid}) + 무급(${unpaid}) 합이 신청 일수(${payoutTarget.days_count})와 일치해야 합니다.`, 'error'); return
+    }
+    setPayoutSaving(true)
+    const { error } = await supabase.from('emergency_leave_requests').update({
+      paid_deduct_days: paid,
+      unpaid_days: unpaid,
+      payout_decided_by: profile.id,
+      payout_decided_at: new Date().toISOString(),
+    }).eq('id', payoutTarget.id)
+    if (error) { setPayoutSaving(false); toast('무급 처리 저장 실패: ' + error.message, 'error'); return }
+
+    // 트리거 과차감 방지 (migration 134 COMMENT): 무급분이 있으면 연결된 정식 연차의 days_count 를
+    // 차감분(paid)으로 조정 → trigger_leave_balance 는 승인 시 paid 만큼만 차감. 단 아직 미승인일 때만.
+    let adjustNote = ''
+    if (unpaid > 0 && payoutTarget.promoted_to_leave_id) {
+      const { data: linked } = await supabase.from('leave_requests')
+        .select('approval_status').eq('id', payoutTarget.promoted_to_leave_id).maybeSingle()
+      if (linked && linked.approval_status !== 'approved') {
+        const { error: adjErr } = await supabase.from('leave_requests')
+          .update({ days_count: paid }).eq('id', payoutTarget.promoted_to_leave_id)
+        if (!adjErr) adjustNote = ` 정식 연차 차감 일수가 ${paid}일로 조정되었습니다.`
+      } else if (linked?.approval_status === 'approved') {
+        adjustNote = ' ⚠️ 정식 연차가 이미 승인되어 차감이 완료되었습니다 — 무급 조정은 급여 정산에서 별도 처리하세요.'
+      }
+    }
+
+    setPayoutSaving(false)
+    toast('무급 처리가 기록되었습니다.' + adjustNote, 'success')
+    setPayoutTarget(null)
+    fetchData()
+  }
+
   // ─── 결재 승인/반려 ────────────────────────────────
   async function handleApprovalAction(requestId: string, action: 'approved' | 'rejected') {
     const request = leaveRequests.find((r) => r.id === requestId)
@@ -722,6 +881,7 @@ export default function LeaveManagementPage() {
             { key: 'overview' as const, label: '연차 현황' },
             { key: 'calendar' as const, label: '월간 캘린더' },
             { key: 'requests' as const, label: `신청/결재 ${pendingRequests > 0 ? `(${pendingRequests})` : ''}` },
+            { key: 'emergency' as const, label: `긴급연차 ${emergencyRequests.length > 0 ? `(${emergencyRequests.length})` : ''}` },
           ]).map(({ key, label }) => (
             <button key={key} onClick={() => setActiveTab(key)} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === key ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
           ))}
@@ -1036,6 +1196,124 @@ export default function LeaveManagementPage() {
           })}
         </div>
       )}
+
+      {/* ─── 긴급연차 탭 (PDCA #4) — 목록/상세/보완/전환/무급 ─────── */}
+      {activeTab === 'emergency' && (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 text-[12px] text-blue-800">
+            긴급연차는 우측 상단 <strong>[연차 신청]</strong> &gt; <strong>[긴급 연차 신청]</strong> 토글로 신청합니다.
+            출근 후 보완자료(병가=진료확인서/진단서)를 첨부하고 [연차 신청]으로 정식 전환하세요.
+          </div>
+          {emergencyRequests.length === 0 ? (
+            <Card><CardContent className="py-12 text-center text-gray-400">긴급연차 내역이 없습니다</CardContent></Card>
+          ) : emergencyRequests.map((req) => {
+            const mine = req.employee_id === profile?.id
+            const canPromote = mine && (req.status === 'filed' || req.status === 'supplemented')
+            const sickNeedsProof = req.leave_kind === 'sick' && !req.attachment_path
+            return (
+              <Card key={req.id}>
+                <CardContent className="py-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-xs font-bold text-red-700">
+                        {getEmpName(req.employee_id)[0]}
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-900">{getEmpName(req.employee_id)}</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant="default" className="text-[10px]">{EMG_KIND_LABELS[req.leave_kind]}</Badge>
+                          <span className="text-[11px] text-gray-500">{req.start_date} ~ {req.end_date} ({req.days_count}일)</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge className={`text-[10px] ${EMG_STATUS_COLORS[req.status]}`}>{EMG_STATUS_LABELS[req.status]}</Badge>
+                      <span className="text-[10px] text-gray-400">{new Date(req.created_at).toLocaleDateString('ko-KR')}</span>
+                    </div>
+                  </div>
+
+                  <div className="pl-11 space-y-1 text-xs text-gray-600">
+                    <p><span className="text-gray-400">사유:</span> {req.reason}</p>
+                    {req.handover_notes && <p><span className="text-gray-400">인수인계:</span> {req.handover_notes}</p>}
+                    {(req.delegate_employee_id || req.delegate_name_text) && (
+                      <p><span className="text-gray-400">대리인:</span> {req.delegate_employee_id ? getEmpName(req.delegate_employee_id) : req.delegate_name_text}</p>
+                    )}
+                    {req.hospital_plan && <p><span className="text-gray-400">병원 계획:</span> {req.hospital_plan}</p>}
+                    <p>
+                      <span className="text-gray-400">전자결재:</span>{' '}
+                      {req.same_day_filing == null ? '미입력' : req.same_day_filing ? '당일 상신 가능' : '익일 사후 상신'}
+                      {req.filing_note ? ` (${req.filing_note})` : ''}
+                    </p>
+                    {req.notified_at && <p className="text-[11px] text-emerald-600">✓ 임원진 통보 완료 ({new Date(req.notified_at).toLocaleString('ko-KR')})</p>}
+                    {(req.paid_deduct_days > 0 || req.unpaid_days > 0) && (
+                      <p className="text-[11px] text-purple-700">연차 차감 {req.paid_deduct_days}일 / 무급 {req.unpaid_days}일</p>
+                    )}
+                  </div>
+
+                  {/* 액션 */}
+                  <div className="flex flex-wrap items-center gap-2 pl-11 mt-3">
+                    {/* 보완자료 업로드 (본인) */}
+                    {mine && req.status !== 'cancelled' && (
+                      <label className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium border cursor-pointer ${emgUploadingId === req.id ? 'opacity-50 pointer-events-none' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                        {emgUploadingId === req.id ? '업로드중...' : (req.attachment_path ? '보완자료 재첨부' : (req.leave_kind === 'sick' ? '진단서 첨부' : '사유서 첨부'))}
+                        <input type="file" className="hidden"
+                          accept=".pdf,.jpg,.jpeg,.png,.heic,.doc,.docx"
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleEmergencyUpload(req, f); e.currentTarget.value = '' }} />
+                      </label>
+                    )}
+                    {/* 첨부 다운로드 */}
+                    {req.attachment_path && (
+                      <Button size="sm" variant="outline" onClick={() => handleEmergencyDownload(req)}>첨부 보기</Button>
+                    )}
+                    {/* 정식 전환 (본인) */}
+                    {canPromote && (
+                      <Button size="sm" onClick={() => handlePromoteEmergency(req)} disabled={emgPromotingId === req.id || sickNeedsProof}
+                        className="bg-purple-600 hover:bg-purple-700">
+                        {emgPromotingId === req.id ? '전환중...' : '연차 신청 (정식 전환)'}
+                      </Button>
+                    )}
+                    {canPromote && sickNeedsProof && (
+                      <span className="text-[11px] text-red-600">※ 병가는 진단서 첨부 후 전환 가능</span>
+                    )}
+                    {req.status === 'promoted' && (
+                      <span className="text-[11px] text-emerald-600">✓ 정식 연차 상신됨 (신청/결재 탭에서 진행)</span>
+                    )}
+                    {/* 무급 처리 (관리자) — 전환된 건 대상 */}
+                    {isAdmin && req.status === 'promoted' && (
+                      <Button size="sm" variant="outline" onClick={() => openPayoutModal(req)}>무급 처리</Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 긴급연차 무급 처리 모달 (관리자) */}
+      <Dialog open={!!payoutTarget} onClose={() => !payoutSaving && setPayoutTarget(null)} title="긴급연차 무급 처리">
+        {payoutTarget && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
+              <p>{getEmpName(payoutTarget.employee_id)} · {EMG_KIND_LABELS[payoutTarget.leave_kind]} · {payoutTarget.start_date}~{payoutTarget.end_date}</p>
+              <p className="mt-1 font-medium text-gray-800">신청 일수: {payoutTarget.days_count}일</p>
+              <p className="mt-1 text-[11px] text-amber-700">잔여 연차 부족 시 차감분/무급분을 나눠 입력하세요. 합계는 신청 일수와 일치해야 합니다.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="연차 차감 일수" type="number" value={payoutPaid} onChange={(e) => setPayoutPaid(e.target.value)} min="0" step="0.5" />
+              <Input label="무급 대체 일수" type="number" value={payoutUnpaid} onChange={(e) => setPayoutUnpaid(e.target.value)} min="0" step="0.5" />
+            </div>
+            <p className="text-[11px] text-gray-500">
+              ※ 무급분이 있으면 연결된 정식 연차의 차감 일수를 자동으로 차감분({payoutPaid}일)으로 조정합니다.
+              (단 정식 연차가 아직 미승인일 때만 — 이미 승인된 경우 급여 정산에서 별도 처리)
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setPayoutTarget(null)} disabled={payoutSaving}>취소</Button>
+              <Button onClick={handleSavePayout} disabled={payoutSaving}>{payoutSaving ? '저장중...' : '무급 처리 저장'}</Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
 
       {/* ─── 연차 신청 다이얼로그 (결재라인 포함) ─────── */}
       <Dialog open={showRequestDialog} onClose={() => setShowRequestDialog(false)} title="연차 신청" className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
