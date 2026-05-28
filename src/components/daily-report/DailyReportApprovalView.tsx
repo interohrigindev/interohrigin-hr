@@ -12,6 +12,9 @@ interface ReportTask {
   id?: string
   title: string
   status?: string
+  // 보고서 작성 시점에 스냅샷된 프로젝트 정보 (결재자가 tasks 를 RLS 로 못 읽어도 표시 가능)
+  project_id?: string
+  project_name?: string
 }
 
 interface DailyReportContent {
@@ -91,26 +94,39 @@ export function DailyReportApprovalView({ content }: { content: DailyReportConte
     tasks: ReportTask[],
     bullet: string,
     bulletColor: string
-  ) => (
-    <ul className="px-3 py-2 space-y-1.5 bg-white">
-      {tasks.map((t, i) => {
-        const projectName = t.id ? taskProjectMap[t.id] : null
-        return (
-          <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-            <span className={`${bulletColor} mt-0.5 shrink-0`}>{bullet}</span>
-            <span className="flex-1 min-w-0">
-              {projectName && (
-                <span className="inline-flex items-center px-1.5 py-0.5 mr-1.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200 align-baseline">
-                  {projectName}
-                </span>
-              )}
-              <span>{t.title}</span>
-            </span>
-          </li>
-        )
-      })}
-    </ul>
-  )
+  ) => {
+    // 프로젝트별 그룹핑 — project_name(보고서 스냅샷) 우선, tasks 재조회 fallback, 둘 다 없으면 '기타'.
+    // Map 의 insertion order 로 보고서 원본 등장 순서 보존.
+    const groups = new Map<string, ReportTask[]>()
+    for (const t of tasks) {
+      const pname = t.project_name || (t.id ? taskProjectMap[t.id] : '') || '기타'
+      if (!groups.has(pname)) groups.set(pname, [])
+      groups.get(pname)!.push(t)
+    }
+    return (
+      <div className="px-3 py-2 space-y-2.5 bg-white">
+        {Array.from(groups.entries()).map(([pname, items]) => {
+          const isEtc = pname === '기타'
+          return (
+            <div key={pname}>
+              <p className={`text-[11px] font-semibold mb-1 flex items-center gap-1.5 ${isEtc ? 'text-gray-400' : 'text-purple-700'}`}>
+                <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${isEtc ? 'bg-gray-300' : 'bg-purple-400'}`} />
+                {pname}
+              </p>
+              <ul className="space-y-1 pl-3">
+                {items.map((t, i) => (
+                  <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                    <span className={`${bulletColor} mt-0.5 shrink-0`}>{bullet}</span>
+                    <span className="flex-1 min-w-0">{t.title}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-3">
