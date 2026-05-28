@@ -2,3 +2,5 @@
 - [정적 사전 검증 + 외부 빌드 위임 패턴](feedback_static_check_external_build.md) — Bash 권한 없는 환경에서 매 세션 빌드 한 번에 통과 (PDCA #2 4/4 commits 검증)
 - [PDCA Do 세션 분할 패턴](feedback_session_split_pattern.md) — 큰 기능 (8 파일/+1,254 LOC) 을 4~5세션 분할로 회귀 누적 0 구현 (PDCA #2 실증)
 - [cross-schema RPC + 중앙 어댑터 자동 적재](feedback_cross_schema_rpc_and_central_adapter.md) — public SECURITY DEFINER RPC+guard CTE 로 멀티 스키마 캡슐화 / 중앙 클라이언트 내부 자동 부수효과로 N개 호출처 무수정 확장 (PDCA #3 실증, is_admin hr_admin 누락 주의)
+- [연차/이메일/첨부 인프라 진입점 맵](project_leave_email_storage_infra.md) — sendNotification(email) / safeStorageUpload / leave_requests+트리거 update_leave_balance / storage정책 db-exec 적용가능 (PDCA #4 완결)
+- [2단계 통보형신청→사후정식전환 패턴](feedback_two_stage_notify_then_formalize.md) — 즉시성+정합성 충돌 시 신규 통보 테이블(결재없음)+사후 기존 결재/트리거 전환. helper 추출 회귀 0, 무급은 수량 조정으로 트리거 과차감 방지 (PDCA #4 실증)

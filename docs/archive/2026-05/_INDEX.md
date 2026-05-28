@@ -118,6 +118,46 @@
 
 ---
 
+### 4. emergency-leave
+
+**긴급연차** (결재 없이 즉시 통보형 상신 + 임원급 자동 이메일 → 출근 후 보완자료 첨부 → 정식 연차 전환·차감/무급)
+
+| 항목 | 내용 |
+|---|---|
+| Plan/Design/Do/Check/Report 전체 | 2026-05-28 |
+| Code Commits | `1412c75` (S1) → `463ad97` (S2) → `9499b7e` (S3) (3개, 모두 빌드 통과) |
+| Archive 완료 | 2026-05-28 |
+| PDCA Cycle | #4 (feature-development) |
+| Match Rate | **98.4%** ✅ |
+| Success Criteria | **8/8 Met** (SC-01~08) |
+| Critical / Important Gap | 0 / 0 |
+| Minor Gap | 3건 (무급 승인후 수동 / Runtime 미실행 / 이메일 발송률 미측정) — 전부 향후 권고 |
+| CLAUDE.md 절대 규칙 위반 | 0건 (기존 테이블 ALTER 0, 신규 테이블/버킷만, 민감정보 임원급 한정, 한국어 UI, Edit 부분수정+빌드) |
+| 마이그레이션 | `134_emergency_leave.sql` |
+
+**핵심 발견**:
+- **2단계 라이프사이클** — "결재 없는 통보형 신청(filed)" + "사후 정식 연차 전환(promoted)"을 신규 테이블 + 상태머신으로 분리. 통보 즉시성과 결재 정합성을 동시 충족.
+- **Architecture Option C** — 단일 테이블 상태머신 + best-effort 이메일 + buildApprovalLine helper 추출. B(전이로그+재시도큐+각서연동) YAGNI 회피.
+- **트리거 무급 days_count 분리** — `update_leave_balance` 가 approved 전이 시 days_count 전체 차감 → 무급분은 leave_requests.days_count 에서 제외(미승인 시점 days_count=paid 자동 조정)해 이중/과차감 방지.
+- **storage 정책 db-exec 적용 가능** — Design "콘솔 수동" 가정을 메인이 db-exec(postgres 권한)로 적용 성공 → 파일=DB 일치, 콘솔 수동 불필요. (PDCA #3 cross-schema RPC 와 함께 db-exec 권한 범위 학습)
+- **병가 진단서 차단** — Checkpoint 3 에서 Design "경고 후 허용" → 대표 결정대로 "차단"으로 구현 (Decision deviation traceability 보존).
+- **buildApprovalLine 추출 회귀 0** — 인라인 결재라인 로직을 helper 추출 시 "리더 미지정" 특정 toast 까지 보존해 일반 연차 신청 동작 동일.
+
+**4개 문서**:
+- [emergency-leave.plan.md](./emergency-leave/emergency-leave.plan.md) — 압축본 (Q1~Q6 결정)
+- [emergency-leave.design.md](./emergency-leave/emergency-leave.design.md) — 압축본 (Option C + 데이터 모델 + 전환 흐름)
+- [emergency-leave.analysis.md](./emergency-leave/emergency-leave.analysis.md) — Gap Analysis (98.4%, 트리거 정합성 검증)
+- [emergency-leave.report.md](./emergency-leave/emergency-leave.report.md) — 최종 Report + 향후 권고
+
+**향후 권고 Top 3** (Report §5):
+1. 실제 긴급연차 1건 E2E 모니터링 (신청→이메일→보완→전환→승인→차감)
+2. 이메일 발송 성공률 모니터링 (notification_deliveries emergency_leave sent/failed)
+3. 무급 승인 후 케이스 급여 연동 (현재 수동 안내 → 급여 모듈 연동 시 자동화)
+
+> Archive 사본 정책: PDCA #2/#3과 동일 — 원본 stub, 전체 내용 git history(`9499b7e` 직후 archive 커밋)에 보존.
+
+---
+
 ## Archive 운영 정책
 
 - Archive 된 문서의 원본(`docs/01-plan/features/*`, `docs/02-design/features/*`, `docs/03-analysis/*`, `docs/04-report/*`) 위치에는 stub 파일만 남아서 새 위치로 안내함
