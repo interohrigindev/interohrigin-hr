@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react'
-import { Database, Bot, Mail, Mic, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Database, Bot, Mail, Mic, TrendingUp, AlertTriangle, RefreshCw, Cpu, Info } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { supabase } from '@/lib/supabase'
+// unified-ai-cost-dashboard: 실사용 AI 비용 데이터 레이어 (Design Ref §3.3, §5)
+import { getUnifiedAiCosts, type AiCostAggregates, type SourceSystem } from '@/lib/ai-cost'
+import { usdToKrw, USD_TO_KRW } from '@/lib/ai-cost-pricing'
 
 interface UsageStats {
   // DB에서 집계
@@ -193,6 +196,9 @@ export default function BillingDashboard() {
         </Card>
       </div>
 
+      {/* 실사용 AI 비용 (unified-ai-cost-dashboard) — 신규 섹션 */}
+      <AiUsageCostSection />
+
       {/* 사용량 통계 */}
       <Card>
         <CardHeader>
@@ -306,5 +312,203 @@ export default function BillingDashboard() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 실사용 AI 비용 섹션 (unified-ai-cost-dashboard)
+// Design Ref §5 — get_unified_ai_costs RPC → estimateCost → 시스템/모델/월별 집계
+// Plan SC-1~5: finance 토큰 환산 + HR STT/구독비 통합 + 월/모델/시스템별 + RPC 캡슐화 + cs/mall 정직 표시
+// ─────────────────────────────────────────────────────────────────
+
+// 시스템 라벨 + 데이터 합류 여부 (cs/mall 은 현재 AI 기록 없음 = '기록 대기')
+const SYSTEM_META: Record<SourceSystem, { label: string; expected: boolean }> = {
+  hr: { label: 'HR (인사)', expected: true },
+  finance: { label: 'Finance (재무)', expected: true },
+  cs: { label: 'CS (고객지원)', expected: false },
+  mall: { label: 'Mall (몰)', expected: false },
+}
+
+// 'YYYY-MM' → 'YYYY.MM' (CLAUDE.md 날짜 규칙)
+function toMonthLabel(ym: string): string {
+  return ym.replace('-', '.')
+}
+
+// 당월 / 전월의 [start, end] (date 문자열 YYYY-MM-DD)
+function monthRange(offset: number): { start: string; end: string; ym: string } {
+  const now = new Date()
+  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1)
+  const y = d.getFullYear()
+  const m = d.getMonth() // 0-based
+  const start = `${y}-${String(m + 1).padStart(2, '0')}-01`
+  const lastDay = new Date(y, m + 1, 0).getDate()
+  const end = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  return { start, end, ym: `${y}-${String(m + 1).padStart(2, '0')}` }
+}
+
+function AiUsageCostSection() {
+  const [loading, setLoading] = useState(true)
+  const [agg, setAgg] = useState<AiCostAggregates | null>(null)
+  const [prevTotal, setPrevTotal] = useState<number | null>(null)
+  // 0 = 당월, -1 = 전월 ... (기간 선택)
+  const [monthOffset, setMonthOffset] = useState(0)
+
+  const cur = useMemo(() => monthRange(monthOffset), [monthOffset])
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    const prev = monthRange(monthOffset - 1)
+    // 선택 월 + 직전 월(전월 대비)을 함께 조회
+    Promise.all([
+      getUnifiedAiCosts(cur.start, cur.end),
+      getUnifiedAiCosts(prev.start, prev.end),
+    ]).then(([curAgg, prevAgg]) => {
+      if (cancelled) return
+      setAgg(curAgg)
+      setPrevTotal(prevAgg.totalUsd)
+      setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [cur.start, cur.end, monthOffset])
+
+  // 전월 대비 증감률
+  const deltaPct = useMemo(() => {
+    if (prevTotal == null || prevTotal === 0) return null
+    if (!agg) return null
+    return ((agg.totalUsd - prevTotal) / prevTotal) * 100
+  }, [agg, prevTotal])
+
+  const monthLabel = toMonthLabel(cur.ym)
+  const hasData = !!agg && agg.rows.length > 0
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2">
+            <Cpu className="h-5 w-5 text-brand-600" /> 실사용 AI 비용
+            <Badge variant="default" className="bg-purple-100 text-purple-700 text-[10px]">토큰 과금</Badge>
+          </CardTitle>
+          {/* 기간 선택 (월 단위) */}
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setMonthOffset((v) => v - 1)}>이전 달</Button>
+            <span className="text-sm font-medium text-gray-700 min-w-[72px] text-center">{monthLabel}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMonthOffset((v) => Math.min(0, v + 1))}
+              disabled={monthOffset >= 0}
+            >
+              다음 달
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="py-8 text-center text-sm text-gray-400">불러오는 중…</div>
+        ) : (
+          <>
+            {/* 요약: 토큰비(변동) 합계 + 전월 대비 */}
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+              <div>
+                <p className="text-xs text-gray-500">{monthLabel} 토큰 과금 (추정)</p>
+                <p className="text-3xl font-bold text-gray-900 mt-0.5">
+                  ${(agg?.totalUsd ?? 0).toFixed(2)}
+                  <span className="text-sm font-normal text-gray-400 ml-2">≈ ₩{usdToKrw(agg?.totalUsd ?? 0).toLocaleString()}</span>
+                </p>
+              </div>
+              {deltaPct != null && (
+                <div className="text-sm">
+                  <span className="text-gray-500">전월 대비 </span>
+                  <span className={deltaPct >= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                    {deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* 추정치 disclaimer */}
+            <div className="flex items-start gap-1.5 rounded-md bg-gray-50 p-2.5 text-[11px] text-gray-500">
+              <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>
+                토큰 단가 기반 <strong>추정치</strong>입니다 (환율 ₩{USD_TO_KRW.toLocaleString()}/USD, 단가 기준 2026.05).
+                구독비(고정)는 아래 "고정 비용 서비스"에서 별도로 확인하세요.
+                {agg && agg.unpricedCount > 0 && (
+                  <> 단가 미등록 모델 {agg.unpricedCount}건은 비용 0으로 표시됩니다.</>
+                )}
+              </span>
+            </div>
+
+            {/* 시스템별 (HR/finance/cs/mall) */}
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-2">시스템별</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {(Object.keys(SYSTEM_META) as SourceSystem[]).map((sys) => {
+                  const meta = SYSTEM_META[sys]
+                  const usd = agg?.bySystem[sys] ?? 0
+                  const recorded = usd > 0 || (agg?.rows.some((r) => r.source_system === sys) ?? false)
+                  return (
+                    <div key={sys} className="p-3 rounded-lg bg-gray-50 text-center">
+                      <p className="text-[11px] text-gray-500">{meta.label}</p>
+                      {recorded ? (
+                        <p className="text-lg font-bold text-gray-900 mt-0.5">${usd.toFixed(2)}</p>
+                      ) : (
+                        <p className="text-xs text-gray-400 mt-1.5">
+                          {meta.expected ? '데이터 없음' : '기록 대기'}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 모델별 + 월별 추이 */}
+            {hasData ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* 모델별 */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">모델별</p>
+                  <div className="space-y-1.5">
+                    {Object.entries(agg!.byModel)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([model, usd]) => (
+                        <div key={model} className="flex items-center justify-between text-sm px-3 py-1.5 rounded bg-gray-50">
+                          <span className="text-gray-700 truncate mr-2">{model}</span>
+                          <span className="font-medium text-gray-900 shrink-0">${usd.toFixed(2)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+                {/* 월별 추이 */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">월별 추이</p>
+                  <div className="space-y-1.5">
+                    {Object.entries(agg!.byMonth)
+                      .sort((a, b) => a[0].localeCompare(b[0]))
+                      .map(([ym, usd]) => (
+                        <div key={ym} className="flex items-center justify-between text-sm px-3 py-1.5 rounded bg-gray-50">
+                          <span className="text-gray-700">{toMonthLabel(ym)}</span>
+                          <span className="font-medium text-gray-900">${usd.toFixed(2)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // 빈 상태 — 정직하게 표시 (FR-09)
+              <div className="py-6 text-center">
+                <p className="text-sm text-gray-500">{monthLabel}에 기록된 AI 사용 내역이 없습니다.</p>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  AI 분석/회의록 STT 등을 사용하면 자동으로 집계됩니다. finance AI 리포트는 생성 시점 기준으로 합산됩니다.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
