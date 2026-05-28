@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Repeat, Plus, Trash2, Power, Pencil, X } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -15,13 +16,34 @@ import type { RecurType, RecurringTask } from '@/types/recurring-task'
 
 // Design Ref: §5 — 반복업무 등록/관리 화면 (관리자/등록자). 프로젝트와 분리된 1급 객체 CRUD.
 const MANAGER_ROLES = ['leader', 'director', 'division_head', 'ceo', 'admin', 'hr_admin']
+// 메뉴권한관리에서 이 경로를 부여받은 사용자도 등록 가능 (RLS recur_tasks_insert 와 동일 기준)
+const RECURRING_MENU_PATH = '/admin/projects/recurring'
 
 export default function RecurringManagePage() {
   const { profile } = useAuth()
   const { toast } = useToast()
   const { tasks, employees, loading, createTask, updateTask, deactivateTask, deleteTask } = useRecurringTasks()
 
-  const canManage = profile?.role ? MANAGER_ROLES.includes(profile.role) : false
+  const isManagerRole = profile?.role ? MANAGER_ROLES.includes(profile.role) : false
+  // 역할이 아니어도 메뉴권한관리에서 '반복업무 관리' 메뉴를 부여받았으면 등록 허용
+  const [hasMenuPerm, setHasMenuPerm] = useState(false)
+  useEffect(() => {
+    if (!profile?.id || isManagerRole) return
+    let cancelled = false
+    supabase
+      .from('menu_permissions')
+      .select('allowed_menus')
+      .eq('employee_id', profile.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return
+        const menus = (data?.allowed_menus as string[]) || []
+        setHasMenuPerm(menus.includes(RECURRING_MENU_PATH))
+      })
+    return () => { cancelled = true }
+  }, [profile?.id, isManagerRole])
+
+  const canManage = isManagerRole || hasMenuPerm
 
   // 폼 상태
   const [showForm, setShowForm] = useState(false)
