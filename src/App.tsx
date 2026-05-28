@@ -94,6 +94,7 @@ import ProjectDetailPage from '@/routes/projects/detail'
 import NewProjectPage from '@/routes/projects/new'
 import ProjectSettingsPage from '@/routes/projects/settings'
 import RecurringManagePage from '@/routes/projects/recurring-manage'
+import RecurringCheckPage from '@/routes/projects/recurring-check'
 
 // 직원 확장
 import EmployeeProfile from '@/routes/employees/profile'
@@ -315,6 +316,7 @@ function App() {
               <Route path="admin/projects/settings" element={<AdminRoute><ProjectSettingsPage /></AdminRoute>} />
               {/* 반복업무 (PDCA #5) — :id 동적 라우트보다 먼저 (정적 우선 매칭) */}
               <Route path="admin/projects/recurring" element={<RecurringManagePage />} />
+              <Route path="admin/projects/recurring-check" element={<RecurringCheckPage />} />
               <Route path="admin/projects/:id" element={<ProjectDetailPage />} />
 
               {/* 인사노무 (v6) */}

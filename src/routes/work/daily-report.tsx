@@ -14,6 +14,44 @@ import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 import type { DailyReport, DailyReportTask, Task } from '@/types/work'
 
+// PDCA #5 FR-08: 반복업무(recurring_task_occurrences) 당일 진행분을 일일보고에 반영.
+// 전용 체크 화면(recurring-check)에서 done/in_progress 로 체크된 occurrence 를
+// 일일보고 완료/진행 섹션에 "추가"한다. 기존 자동수집 source(task/update/todo)는 불변.
+// occurrence.id 를 DailyReportTask.id 로 사용 → autoMergeTodayActivity dedupe/편집보존과 자연 호환.
+interface RecurringDailyResult {
+  done: DailyReportTask[]
+  inProgress: DailyReportTask[]
+}
+async function fetchRecurringForDaily(employeeId: string, date: string): Promise<RecurringDailyResult> {
+  try {
+    const { data } = await supabase
+      .from('recurring_task_occurrences')
+      .select('id, status, note, recurring_tasks!inner(title)')
+      .eq('assignee_id', employeeId)
+      .eq('occurrence_date', date)
+      .in('status', ['done', 'in_progress'])
+    const rows = (data || []) as {
+      id: string; status: string; note: string | null
+      recurring_tasks: { title: string } | { title: string }[]
+    }[]
+    const done: DailyReportTask[] = []
+    const inProgress: DailyReportTask[] = []
+    for (const r of rows) {
+      const tpl = Array.isArray(r.recurring_tasks) ? r.recurring_tasks[0] : r.recurring_tasks
+      const title = `[반복] ${tpl?.title ?? '반복업무'}`
+      const item: DailyReportTask = {
+        id: r.id, title, status: r.status, note: r.note || undefined,
+        project_name: '반복업무', project_id: null,
+      }
+      if (r.status === 'done') done.push(item)
+      else inProgress.push(item)
+    }
+    return { done, inProgress }
+  } catch {
+    return { done: [], inProgress: [] }  // 실패해도 일일보고 본 흐름 무영향
+  }
+}
+
 /* ─── TaskSection: 컴포넌트 외부 정의 (re-render 시 unmount 방지) ─── */
 function TaskSection({
   title,
@@ -595,6 +633,34 @@ export default function DailyReportPage() {
   }, [employeeId, selectedDate])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // PDCA #5 FR-08: 반복업무 당일 진행분을 일일보고 완료/진행 섹션에 추가 (append only).
+  // 별도 effect 로 loading=false 이후 실행 — fetchData + autoMergeTodayActivity(비동기 setCompleted,
+  // full-replace)가 모두 정착한 뒤 동작해 덮어쓰기 race 회피. 기존 source 코드는 불변.
+  // id 중복 시 기존 항목 우선(편집 보존), 반복분은 누락분만 추가.
+  useEffect(() => {
+    if (loading || !employeeId) return
+    let cancelled = false
+    ;(async () => {
+      const recurring = await fetchRecurringForDaily(employeeId, selectedDate)
+      if (cancelled) return
+      if (recurring.done.length > 0) {
+        setCompleted((prev) => {
+          const ids = new Set(prev.map((t) => t.id))
+          const add = recurring.done.filter((t) => !ids.has(t.id))
+          return add.length > 0 ? [...prev, ...add] : prev
+        })
+      }
+      if (recurring.inProgress.length > 0) {
+        setInProgress((prev) => {
+          const ids = new Set(prev.map((t) => t.id))
+          const add = recurring.inProgress.filter((t) => !ids.has(t.id))
+          return add.length > 0 ? [...prev, ...add] : prev
+        })
+      }
+    })()
+    return () => { cancelled = true }
+  }, [loading, employeeId, selectedDate])
 
   // Add task to section
   function addTask(
