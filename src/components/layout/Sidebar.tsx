@@ -46,6 +46,7 @@ import {
   Package,
   ScrollText,
   ToggleRight,
+  Repeat,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -216,6 +217,7 @@ const navGroups: NavGroup[] = [
       { to: '/admin/projects', label: '통합 대시보드', icon: <FolderKanban className="h-4 w-4" />, end: true },
       { to: '/admin/projects/board', label: '프로젝트 보드', icon: <Columns3 className="h-4 w-4" /> },
       { to: '/admin/projects/new', label: '새 프로젝트', icon: <Plus className="h-4 w-4" /> },
+      { to: '/admin/projects/recurring', label: '반복업무', icon: <Repeat className="h-4 w-4" /> },
       { to: '/admin/work/tasks', label: '작업 관리', icon: <ClipboardCheck className="h-4 w-4" /> },
       // D2-1: 일일 보고서는 상위 standalone 으로 이동
       { to: '/my/handover', label: '나의 인수인계', icon: <Package className="h-4 w-4" /> },

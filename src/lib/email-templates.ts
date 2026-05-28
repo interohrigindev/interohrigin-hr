@@ -821,3 +821,102 @@ export function emergencyLeaveNotificationEmail(params: {
     `.trim(),
   }
 }
+
+/* ────────────────────────────────────────────────────
+   반복업무 (PDCA #5) — 전날 알림 / 미진행 알림
+   참고: cron 발송은 functions/api/cron-recurring-*.ts 가 동일 HTML 을 inline 으로 재구성
+   (client 모듈은 import.meta.env 의존이라 CF Function 에서 import 불가).
+   본 함수들은 클라이언트(미리보기/테스트 발송 sendNotification)용.
+   ──────────────────────────────────────────────────── */
+export function recurringReminderEmail(params: {
+  assigneeName: string
+  title: string
+  description?: string | null
+  occurrenceDate: string   // YYYY.MM.DD (호출부 포맷)
+}): { subject: string; html: string } {
+  const { assigneeName, title, description, occurrenceDate } = params
+  const desc = description
+    ? `<p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 8px;">${nl2br(description)}</p>`
+    : ''
+  return {
+    subject: `[인터오리진아이앤씨] ${assigneeName}님, 내일(${occurrenceDate}) 반복업무 안내`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">반복업무 알림</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;"><strong>${escapeHtml(assigneeName)}</strong>님, 안녕하세요.</p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
+        내일(<strong>${occurrenceDate}</strong>) 예정된 반복업무를 안내드립니다.
+      </p>
+      <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;padding:24px;margin:20px 0;">
+        <p style="font-size:13px;color:#6B3FA0;margin:0 0 8px;font-weight:bold;">📌 반복업무</p>
+        <p style="font-size:16px;color:#1f2937;margin:0 0 8px;font-weight:bold;">${escapeHtml(title)}</p>
+        ${desc}
+        <p style="font-size:13px;color:#6b7280;margin:8px 0 0;">발생일: ${occurrenceDate}</p>
+      </div>
+      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:24px 0 0;">
+        해당일에 HR 플랫폼 &gt; 프로젝트&amp;업무 &gt; 반복업무에서 진행여부를 체크해 주세요.
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진아이앤씨 HR 시스템에서 자동 발송되었습니다.
+      </p>
+    </div>
+  </div>
+</body></html>`.trim(),
+  }
+}
+
+export function recurringMissedEmail(params: {
+  assigneeName: string
+  title: string
+  occurrenceDate: string   // YYYY.MM.DD
+  forSelf: boolean         // true=본인 톤, false=관리자 통보 톤
+}): { subject: string; html: string } {
+  const { assigneeName, title, occurrenceDate, forSelf } = params
+  const lead = forSelf
+    ? `<strong>${escapeHtml(assigneeName)}</strong>님, ${occurrenceDate} 예정된 반복업무가 미진행 상태입니다.`
+    : `<strong>${escapeHtml(assigneeName)}</strong>님의 ${occurrenceDate} 반복업무가 미진행 상태로 확인되어 통보드립니다.`
+  return {
+    subject: `[인터오리진아이앤씨] 반복업무 미진행 알림 (${occurrenceDate}) — ${escapeHtml(title)}`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">반복업무 미진행 알림</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">${lead}</p>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:24px;margin:20px 0;">
+        <p style="font-size:13px;color:#dc2626;margin:0 0 8px;font-weight:bold;">⚠️ 미진행 반복업무</p>
+        <p style="font-size:16px;color:#1f2937;margin:0 0 8px;font-weight:bold;">${escapeHtml(title)}</p>
+        <table style="width:100%;font-size:14px;color:#374151;">
+          <tr><td style="padding:4px 0;color:#6b7280;">담당자</td>
+              <td style="padding:4px 0;text-align:right;font-weight:bold;">${escapeHtml(assigneeName)}</td></tr>
+          <tr><td style="padding:4px 0;color:#6b7280;">발생일</td>
+              <td style="padding:4px 0;text-align:right;font-weight:bold;">${occurrenceDate}</td></tr>
+        </table>
+      </div>
+      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:24px 0 0;">
+        HR 플랫폼 &gt; 프로젝트&amp;업무 &gt; 반복업무에서 상태를 확인해 주세요.
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진아이앤씨 HR 시스템에서 자동 발송되었습니다.
+      </p>
+    </div>
+  </div>
+</body></html>`.trim(),
+  }
+}
