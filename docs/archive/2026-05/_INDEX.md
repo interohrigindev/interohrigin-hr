@@ -78,6 +78,46 @@
 
 ---
 
+### 3. unified-ai-cost-dashboard
+
+**전사 AI 과금 통합 대시보드** (4개 스키마 HR/finance/cs/mall의 AI API 토큰비 + 구독비를 공통 ai_usage_log + cross-schema RPC로 취합, 비용 관리 화면 확장)
+
+| 항목 | 내용 |
+|---|---|
+| Plan/Design/Do/Check/Report 전체 | 2026-05-28 |
+| Code Commits | `1273f53` → `d4f8898` → `b740307` (3개, 모두 빌드 통과) |
+| Archive 완료 | 2026-05-28 |
+| PDCA Cycle | #3 (feature-development) |
+| Match Rate | **98%** ✅ |
+| Success Criteria | **6/7 Met + 1 Partial** (SC-7 인프라 완비, 실데이터 누적 대기) |
+| Critical / Important Gap | 0 / 0 |
+| 방향 정정 | 1회 (회사 운영비 → AI 과금, Plan 단계 전환, 폐기 코드 0) |
+| CLAUDE.md 절대 규칙 위반 | 0건 (기존 테이블 ALTER 0, 신규 테이블/RPC만, 한국어 UI, 부분 수정+빌드 검증) |
+| LOC 증가 | 9 files / 약 +717 lines / -20 lines |
+
+**핵심 발견**:
+- **방향 대정정** — "회사 운영비(고정비/경비) 통합" Plan을 인터뷰 직후 "AI 개발 과금(토큰비+구독비) 통합"으로 전환. Plan 단계라 폐기 코드 0.
+- **Architecture Option C (Pragmatic)** — ai.ts를 stateless 유지(usage 응답에만 추가) + authed 클라이언트가 ai_usage_log insert. Option B(service-role 주입)의 보안 표면 + finance 코드 침범 회피.
+- **`is_admin()` 헬퍼 미사용 결정** — 헬퍼가 hr_admin을 누락(`role IN (director,division_head,ceo,admin)`)함을 발견. billing AdminRoute(+hr_admin)와 RPC 권한을 일치시키기 위해 5 role 인라인 명시.
+- **ai-client 내부 자동 적재** — recordUsage를 generateAIContent/Chat 내부에서 호출 → 49개 호출처 수정 0으로 전사 토큰 기록 활성화.
+- **Deepgram 정정 + STT 컬럼 미존재** — Plan "Whisper" 가정을 코드 사실(DEEPGRAM_COST_PER_MIN)로, `meeting_records.stt_cost` 컬럼 미존재를 SQL로 확정해 Design §0에 정정 기록.
+- **cross-schema SECURITY DEFINER + guard CTE** — search_path 고정 + 관리자 role CROSS JOIN으로 비관리자 0행, PUBLIC revoke.
+
+**4개 문서**:
+- [unified-ai-cost-dashboard.plan.md](./unified-ai-cost-dashboard/unified-ai-cost-dashboard.plan.md)
+- [unified-ai-cost-dashboard.design.md](./unified-ai-cost-dashboard/unified-ai-cost-dashboard.design.md)
+- [unified-ai-cost-dashboard.analysis.md](./unified-ai-cost-dashboard/unified-ai-cost-dashboard.analysis.md)
+- [unified-ai-cost-dashboard.report.md](./unified-ai-cost-dashboard/unified-ai-cost-dashboard.report.md)
+
+**향후 권고 Top 3** (Report §5 참조):
+1. **cs/mall 합류** — 각 시스템이 AI 호출 시 `public.ai_usage_log`에 source_system='cs'|'mall'로 insert. 규격은 이미 제공, 각 시스템 작업.
+2. **HR 실데이터 모니터링** — SC-7 인프라 완비, AI 호출 발생 시 ai_usage_log 누적을 1~2주 후 확인.
+3. **단가표 정기 갱신** — ai-cost-pricing.ts + pricing-sources.md 분기 재확인 ("추정치" 유지).
+
+> Archive 사본 정책: PDCA #2와 동일 — 원본은 stub link, 전체 내용은 git history(`b740307` 직후 archive 커밋)에 보존.
+
+---
+
 ## Archive 운영 정책
 
 - Archive 된 문서의 원본(`docs/01-plan/features/*`, `docs/02-design/features/*`, `docs/03-analysis/*`, `docs/04-report/*`) 위치에는 stub 파일만 남아서 새 위치로 안내함
