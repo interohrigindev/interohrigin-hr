@@ -101,6 +101,8 @@ const MENU_GROUPS: MenuGroup[] = [
       { label: '통합 대시보드', path: '/admin/dashboard' },
       { label: '프로젝트 보드', path: '/admin/projects' },
       { label: '새 프로젝트', path: '/admin/projects/new' },
+      { label: '반복업무 관리', path: '/admin/projects/recurring' },
+      { label: '반복업무 체크', path: '/admin/projects/recurring-check' },
       { label: '작업 관리', path: '/admin/work' },
       { label: '일일 보고서', path: '/admin/work/daily' },
       { label: '권한 설정', path: '/admin/projects/permissions' },
