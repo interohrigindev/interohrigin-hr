@@ -22,6 +22,18 @@ interface AIRequestBody {
   files?: FileAttachment[]  // 첨부 파일 (멀티모달)
 }
 
+// Design Ref: §4 — 토큰 사용량 표준 포맷. ai_usage_log 적재는 클라이언트가 수행(Option C).
+interface AIUsage {
+  tokens_input: number
+  tokens_output: number
+}
+
+// 각 provider 호출 결과: 생성 텍스트 + 토큰 사용량
+interface AIResult {
+  content: string
+  usage: AIUsage
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -59,7 +71,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
     }
 
     // ─── Generate / Chat ───
-    let result: string
+    let result: AIResult
 
     if (provider === 'gemini') {
       result = await callGemini(apiKey, model, body)
@@ -69,7 +81,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
       result = await callOpenAI(apiKey, model, body)
     }
 
-    return jsonResponse({ content: result, provider, model })
+    // Design Ref: §4 — content 는 기존 그대로(회귀 0), usage 필드만 신규 추가
+    return jsonResponse({ content: result.content, provider, model, usage: result.usage })
   } catch (err: any) {
     return jsonResponse({ error: err.message || 'AI proxy error' }, 500)
   }
@@ -77,7 +90,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
 
 // ─── Provider implementations ────────────────────────────────────
 
-async function callGemini(apiKey: string, model: string, body: AIRequestBody): Promise<string> {
+async function callGemini(apiKey: string, model: string, body: AIRequestBody): Promise<AIResult> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
   let requestBody: any
@@ -128,10 +141,19 @@ async function callGemini(apiKey: string, model: string, body: AIRequestBody): P
   }
 
   const data: any = await res.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  // Gemini usage: usageMetadata.{promptTokenCount, candidatesTokenCount}
+  const um = data.usageMetadata ?? {}
+  return {
+    content,
+    usage: {
+      tokens_input: Number(um.promptTokenCount) || 0,
+      tokens_output: Number(um.candidatesTokenCount) || 0,
+    },
+  }
 }
 
-async function callOpenAI(apiKey: string, model: string, body: AIRequestBody): Promise<string> {
+async function callOpenAI(apiKey: string, model: string, body: AIRequestBody): Promise<AIResult> {
   const systemMsg = body.systemPrompt || '당신은 인사평가 전문 분석가입니다. 한국어로 응답하며, 구조화된 마크다운 형식으로 분석 리포트를 작성합니다.'
 
   const messages = body.action === 'chat' && body.messages
@@ -153,10 +175,19 @@ async function callOpenAI(apiKey: string, model: string, body: AIRequestBody): P
   }
 
   const data: any = await res.json()
-  return data.choices?.[0]?.message?.content ?? ''
+  const content = data.choices?.[0]?.message?.content ?? ''
+  // OpenAI usage: usage.{prompt_tokens, completion_tokens}
+  const u = data.usage ?? {}
+  return {
+    content,
+    usage: {
+      tokens_input: Number(u.prompt_tokens) || 0,
+      tokens_output: Number(u.completion_tokens) || 0,
+    },
+  }
 }
 
-async function callClaude(apiKey: string, model: string, body: AIRequestBody): Promise<string> {
+async function callClaude(apiKey: string, model: string, body: AIRequestBody): Promise<AIResult> {
   const systemMsg = body.systemPrompt || '당신은 인사평가 전문 분석가입니다. 한국어로 응답하며, 구조화된 마크다운 형식으로 분석 리포트를 작성합니다.'
 
   // 멀티모달 처리: prompt + files → Claude content blocks
@@ -214,5 +245,14 @@ async function callClaude(apiKey: string, model: string, body: AIRequestBody): P
   const data: any = await res.json()
   // content blocks 중 첫 번째 text 블록 찾아 반환
   const blocks = data.content as Array<{ type: string; text?: string }> | undefined
-  return blocks?.find((b) => b.type === 'text')?.text ?? blocks?.[0]?.text ?? ''
+  const content = blocks?.find((b) => b.type === 'text')?.text ?? blocks?.[0]?.text ?? ''
+  // Claude usage: usage.{input_tokens, output_tokens}
+  const u = data.usage ?? {}
+  return {
+    content,
+    usage: {
+      tokens_input: Number(u.input_tokens) || 0,
+      tokens_output: Number(u.output_tokens) || 0,
+    },
+  }
 }
