@@ -4,3 +4,5 @@
 - [cross-schema RPC + 중앙 어댑터 자동 적재](feedback_cross_schema_rpc_and_central_adapter.md) — public SECURITY DEFINER RPC+guard CTE 로 멀티 스키마 캡슐화 / 중앙 클라이언트 내부 자동 부수효과로 N개 호출처 무수정 확장 (PDCA #3 실증, is_admin hr_admin 누락 주의)
 - [연차/이메일/첨부 인프라 진입점 맵](project_leave_email_storage_infra.md) — sendNotification(email) / safeStorageUpload / leave_requests+트리거 update_leave_balance / storage정책 db-exec 적용가능 (PDCA #4 완결)
 - [2단계 통보형신청→사후정식전환 패턴](feedback_two_stage_notify_then_formalize.md) — 즉시성+정합성 충돌 시 신규 통보 테이블(결재없음)+사후 기존 결재/트리거 전환. helper 추출 회귀 0, 무급은 수량 조정으로 트리거 과차감 방지 (PDCA #4 실증)
+- [일일보고/프로젝트/cron 인프라 맵](project_dailyreport_projects_cron_infra.md) — daily_reports JSONB 자동수집(daily-report.tsx fetchData) / 프로젝트=project_boards+pipeline_stages(한글 status) / 검증된 서버 cron(cron-leave-promotion.ts→RPC→send-email.ts) + recurring-task(135) 완결: 2테이블+3RPC+materialize pg_cron / 발송=외부cron→CF Function(app.* null로 net.http_post 회피) / 운영 cron 등록 필수 (PDCA #5)
+- [append-only 대형파일 회귀 0 패턴](feedback_append_only_large_file_regression_zero.md) — ~1700 LOC 단일파일 신규 source 통합 시 기존 코드 0수정 + 모듈헬퍼 + loading후 별도 useEffect functional append (PDCA #5 daily-report FR-08 실증, full-replace race 한계 인지)

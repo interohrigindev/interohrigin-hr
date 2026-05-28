@@ -158,6 +158,46 @@
 
 ---
 
+### 5. recurring-task
+
+**반복업무** (프로젝트와 분리된 매주/매월 반복업무 등록 → 발생 인스턴스 자동생성 → 전날 이메일 알림 → 전용 체크 화면 진행여부 → 당일 일일보고 자동 반영 → 미진행 시 본인·관리자 알림)
+
+| 항목 | 내용 |
+|---|---|
+| Plan/Design/Do/Check/Report 전체 | 2026-05-28 |
+| Code Commits | `f59f892` (S1) → `d4f4283` (S2) → `2beb880` (S3) (3개, 모두 빌드 통과) |
+| Archive 완료 | 2026-05-28 |
+| PDCA Cycle | #5 (feature-development) |
+| Match Rate | **98.4%** ✅ |
+| Success Criteria | **7/7 Met** (SC-1~7) |
+| Critical / Important Gap | 0 / 2 (운영 cron 등록 + autoMerge race 실측 — 둘 다 코드결함 아님) |
+| CLAUDE.md 절대 규칙 위반 | 0건 (기존 테이블 ALTER 0, 신규 테이블/RPC/CF Function만, 한국어 UI, Edit 부분수정+빌드) |
+| 마이그레이션 | `135_recurring_task.sql` |
+
+**핵심 발견**:
+- **반복성·발생일 1급 모델링** — "끝없는 프로젝트 양산 + 일일보고 자동수집 불일치" 의 근본 원인이 recurrence/occurrence 1급 개념 부재임을 진단. 신규 2테이블(템플릿 + 발생 인스턴스)로 프로젝트와 완전 분리.
+- **Architecture Option C** — 발생/알림/미진행을 RPC 분리(멱등·테스트성) + 일일보고 반영은 fetchData 국소 append. A(daily-report 대폭수정)·B(과설계) 회피.
+- **pg_cron materialize + 외부cron→CF Function 발송 분리** — `app.*` DB 설정값 null 확인 → pg_cron 직접 HTTP(net.http_post) 의존 회피. materialize(HTTP 불요)는 pg_cron 직접 RPC, 이메일 발송은 외부cron→CF Function(cron-leave-promotion X-Cron-Secret 패턴)→send-email. 발송 경로 결정의 traceability 보존.
+- **occurrence materialize 타이밍 = 자정 오늘+내일** — 내일분 선생성해야 전날 알림 대상 존재. (가)전날cron겸INSERT race / (다)lazy 못찾음 회피.
+- **reminder 30분 버킷 매칭 + reminder_sent_at 멱등** — 가변 알림시각(기본 09:00)과 cron 고정스케줄 충돌 해소 + 중복 발송 0.
+- **daily-report.tsx append-only 회귀 0 패턴** — ~1730 LOC 단일 파일에 기존 4 source 코드 한 줄도 수정 없이 모듈 헬퍼 1개 + loading 이후 별도 useEffect로 functional append. 반복업무 0건 사용자는 기존 동작 완전 동일. occurrence.id를 DailyReportTask.id로 써서 autoMergeTodayActivity dedupe와 자연 호환.
+- **미진행 알림** — pick_recurring_missed가 발생일 경과 미완료 → missed 전이 + missed_notified_at 멱등 마킹, CF Function이 본인 + 관리자(role IN hr_admin 포함) 발송(본인 중복 제외).
+
+**4개 문서**:
+- [recurring-task.plan.md](./recurring-task/recurring-task.plan.md)
+- [recurring-task.design.md](./recurring-task/recurring-task.design.md)
+- [recurring-task.analysis.md](./recurring-task/recurring-task.analysis.md)
+- [recurring-task.report.md](./recurring-task/recurring-task.report.md)
+
+**향후 권고 Top 3** (Report 향후 권고):
+1. **⚠️ 운영 cron 등록 (필수)** — 배포만으론 알림 자동작동 안 함. 외부 cron(cron-job.org 등)에 `/api/cron-recurring-reminder`(30분/매시간) + `/api/cron-recurring-missed`(1일1회) 등록 + `X-Cron-Secret` 헤더. CF Pages env(CRON_SECRET/SUPABASE_SERVICE_ROLE_KEY/GMAIL_*) 확인.
+2. 실 반복업무 1건 e2e (등록→materialize→전날알림→체크→일일보고반영→미진행알림)
+3. autoMerge race(I-2) 실측 — 저장 보고서 + 같은날 반복 done 체크 후 재진입 시 완료 섹션 유지 확인
+
+> Archive 사본 정책: PDCA #2~#4와 동일 — 원본 stub, 전체 내용 git history(`2beb880` + archive 커밋)에 보존.
+
+---
+
 ## Archive 운영 정책
 
 - Archive 된 문서의 원본(`docs/01-plan/features/*`, `docs/02-design/features/*`, `docs/03-analysis/*`, `docs/04-report/*`) 위치에는 stub 파일만 남아서 새 위치로 안내함
