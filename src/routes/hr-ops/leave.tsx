@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import {
   CalendarPlus, Download, Search,
-  AlertTriangle, CheckCircle, Clock, Plus,
+  AlertTriangle, CheckCircle, Clock, Plus, X,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -1315,8 +1315,17 @@ export default function LeaveManagementPage() {
         )}
       </Dialog>
 
-      {/* ─── 연차 신청 다이얼로그 (결재라인 포함) ─────── */}
-      <Dialog open={showRequestDialog} onClose={() => setShowRequestDialog(false)} title="연차 신청" className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
+      {/* ─── 연차 신청 — 전체 페이지뷰 (모달 X, approval.tsx 패턴 / 결재라인 포함) ─────── */}
+      {showRequestDialog && (
+      <div className="fixed inset-0 z-30 bg-gray-50 overflow-y-auto">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <div className="sticky top-0 bg-gray-50 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 border-b border-gray-200 z-10 flex items-center justify-between mb-4 sm:mb-6">
+            <h1 className="text-lg sm:text-xl font-bold text-gray-900">연차 신청</h1>
+            <Button variant="ghost" onClick={() => setShowRequestDialog(false)}>
+              <X className="h-4 w-4 mr-1" /> 닫기
+            </Button>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
         <div className="space-y-4">
           {/* PDCA #4: [일반]/[긴급] 토글 — 긴급은 결재선 없이 즉시 통보 */}
           <div className="grid grid-cols-2 gap-2">
@@ -1477,7 +1486,10 @@ export default function LeaveManagementPage() {
             )}
           </div>
         </div>
-      </Dialog>
+          </div>
+        </div>
+      </div>
+      )}
 
       {/* 연차 자동 계산 — 미리보기/검토/수정 다이얼로그 */}
       <Dialog open={!!autoCalcPreview} onClose={() => !autoCalcApplying && setAutoCalcPreview(null)} title="연차 자동 계산 — 검토 후 적용">
