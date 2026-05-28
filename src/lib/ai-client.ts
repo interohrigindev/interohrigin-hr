@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase'
+import { logAiUsage } from '@/lib/ai-usage'
 
 export interface AIConfig {
   provider: 'gemini' | 'openai' | 'claude' | 'deepgram'
@@ -62,15 +63,25 @@ export async function getAIConfigForFeature(featureKey: string): Promise<AIConfi
   return { provider: defaultSetting.provider, apiKey: defaultSetting.api_key, model: defaultSetting.model }
 }
 
+export interface AIUsage {
+  tokens_input: number
+  tokens_output: number
+}
+
 export interface AIResponse {
   content: string
   provider: string
   model: string
+  usage?: AIUsage   // unified-ai-cost-dashboard: 옵셔널 추가 — 기존 호출처 영향 0
 }
 
 // ─── Proxy helper ────────────────────────────────────────────────
+// 반환: content + usage (프록시 §4 응답). 내부 caller 만 사용.
 
-async function callAIProxy(apiKey: string, body: Record<string, unknown>): Promise<string> {
+async function callAIProxy(
+  apiKey: string,
+  body: Record<string, unknown>,
+): Promise<{ content: string; usage?: AIUsage }> {
   const res = await fetch('/api/ai', {
     method: 'POST',
     headers: {
@@ -85,8 +96,22 @@ async function callAIProxy(apiKey: string, body: Record<string, unknown>): Promi
     throw new Error((err as any)?.error || `AI proxy error: ${res.status}`)
   }
 
-  const data = await res.json()
-  return (data as any).content ?? ''
+  const data = await res.json() as { content?: string; usage?: AIUsage }
+  return { content: data.content ?? '', usage: data.usage }
+}
+
+// unified-ai-cost-dashboard: 성공한 프록시 호출의 토큰을 ai_usage_log 에 적재(best-effort).
+// 49개 호출처를 건드리지 않도록 ai-client 내부에서 자동 호출. provider 'claude' → 'anthropic' 정규화.
+function recordUsage(feature: string, provider: string, model: string, usage?: AIUsage): void {
+  if (!usage) return
+  const normalizedProvider = provider === 'claude' ? 'anthropic' : provider
+  void logAiUsage({
+    feature,
+    provider: normalizedProvider,
+    model,
+    tokensInput: usage.tokens_input,
+    tokensOutput: usage.tokens_output,
+  })
 }
 
 // ─── 브라우저 직접 호출 (Cloudflare 엣지 리전 차단 시 우회) ──────
@@ -174,7 +199,7 @@ export interface AIFileAttachment {
 // 2차: 키 오류 발생 시 다른 활성 provider로 자동 재시도 (최대 2회)
 // 모든 실패 → throw (호출자가 catch하여 처리). 기존 호출자는 코드 변경 없이도 보호됨.
 
-export async function generateAIContent(config: AIConfig, prompt: string, files?: AIFileAttachment[]): Promise<AIResponse> {
+export async function generateAIContent(config: AIConfig, prompt: string, files?: AIFileAttachment[], feature = 'generate'): Promise<AIResponse> {
   const body = {
     action: 'generate',
     prompt,
@@ -183,12 +208,13 @@ export async function generateAIContent(config: AIConfig, prompt: string, files?
 
   // 1차 시도
   try {
-    const content = await callAIProxy(config.apiKey, {
+    const proxy = await callAIProxy(config.apiKey, {
       provider: config.provider,
       model: config.model,
       ...body,
     })
-    return { content, provider: config.provider, model: config.model }
+    recordUsage(feature, config.provider, config.model, proxy.usage)
+    return { content: proxy.content, provider: config.provider, model: config.model, usage: proxy.usage }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     const cls = classifyError(msg)
@@ -218,12 +244,13 @@ export async function generateAIContent(config: AIConfig, prompt: string, files?
       if (c.provider === config.provider && c.api_key === config.apiKey) continue
       if (cls.regionError && c.provider === config.provider) continue // 같은 provider 스킵
       try {
-        const content = await callAIProxy(c.api_key, {
+        const proxy = await callAIProxy(c.api_key, {
           provider: c.provider,
           model: c.model,
           ...body,
         })
-        return { content, provider: c.provider, model: c.model }
+        recordUsage(feature, c.provider, c.model, proxy.usage)
+        return { content: proxy.content, provider: c.provider, model: c.model, usage: proxy.usage }
       } catch (fallbackErr) {
         const fmsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
         const fcls = classifyError(fmsg)
@@ -434,7 +461,7 @@ export async function generateAIChat(
   systemPrompt: string,
   messages: { role: 'user' | 'assistant'; content: string }[]
 ): Promise<AIResponse> {
-  const content = await callAIProxy(config.apiKey, {
+  const proxy = await callAIProxy(config.apiKey, {
     provider: config.provider,
     model: config.model,
     action: 'chat',
@@ -442,7 +469,8 @@ export async function generateAIChat(
     messages,
   })
 
-  return { content, provider: config.provider, model: config.model }
+  recordUsage('chat', config.provider, config.model, proxy.usage)
+  return { content: proxy.content, provider: config.provider, model: config.model, usage: proxy.usage }
 }
 
 // ─── Deepgram Nova-3 STT (음성→텍스트, 화자분리 포함) ─────────────
