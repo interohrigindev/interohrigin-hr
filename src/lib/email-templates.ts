@@ -696,3 +696,128 @@ export function probationReminderEmail(params: {
     `.trim(),
   }
 }
+
+/* ────────────────────────────────────────────────────
+   긴급연차 통보 (PDCA #4) — 신청 즉시 임원급(hr_admin/ceo/director)에게 발송
+   수신자를 임원급으로 한정하므로 민감 사유(질병 등) 풀 내용 포함 가능
+   ──────────────────────────────────────────────────── */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function nl2br(s: string): string {
+  return escapeHtml(s).replace(/\n/g, '<br>')
+}
+
+export function emergencyLeaveNotificationEmail(params: {
+  recipientName: string                 // 수신자(임원) 이름
+  applicantName: string                 // 신청자 이름
+  leaveKind: 'emergency' | 'sick'
+  startDate: string                     // YYYY.MM.DD 표시용 (호출부에서 포맷)
+  endDate: string
+  daysCount: number
+  reason: string
+  handoverNotes?: string | null
+  delegateName?: string | null
+  hospitalPlan?: string | null
+  sameDayFiling?: boolean | null
+  detailUrl?: string
+}): { subject: string; html: string } {
+  const {
+    recipientName, applicantName, leaveKind, startDate, endDate, daysCount,
+    reason, handoverNotes, delegateName, hospitalPlan, sameDayFiling, detailUrl,
+  } = params
+
+  const kindLabel = leaveKind === 'sick' ? '병가' : '긴급사유'
+  const filingLabel = sameDayFiling == null
+    ? '미입력'
+    : sameDayFiling ? '당일 전자결재 상신 가능' : '익일 사후 상신 예정'
+  const period = startDate === endDate ? startDate : `${startDate} ~ ${endDate}`
+  const link = detailUrl || `${APP_URL}/admin/leave`
+
+  // 선택 항목 행 (값 있을 때만 노출)
+  const optionalRow = (label: string, value?: string | null) =>
+    value && value.trim()
+      ? `<tr>
+           <td style="padding:6px 0;color:#6b7280;vertical-align:top;width:120px;">${label}</td>
+           <td style="padding:6px 0;color:#1f2937;line-height:1.6;">${nl2br(value)}</td>
+         </tr>`
+      : ''
+
+  return {
+    subject: `[인터오리진아이앤씨] 긴급연차 통보 — ${applicantName} (${kindLabel}, ${period})`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">Human Resources · 긴급연차 통보</p>
+    </div>
+
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${escapeHtml(recipientName)}</strong>님, 안녕하세요.
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
+        <strong>${escapeHtml(applicantName)}</strong>님이 긴급연차를 신청하여 통보드립니다.
+        결재 단계 없이 즉시 상신된 건이며, 출근 후 보완자료(${leaveKind === 'sick' ? '진료확인서/진단서' : '사유서'}) 첨부 후 정식 연차로 전환됩니다.
+      </p>
+
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:24px;margin:20px 0;">
+        <p style="font-size:13px;color:#dc2626;margin:0 0 12px;font-weight:bold;">
+          ⚠️ 긴급연차 신청 — ${kindLabel}
+        </p>
+        <table style="width:100%;font-size:14px;color:#374151;">
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;width:120px;">신청자</td>
+            <td style="padding:6px 0;font-weight:bold;color:#1f2937;">${escapeHtml(applicantName)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;">기간</td>
+            <td style="padding:6px 0;font-weight:bold;color:#1f2937;">${escapeHtml(period)} (${daysCount}일)</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;vertical-align:top;">사유</td>
+            <td style="padding:6px 0;color:#1f2937;line-height:1.6;">${nl2br(reason)}</td>
+          </tr>
+          ${optionalRow('업무 인수인계', handoverNotes)}
+          ${optionalRow('업무 대리인', delegateName)}
+          ${optionalRow('병원 방문 계획', hospitalPlan)}
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;">전자결재</td>
+            <td style="padding:6px 0;color:#1f2937;">${filingLabel}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${link}"
+           style="display:inline-block;background:#6B3FA0;color:#ffffff;padding:14px 36px;
+                  border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">
+          HR 시스템에서 확인하기
+        </a>
+      </div>
+
+      <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:24px 0 0;">
+        ※ 본 건은 결재선 없이 즉시 통보된 긴급연차입니다. 정식 연차 전환·승인은 별도 전자결재로 진행됩니다.
+      </p>
+    </div>
+
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진아이앤씨 HR 시스템에서 자동 발송되었습니다.<br>
+        문의: admin@interohriginhr.com
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim(),
+  }
+}
