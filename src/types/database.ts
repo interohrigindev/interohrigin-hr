@@ -26,6 +26,7 @@ export interface Employee {
   position: string | null
   employment_type: EmploymentType | null
   emergency_contact: string | null
+  iocs_access: boolean | null
   created_at: string
   updated_at: string
 }

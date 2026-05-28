@@ -13,7 +13,7 @@
 import { supabase } from '@/lib/supabase'
 
 export const IOCS_URL =
-  import.meta.env.VITE_IOCS_URL || 'https://iocs-eys.pages.dev'
+  import.meta.env.VITE_IOCS_URL || 'https://cs.interohrigin.com'
 
 /**
  * 현재 HR 세션을 IO CS 로 전달하며 새 탭으로 이동.

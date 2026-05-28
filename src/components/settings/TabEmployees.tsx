@@ -126,6 +126,7 @@ export default function TabEmployees() {
     mbti: '',
     blood_type: '',
     hanja_name: '',
+    iocs_access: false,
   })
 
   // 추가 소속 팀
@@ -438,6 +439,7 @@ export default function TabEmployees() {
       mbti,
       blood_type,
       hanja_name,
+      iocs_access: emp.iocs_access ?? false,
     })
     setShowEditDialog(true)
   }
@@ -458,6 +460,7 @@ export default function TabEmployees() {
         position: editForm.position || null,
         employment_type: editForm.employment_type || null,
         emergency_contact: editForm.emergency_contact || null,
+        iocs_access: editForm.iocs_access,
       })
       .eq('id', editingEmployee.id)
 
@@ -1438,6 +1441,25 @@ export default function TabEmployees() {
             />
             <p className="text-[11px] text-gray-500 mt-1">
               ※ 자기평가 화면에서 보이는 평가 항목은 이 "평가 직무" 배정에 따라 결정됩니다. 위의 텍스트 직무와 별개입니다.
+            </p>
+          </div>
+
+          {/* IO CS 고객관리 접근 허용 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">IO CS 고객관리 접근</label>
+            <button
+              type="button"
+              onClick={() => setEditForm({ ...editForm, iocs_access: !editForm.iocs_access })}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                editForm.iocs_access
+                  ? 'bg-sky-100 border-sky-300 text-sky-700'
+                  : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+              }`}
+            >
+              IO CS 고객관리 접근 허용{editForm.iocs_access && ' ✓'}
+            </button>
+            <p className="text-[11px] text-gray-500 mt-1">
+              ※ 켜면 역할/부서와 무관하게 이 직원에게 IO CS 고객관리 플랫폼 접근을 개별 허용합니다.
             </p>
           </div>
 

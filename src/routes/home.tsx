@@ -40,6 +40,13 @@ async function checkIoCsAccess(profile: { id?: string; role?: string | null; dep
   // 1) 시스템 관리자 / 대표 / 임원 — 항상 허용
   if (IOCS_ALWAYS_ALLOWED_ROLES.includes(profile.role)) return true
 
+  // 1-2) 개별 허용 플래그 (직원정보에서 'CS 접근 허용' 켠 경우)
+  if (profile.id) {
+    const { data: emp } = await supabase
+      .from('employees').select('iocs_access').eq('id', profile.id).single()
+    if (emp?.iocs_access === true) return true
+  }
+
   // 2) 부서명 조회 (BM 리더 + CS 부서 판정용)
   if (!profile.department_id) return false
   const { data: dept } = await supabase
