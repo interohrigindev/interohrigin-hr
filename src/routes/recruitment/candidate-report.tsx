@@ -84,6 +84,16 @@ export default function CandidateReport() {
   } | null>(null)
   const [duplicateCandidates, setDuplicateCandidates] = useState<{ id: string; name: string; status: string; created_at: string; job_posting_id: string | null }[]>([])
   const [jobTitle, setJobTitle] = useState<string | null>(null)
+  // F4-2: 면접 지원 직무 변경 (강이사/대표/관리자 권한)
+  const [jobList, setJobList] = useState<{ id: string; title: string }[]>([])
+  const [changingJob, setChangingJob] = useState(false)
+  const [newJobId, setNewJobId] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+  const canChangeJob = ['director', 'division_head', 'ceo', 'admin', 'hr_admin'].includes(profile?.role || '')
+  useEffect(() => {
+    supabase.from('job_postings').select('id, title').order('created_at', { ascending: false })
+      .then(({ data }) => { if (data) setJobList(data as { id: string; title: string }[]) })
+  }, [])
   // 지원자 기본 정보 인라인 편집
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ name: '', email: '', phone: '' })
@@ -256,7 +266,7 @@ export default function CandidateReport() {
     }
     fetch()
     loadShareLinks()
-  }, [id])
+  }, [id, reloadKey])
 
   async function loadShareLinks() {
     if (!id) return
@@ -1571,6 +1581,31 @@ ${surveyText || '응답 없음'}
     REJECT: { icon: XCircle, color: 'text-red-600', label: '부적합' },
   }
 
+  async function handleChangeJob() {
+    if (!candidate || !id || !newJobId || newJobId === candidate.job_posting_id) return
+    const fromJob = jobList.find((j) => j.id === candidate.job_posting_id)
+    const toJob = jobList.find((j) => j.id === newJobId)
+    if (!confirm(`지원 직무를 '${fromJob?.title || '미지정'}' → '${toJob?.title}' 으로 변경합니다.\n기존 AI 추천/2차 면접 질문은 새 직무 기준으로 초기화됩니다. 계속하시겠습니까?`)) return
+    const prevHistory = ((candidate as { job_change_history?: unknown[] }).job_change_history as unknown[]) || []
+    const entry = {
+      from_job_id: candidate.job_posting_id, from_title: fromJob?.title ?? null,
+      to_job_id: newJobId, to_title: toJob?.title ?? null,
+      changed_by: profile?.id ?? null, changed_by_name: (profile as { name?: string } | null)?.name ?? null,
+      changed_at: new Date().toISOString(),
+    }
+    const { error } = await supabase.from('candidates').update({
+      job_posting_id: newJobId,
+      job_change_history: [...prevHistory, entry],
+      second_interview_questions: null,
+      second_interview_questions_generated_at: null,
+      ai_recommended_questions: null,
+    }).eq('id', id)
+    if (error) { toast('직무 변경 실패: ' + error.message, 'error'); return }
+    toast(`직무가 '${toJob?.title}' 으로 변경되었습니다. 새 직무 기준으로 AI 질문을 재생성하세요.`, 'success')
+    setChangingJob(false)
+    setReloadKey((k) => k + 1)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -1578,9 +1613,46 @@ ${surveyText || '응답 없음'}
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
-          {jobTitle && (
-            <Badge variant="info" className="mb-1 text-xs">{jobTitle}</Badge>
-          )}
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            {jobTitle && (
+              <Badge variant="info" className="text-xs">{jobTitle}</Badge>
+            )}
+            {canChangeJob && (
+              changingJob ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <select
+                    value={newJobId}
+                    onChange={(e) => setNewJobId(e.target.value)}
+                    className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:border-brand-500"
+                  >
+                    <option value="">— 직무 선택 —</option>
+                    {jobList.map((j) => <option key={j.id} value={j.id}>{j.title}</option>)}
+                  </select>
+                  <Button size="sm" onClick={handleChangeJob} disabled={!newJobId || newJobId === candidate.job_posting_id}>변경</Button>
+                  <button type="button" onClick={() => setChangingJob(false)} className="text-[11px] text-gray-400 hover:text-gray-600">취소</button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setNewJobId(candidate.job_posting_id || ''); setChangingJob(true) }}
+                  className="text-[11px] text-gray-500 hover:text-brand-600 underline"
+                >
+                  직무 변경
+                </button>
+              )
+            )}
+          </div>
+          {(() => {
+            const hist = ((candidate as { job_change_history?: { from_title?: string | null; to_title?: string | null; changed_by_name?: string | null; changed_at?: string }[] }).job_change_history) || []
+            if (hist.length === 0) return null
+            return (
+              <p className="text-[10px] text-amber-600 mb-1">
+                ⚠️ 직무 변경 이력 {hist.length}건 (최근: {hist[hist.length - 1].from_title || '미지정'}→{hist[hist.length - 1].to_title}
+                {hist[hist.length - 1].changed_by_name ? ` · ${hist[hist.length - 1].changed_by_name}` : ''}
+                {hist[hist.length - 1].changed_at ? ` · ${formatDate(hist[hist.length - 1].changed_at as string, 'yyyy.MM.dd')}` : ''})
+              </p>
+            )
+          })()}
           <h1 className="text-2xl font-bold text-gray-900">{candidate.name}</h1>
           <p className="text-sm text-gray-500">
             {candidate.email} · {SOURCE_CHANNEL_LABELS[candidate.source_channel as SourceChannel]}
