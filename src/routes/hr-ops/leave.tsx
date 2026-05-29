@@ -130,11 +130,14 @@ const EMG_KIND_LABELS: Record<string, string> = { emergency: '긴급사유', sic
 // 긴급연차 비상연락망 안내 (Q6: 상수 — 이메일 불가 시 구두 연락처)
 const EMERGENCY_CONTACT_NOTICE = '이메일 발송이 어려운 긴급 상황 시 구두 연락: 평일=경영관리본부 이민지 / 주말=경영관리본부 강은묵 이사'
 
-// F1-2: SOS 신청 전 경고 안내문 (⚠️ 법무 검토 전 DRAFT — 확정 후 문구만 교체)
-const SOS_WARNING_NOTICES_DRAFT = [
-  '연차가 부족하면 부족분은 무급 처리됩니다.',
-  '무급 처리 시 만근 미달로 익월 연차가 생성되지 않을 수 있습니다.',
-  '신청 후 24시간 내 증빙(진료확인서/사유서 등)을 제출하지 않으면 무단결근으로 처리될 수 있습니다.',
+// F1-2: SOS 신청 전 경고 안내문 (법률 리서치 기반 — 회사 취업규칙 근거 전제, 최종 법무 검토 권장)
+//   · 무급 결근: 근로 무제공분 임금 미지급 (적법, 취업규칙·근로계약 근거 필요)
+//   · 익월 연차 미발생: 근로기준법 제60조② (1년 미만/해당월 결근 시 개근 미충족 — 지각·조퇴는 결근 아님)
+//   · 무단결근: 대법원 89다카5451 — 취업규칙상 증빙 미제출 시 무단결근 취급 규정이 있을 때 적법(조건부 표현)
+const SOS_WARNING_NOTICES = [
+  '잔여 연차가 부족하면 부족분은 무급(결근)으로 처리될 수 있습니다. (근로 무제공분 임금 미지급)',
+  '입사 1년 미만이거나 해당 월에 결근이 있으면 개근(만근) 미충족으로 다음 달 연차가 발생하지 않을 수 있습니다. (근로기준법 제60조②)',
+  '회사 취업규칙에 따라, 신청 후 24시간 내 정당한 증빙(진료확인서/사유서 등)을 제출하지 않으면 무단결근으로 처리될 수 있습니다.',
 ]
 
 /* ─── Component ─────────────────────────────────────── */
@@ -1605,7 +1608,7 @@ export default function LeaveManagementPage() {
                 </div>
               )}
               <ul className="space-y-1.5 text-[12px] text-gray-600 list-disc pl-4">
-                {SOS_WARNING_NOTICES_DRAFT.map((n, i) => <li key={i}>{n}</li>)}
+                {SOS_WARNING_NOTICES.map((n, i) => <li key={i}>{n}</li>)}
               </ul>
               <p className="text-sm font-semibold text-gray-900">위 내용을 확인했습니다. SOS 연차를 신청하시겠습니까?</p>
               <div className="flex justify-end gap-2">
