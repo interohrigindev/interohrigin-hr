@@ -1161,7 +1161,20 @@ export default function LeaveManagementPage() {
                     </div>
                   </div>
 
-                  {req.reason && <p className="text-xs text-gray-500 mb-3 pl-11">사유: {req.reason}</p>}
+                  {/* 신청 내용 상세 — 결재자가 사유·기간을 한눈에 확인 (F2-1) */}
+                  <div className="ml-11 mb-3 rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-gray-500">신청 내용</p>
+                    <div className="grid grid-cols-[64px_1fr] gap-x-2 gap-y-1 text-xs">
+                      <span className="text-gray-500">유형</span>
+                      <span className="text-gray-900 font-medium">{LEAVE_TYPE_LABELS[req.leave_type] || req.leave_type}</span>
+                      <span className="text-gray-500">기간</span>
+                      <span className="text-gray-900">{req.start_date} ~ {req.end_date} ({req.days_count}일)</span>
+                      <span className="text-gray-500">사유</span>
+                      <span className={req.reason ? 'text-gray-900 whitespace-pre-line break-words' : 'text-gray-400'}>
+                        {req.reason || '사유 미기재'}
+                      </span>
+                    </div>
+                  </div>
 
                   {/* 결재라인 시각화 — 세로 타임라인 */}
                   {line.length > 0 && (
