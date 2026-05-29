@@ -130,6 +130,13 @@ const EMG_KIND_LABELS: Record<string, string> = { emergency: '긴급사유', sic
 // 긴급연차 비상연락망 안내 (Q6: 상수 — 이메일 불가 시 구두 연락처)
 const EMERGENCY_CONTACT_NOTICE = '이메일 발송이 어려운 긴급 상황 시 구두 연락: 평일=경영관리본부 이민지 / 주말=경영관리본부 강은묵 이사'
 
+// F1-2: SOS 신청 전 경고 안내문 (⚠️ 법무 검토 전 DRAFT — 확정 후 문구만 교체)
+const SOS_WARNING_NOTICES_DRAFT = [
+  '연차가 부족하면 부족분은 무급 처리됩니다.',
+  '무급 처리 시 만근 미달로 익월 연차가 생성되지 않을 수 있습니다.',
+  '신청 후 24시간 내 증빙(진료확인서/사유서 등)을 제출하지 않으면 무단결근으로 처리될 수 있습니다.',
+]
+
 /* ─── Component ─────────────────────────────────────── */
 
 export default function LeaveManagementPage() {
@@ -167,6 +174,10 @@ export default function LeaveManagementPage() {
   const [emgKind, setEmgKind] = useState<'emergency' | 'sick'>('emergency')
   // F1-3: SOS 사유 유형 (illness=질병→병가 / family=가족경조사 / accident=교통사고 / other=기타)
   const [emgReasonType, setEmgReasonType] = useState('')
+  // F1-2: SOS 신청 전 경고 확인 팝업
+  const [emgConfirmOpen, setEmgConfirmOpen] = useState(false)
+  // F1-4: SOS 신청 완료 안내 팝업 (오전진료 후 오후출근 → 반차 유도)
+  const [emgDoneOpen, setEmgDoneOpen] = useState(false)
 
   // 🔴 SOS 빠른메뉴 진입(?sos=1) → 긴급(SOS) 신청 다이얼로그 자동 오픈 (F1-1)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -517,8 +528,18 @@ export default function LeaveManagementPage() {
     setReqStartDate(''); setReqEndDate(''); setReqDays(1); setReqReason('')
   }
 
+  // F1-2: SOS 제출 전 경고 팝업 — 필수값 검증 후 확인 다이얼로그 오픈
+  function handleEmergencyConfirmClick() {
+    if (!emgReasonType) { toast('사유 유형을 선택하세요', 'error'); return }
+    if (!reqStartDate || !reqEndDate) { toast('연차 날짜를 입력하세요', 'error'); return }
+    if (!reqReason.trim()) { toast('연차 사유를 입력하세요', 'error'); return }
+    if (new Date(reqStartDate) > new Date(reqEndDate)) { toast('종료일이 시작일보다 빠를 수 없습니다', 'error'); return }
+    setEmgConfirmOpen(true)
+  }
+
   async function handleSubmitEmergency() {
     if (!profile?.id) return
+    setEmgConfirmOpen(false)
     // 필수: 사유 유형 + 날짜 + 사유. (병가 진단서 필수는 "전환 시점" 검증 — 신청 자체는 첨부 없이 가능)
     if (!emgReasonType) { toast('사유 유형을 선택하세요', 'error'); return }
     if (!reqStartDate || !reqEndDate) { toast('연차 날짜를 입력하세요', 'error'); return }
@@ -611,6 +632,7 @@ export default function LeaveManagementPage() {
     }
     setShowRequestDialog(false)
     resetEmergencyForm()
+    setEmgDoneOpen(true)  // F1-4: 완료 안내 팝업
     fetchData()
   }
 
@@ -1531,8 +1553,8 @@ export default function LeaveManagementPage() {
                 {saving ? '처리중...' : '신청'}
               </Button>
             ) : (
-              <Button onClick={handleSubmitEmergency} disabled={saving} className="bg-red-600 hover:bg-red-700">
-                {saving ? '처리중...' : '긴급연차 신청'}
+              <Button onClick={handleEmergencyConfirmClick} disabled={saving} className="bg-red-600 hover:bg-red-700">
+                {saving ? '처리중...' : 'SOS 신청'}
               </Button>
             )}
           </div>
@@ -1541,6 +1563,52 @@ export default function LeaveManagementPage() {
         </div>
       </div>
       )}
+
+      {/* F1-2: SOS 신청 전 경고 확인 팝업 (쿠팡식 최종 확인 / ⚠️ 안내문 법무 검토 전 DRAFT) */}
+      <Dialog open={emgConfirmOpen} onClose={() => setEmgConfirmOpen(false)} title="⚠️ SOS 신청 전 확인">
+        {(() => {
+          const myRemaining = hrDetails.find((h) => h.employee_id === profile?.id)?.annual_leave_remaining
+          const after = myRemaining != null ? myRemaining - reqDays : null
+          const shortage = after != null && after < 0
+          return (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm space-y-1">
+                <div className="flex justify-between"><span className="text-gray-500">현재 잔여 연차</span><span className="font-bold text-gray-900">{myRemaining != null ? `${myRemaining}일` : '정보 없음'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">이번 신청 사용</span><span className="font-medium text-gray-900">{reqDays}일</span></div>
+                <div className="flex justify-between border-t border-gray-200 pt-1"><span className="text-gray-500">사용 후 잔여(예상)</span><span className={`font-bold ${shortage ? 'text-red-600' : 'text-emerald-600'}`}>{after != null ? `${after}일` : '-'}</span></div>
+              </div>
+              {shortage && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-[13px] text-red-700 font-medium">
+                  ⚠️ 잔여 연차가 부족합니다. 부족분 {Math.abs(after as number)}일은 무급 처리되며, 만근 미달 시 익월 연차가 생성되지 않을 수 있습니다.
+                </div>
+              )}
+              <ul className="space-y-1.5 text-[12px] text-gray-600 list-disc pl-4">
+                {SOS_WARNING_NOTICES_DRAFT.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+              <p className="text-sm font-semibold text-gray-900">위 내용을 확인했습니다. SOS 연차를 신청하시겠습니까?</p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEmgConfirmOpen(false)}>취소</Button>
+                <Button onClick={handleSubmitEmergency} disabled={saving} className="bg-red-600 hover:bg-red-700">{saving ? '처리중...' : '신청하기'}</Button>
+              </div>
+            </div>
+          )
+        })()}
+      </Dialog>
+
+      {/* F1-4: SOS 신청 완료 안내 팝업 — 오전진료 후 오후출근(반차) 유도로 연차 절약 */}
+      <Dialog open={emgDoneOpen} onClose={() => setEmgDoneOpen(false)} title="✅ SOS 신청이 접수되었습니다">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700 leading-relaxed">
+            긴급연차(SOS)가 접수되어 임원진에게 통보되었습니다. 출근 후 보완자료(진료확인서/사유서)를 첨부하면 정식 연차로 전환됩니다.
+          </p>
+          <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-[13px] text-blue-800 leading-relaxed">
+            💡 <strong>오전 진료 후 오후 출근이 가능하다면 반차 사용을 권장합니다.</strong> 하루 연차 대신 반차(0.5일)로 처리하면 연차를 절약할 수 있습니다.
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={() => setEmgDoneOpen(false)}>확인</Button>
+          </div>
+        </div>
+      </Dialog>
 
       {/* 연차 자동 계산 — 미리보기/검토/수정 다이얼로그 */}
       <Dialog open={!!autoCalcPreview} onClose={() => !autoCalcApplying && setAutoCalcPreview(null)} title="연차 자동 계산 — 검토 후 적용">
