@@ -1,4 +1,4 @@
-import { useState, useEffect, type MouseEvent } from 'react'
+import { useState, useEffect, useRef, type MouseEvent } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, FileText, Sparkles, Loader2, CheckCircle, XCircle, AlertTriangle, Video, MapPin, Calendar, ClipboardList, RefreshCw, Send, Mail, MessageCircle, Trash2, Printer, Link2, Copy, EyeOff, Pencil, Upload, RotateCcw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -98,6 +98,20 @@ export default function CandidateReport() {
     const bd = (pbdResponse?.meta as { birth_date?: string } | undefined)?.birth_date
     if (bd) setSajuBirth((prev) => prev || String(bd))
   }, [pbdResponse])
+  // 저장된 사주 분석 로드
+  useEffect(() => {
+    const saved = (candidate as { saju_analysis?: string | null } | null)?.saju_analysis
+    if (saved) setSajuResult((prev) => prev || saved)
+  }, [candidate])
+  // 사전질의서(PBD) 수신 시 사주 분석 자동 생성 (생년월일 존재 + 미생성 시 1회, 결과 DB 저장)
+  const sajuAutoRef = useRef(false)
+  useEffect(() => {
+    if (sajuAutoRef.current || sajuResult || sajuLoading) return
+    if (!pbdResponse || !sajuBirth.trim()) return
+    sajuAutoRef.current = true
+    void runSajuAnalysis(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pbdResponse, sajuBirth, sajuResult, sajuLoading])
   const canChangeJob = ['director', 'division_head', 'ceo', 'admin', 'hr_admin'].includes(profile?.role || '')
   useEffect(() => {
     supabase.from('job_postings').select('id, title').order('created_at', { ascending: false })
@@ -1590,14 +1604,15 @@ ${surveyText || '응답 없음'}
     REJECT: { icon: XCircle, color: 'text-red-600', label: '부적합' },
   }
 
-  // F4-1: 사주 기반 직무적합성 참고 의견 생성 (참고용 — 결정 근거 아님, 법무 검토 전)
-  async function runSajuAnalysis() {
-    if (!candidate) return
-    if (!sajuBirth.trim()) { toast('생년월일을 입력하세요', 'error'); return }
+  // F4-1: 사주 기반 직무적합성 참고 의견 (참고용 — 결정 근거 아님, 법무 검토 전)
+  //   auto=true: 사전질의서 수신 시 자동 생성 (조용히, 토스트 생략) / false: 수동 재생성
+  async function runSajuAnalysis(auto = false) {
+    if (!candidate || !id) return
+    if (!sajuBirth.trim()) { if (!auto) toast('생년월일을 입력하세요', 'error'); return }
     setSajuLoading(true)
     try {
       const config = await getAIConfigForFeature('saju_job_fit')
-      if (!config) { toast('AI 설정이 필요합니다.', 'error'); setSajuLoading(false); return }
+      if (!config) { if (!auto) toast('AI 설정이 필요합니다.', 'error'); setSajuLoading(false); return }
 
       // 사전질의서 2.0(PBD) 진단 결과를 함께 반영
       const pbdMeta = (pbdResponse?.meta as Record<string, string> | undefined) || {}
@@ -1624,10 +1639,15 @@ ${surveyText || '응답 없음'}
 4. 채용 합격/불합격을 판단하거나 권고하지 말 것 (참고 자료일 뿐)
 5. 마크다운 없이 일반 텍스트로 작성`
       const result = await generateAIContent(config, prompt, undefined, 'saju_job_fit')
-      setSajuResult(result.content.trim())
-      toast('사주 참고 의견이 생성되었습니다.', 'success')
+      const text = result.content.trim()
+      setSajuResult(text)
+      // 결과 DB 저장 (1회 생성 후 재사용 — 반복 AI 호출 방지)
+      await supabase.from('candidates')
+        .update({ saju_analysis: text, saju_analysis_generated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (!auto) toast('사주 참고 의견이 생성되었습니다.', 'success')
     } catch (err) {
-      toast('생성 실패: ' + (err instanceof Error ? err.message : '알 수 없음'), 'error')
+      if (!auto) toast('생성 실패: ' + (err instanceof Error ? err.message : '알 수 없음'), 'error')
     } finally {
       setSajuLoading(false)
     }
@@ -1651,10 +1671,15 @@ ${surveyText || '응답 없음'}
       second_interview_questions: null,
       second_interview_questions_generated_at: null,
       ai_recommended_questions: null,
+      saju_analysis: null,
+      saju_analysis_generated_at: null,
     }).eq('id', id)
     if (error) { toast('직무 변경 실패: ' + error.message, 'error'); return }
-    toast(`직무가 '${toJob?.title}' 으로 변경되었습니다. 새 직무 기준으로 AI 질문을 재생성하세요.`, 'success')
+    toast(`직무가 '${toJob?.title}' 으로 변경되었습니다. AI 질문·사주 분석은 새 직무 기준으로 재생성됩니다.`, 'success')
     setChangingJob(false)
+    // 새 직무 기준 사주 자동 재생성 허용
+    setSajuResult('')
+    sajuAutoRef.current = false
     setReloadKey((k) => k + 1)
   }
 
@@ -1835,12 +1860,15 @@ ${surveyText || '응답 없음'}
                     className="text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500"
                   />
                 </div>
-                <Button size="sm" onClick={runSajuAnalysis} disabled={sajuLoading}>
-                  {sajuLoading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 생성 중...</> : <><Sparkles className="h-4 w-4 mr-1" /> 참고 의견 생성</>}
+                <Button size="sm" variant={sajuResult ? 'outline' : 'primary'} onClick={() => runSajuAnalysis(false)} disabled={sajuLoading}>
+                  {sajuLoading
+                    ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
+                    : <><Sparkles className="h-4 w-4 mr-1" /> {sajuResult ? '다시 생성' : '참고 의견 생성'}</>}
                 </Button>
               </div>
               <p className="text-[11px] text-gray-400">
-                이름·한자성명·생년월일과 <strong>사전질의서 2.0(PBD) 성향 진단(도메인·적합 직무군)</strong>을 함께 종합해 분석합니다.
+                사전질의서(PBD)가 수신되면 생년월일을 참고해 <strong>자동 생성</strong>됩니다.
+                이름·한자성명·생년월일 + <strong>PBD 2.0 성향 진단(도메인·적합 직무군)</strong>을 종합해 분석합니다.
               </p>
               {sajuResult && (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800 whitespace-pre-line">{sajuResult}</div>
