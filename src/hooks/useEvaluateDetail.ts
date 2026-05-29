@@ -298,6 +298,66 @@ export function useEvaluateDetail(employeeId: string | undefined) {
     return { error: null }
   }
 
+  // ─── 임원 재수정 (확정 후 수정, #4) ───────────────────────
+  // 단계 전이(advance) 없이 본인 점수·코멘트만 갱신. 이미 completed 면 최종점수 재계산.
+  async function resubmitEvaluation(
+    scoreData: Record<string, EvaluatorFormData>,
+    commentData: CommentFormData
+  ): Promise<{ error: string | null }> {
+    if (!target || !profile || !evaluatorRole) return { error: '평가 권한이 없습니다' }
+    setSubmitting(true)
+
+    const scoreRows = Object.entries(scoreData).map(([itemId, d]) => ({
+      target_id: target.id,
+      item_id: itemId,
+      evaluator_id: profile.id,
+      evaluator_role: evaluatorRole,
+      score: d.score,
+      comment: d.comment || null,
+      is_draft: false,
+    }))
+
+    const { error: scoreErr } = await supabase
+      .from('evaluator_scores')
+      .upsert(scoreRows, { onConflict: 'target_id,item_id,evaluator_role,evaluator_id' })
+
+    if (scoreErr) {
+      setSubmitting(false)
+      return { error: scoreErr.message }
+    }
+
+    const commentRow = {
+      target_id: target.id,
+      evaluator_id: profile.id,
+      evaluator_role: evaluatorRole,
+      strength: commentData.strength || null,
+      improvement: commentData.improvement || null,
+      overall: commentData.overall || null,
+    }
+
+    const { error: commentErr } = await supabase
+      .from('evaluator_comments')
+      .upsert(commentRow, { onConflict: 'target_id,evaluator_role,evaluator_id' })
+
+    if (commentErr) {
+      setSubmitting(false)
+      return { error: commentErr.message }
+    }
+
+    // 최종 확정(completed) 상태면 변경분을 최종점수에 반영
+    if (target.status === 'completed') {
+      const { error: recalcErr } = await supabase.rpc('calculate_final_score', { p_target_id: target.id })
+      if (recalcErr) {
+        setSubmitting(false)
+        return { error: recalcErr.message }
+      }
+    }
+
+    await fetchData()
+    setSubmitting(false)
+    return { error: null }
+  }
+
   return {
     period: activePeriod,
     employee,
@@ -320,5 +380,6 @@ export function useEvaluateDetail(employeeId: string | undefined) {
     nextEmployeeId,
     saveAll,
     submitEvaluation,
+    resubmitEvaluation,
   }
 }

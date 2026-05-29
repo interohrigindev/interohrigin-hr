@@ -10,7 +10,8 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Dialog } from '@/components/ui/Dialog'
 import { ROLE_LABELS, SCORE_LABELS, EVALUATION_STATUS_LABELS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react'
+import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Eye, EyeOff, Sparkles, Loader2 } from 'lucide-react'
 
 export default function EvaluateDetail() {
   const { employeeId } = useParams<{ employeeId: string }>()
@@ -37,6 +38,7 @@ export default function EvaluateDetail() {
     nextEmployeeId,
     saveAll,
     submitEvaluation,
+    resubmitEvaluation,
   } = useEvaluateDetail(employeeId)
 
   // ─── Local state ──────────────────────────────────────────
@@ -50,6 +52,9 @@ export default function EvaluateDetail() {
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({})
   const [showPrevScores, setShowPrevScores] = useState(false)
   const [mobileTab, setMobileTab] = useState<'self' | 'mine'>('mine')
+  // 종합 코멘트 AI 검토 의견 (수습평가 패턴) — 생성 후 수정/등록 가능
+  const [aiReview, setAiReview] = useState('')
+  const [generatingAI, setGeneratingAI] = useState(false)
 
   // ─── Hydrate from loaded data ─────────────────────────────
   useEffect(() => {
@@ -96,18 +101,27 @@ export default function EvaluateDetail() {
   }
 
   // ─── Computed ─────────────────────────────────────────────
-  // 본인이 이미 평가 완료한 경우 (myScores 중 is_draft=false 1개 이상), 또는 단계가 본인 이후로 진행된 경우 → 읽기 전용
+  const isExecutive = evaluatorRole === 'director' || evaluatorRole === 'ceo'
+  const mineFinalized = myScores.some((s) => !s.is_draft)
+  const statusOrder = [
+    'pending', 'self_done', 'leader_done',
+    'director_done', 'ceo_done', 'completed',
+  ]
+  // 읽기전용 판정
+  //   · 임원(이사/대표): 본인 차례 이후(완료 포함)면 확정 후에도 수정 가능 (#4). 차례 전이면 읽기전용.
+  //   · 리더 등: 본인 확정(is_draft=false) 또는 단계가 본인 이후로 진행되면 읽기전용 (기존 동작 유지).
   const isReadOnly = (() => {
     if (!evaluatorRole) return true
-    const mineFinal = myScores.some((s) => !s.is_draft)
-    if (mineFinal) return true
+    if (isExecutive) {
+      const turnStatus = evaluatorRole === 'director' ? 'leader_done' : 'director_done'
+      return statusOrder.indexOf(target.status) < statusOrder.indexOf(turnStatus)
+    }
+    if (mineFinalized) return true
     const roleDoneStatus = `${evaluatorRole}_done`
-    const statusOrder = [
-      'pending', 'self_done', 'leader_done',
-      'director_done', 'ceo_done', 'completed',
-    ]
     return statusOrder.indexOf(target.status) > statusOrder.indexOf(roleDoneStatus)
   })()
+  // 임원이 이미 본인 평가를 확정한 뒤 다시 저장 → 단계 전이 없이 재수정 경로 사용
+  const isExecutiveResubmit = isExecutive && mineFinalized
 
   const groupedItems = categories
     .map((cat) => ({
@@ -158,11 +172,69 @@ export default function EvaluateDetail() {
 
   async function handleConfirmSubmit() {
     setConfirmOpen(false)
-    const { error } = await submitEvaluation(scoreData, commentData)
+    const { error } = isExecutiveResubmit
+      ? await resubmitEvaluation(scoreData, commentData)
+      : await submitEvaluation(scoreData, commentData)
     if (error) {
       toast('제출 중 오류가 발생했습니다: ' + error, 'error')
     } else {
-      toast('평가가 확정되었습니다')
+      toast(isExecutiveResubmit ? '평가가 수정되었습니다' : '평가가 확정되었습니다')
+    }
+  }
+
+  // ─── AI 검토 의견 생성 (수습평가 패턴) ─────────────────────
+  async function generateAIReview() {
+    const hasScore = items.some((item) => scoreData[item.id]?.score != null)
+    if (!hasScore) {
+      toast('먼저 항목 점수를 입력해주세요', 'error')
+      return
+    }
+    setGeneratingAI(true)
+    try {
+      const config = await getAIConfigForFeature('evaluation_review')
+      if (!config) {
+        toast('AI 설정이 필요합니다.', 'error')
+        return
+      }
+
+      const scoreLines = items.map((item) => {
+        const mine = scoreData[item.id]?.score
+        const self = getSelfEval(item.id)?.score
+        return `- ${item.name}: 평가 ${mine ?? '-'}/${item.max_score}점` +
+          (self != null ? ` (자기평가 ${self})` : '')
+      }).join('\n')
+
+      const draft = [
+        commentData.strength && `강점: ${commentData.strength}`,
+        commentData.improvement && `개선 필요: ${commentData.improvement}`,
+        commentData.overall && `종합: ${commentData.overall}`,
+      ].filter(Boolean).join('\n') || '없음'
+
+      const prompt = `당신은 인사 평가 전문가입니다. 아래 평가 정보를 바탕으로 직원에 대한 "종합 평가 의견"을 한국어로 작성해주세요.
+
+대상 직원: ${employee?.name ?? '미정'}
+평가 시기: ${period?.year}년 ${period?.quarter}분기
+평가자 역할: ${evaluatorRole ? (ROLE_LABELS[evaluatorRole as keyof typeof ROLE_LABELS] ?? evaluatorRole) : '평가자'}
+
+항목별 점수:
+${scoreLines}
+
+평가자가 작성한 코멘트 초안:
+${draft}
+
+작성 지침:
+1. 항목별 점수의 강점·보완 영역을 균형 있게 짚어 3~5문장으로 작성
+2. 단정적 판정이 아닌 "제안/권장" 어조 (예: ~로 보입니다, ~을 권장합니다)
+3. 마크다운 없이 일반 텍스트로 작성`
+
+      const result = await generateAIContent(config, prompt, undefined, 'evaluation_review')
+      setAiReview(result.content.trim())
+      toast('AI 검토 의견이 생성되었습니다')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '알 수 없는 오류'
+      toast('AI 검토 의견 생성 실패: ' + message, 'error')
+    } finally {
+      setGeneratingAI(false)
     }
   }
 
@@ -318,20 +390,7 @@ export default function EvaluateDetail() {
                         <p className="text-[11px] text-gray-500 mt-1">{d.score}점 — {SCORE_LABELS[d.score]}</p>
                       )}
                     </div>
-
-                    {/* Comment */}
-                    <input
-                      type="text"
-                      placeholder="항목 의견 (선택사항)"
-                      value={d.comment}
-                      onChange={(e) => updateScore(item.id, { comment: e.target.value })}
-                      disabled={isReadOnly}
-                      className={cn(
-                        'w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700',
-                        'placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500',
-                        isReadOnly && 'bg-gray-50 cursor-not-allowed opacity-60'
-                      )}
-                    />
+                    {/* 항목별 코멘트 입력칸 제거 — 종합 코멘트로 일원화 */}
                   </div>
                 )
               })}
@@ -445,7 +504,24 @@ export default function EvaluateDetail() {
       {/* Overall comments */}
       <Card>
         <CardHeader>
-          <CardTitle>종합 코멘트</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>종합 코멘트</CardTitle>
+            {!isReadOnly && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={generateAIReview}
+                disabled={generatingAI}
+              >
+                {generatingAI ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4 mr-1" />
+                )}
+                {generatingAI ? '생성 중...' : 'AI 검토 의견'}
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <Textarea
@@ -472,6 +548,37 @@ export default function EvaluateDetail() {
             onChange={(e) => setCommentData((prev) => ({ ...prev, overall: e.target.value }))}
             disabled={isReadOnly}
           />
+
+          {/* AI 검토 의견 — 생성 후 수정/등록 가능 (제안용, 결정 아님) */}
+          {!isReadOnly && aiReview && (
+            <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-3 space-y-2">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-brand-700">
+                <Sparkles className="h-4 w-4" />
+                AI 검토 의견 (제안)
+              </div>
+              <Textarea
+                rows={4}
+                value={aiReview}
+                onChange={(e) => setAiReview(e.target.value)}
+                placeholder="AI 검토 의견"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setAiReview('')}>
+                  닫기
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCommentData((prev) => ({ ...prev, overall: aiReview }))
+                    setAiReview('')
+                    toast('종합 평가에 등록되었습니다')
+                  }}
+                >
+                  종합 평가에 등록
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -494,11 +601,13 @@ export default function EvaluateDetail() {
               )}
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={handleSave} disabled={saving || submitting}>
-                임시저장
-              </Button>
+              {!isExecutiveResubmit && (
+                <Button variant="outline" onClick={handleSave} disabled={saving || submitting}>
+                  임시저장
+                </Button>
+              )}
               <Button onClick={handleSubmitClick} disabled={saving || submitting}>
-                {submitting ? '제출 중...' : '평가 확정'}
+                {submitting ? '제출 중...' : (isExecutiveResubmit ? '수정 저장' : '평가 확정')}
               </Button>
             </div>
           </div>
@@ -506,16 +615,18 @@ export default function EvaluateDetail() {
       )}
 
       {/* Confirm dialog */}
-      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title="평가 확정">
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title={isExecutiveResubmit ? '평가 수정' : '평가 확정'}>
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
-            확정 후에는 평가를 수정할 수 없습니다. 평가를 확정하시겠습니까?
+            {isExecutive
+              ? '임원은 확정 후에도 평가를 수정할 수 있습니다. 진행하시겠습니까?'
+              : '확정 후에는 평가를 수정할 수 없습니다. 평가를 확정하시겠습니까?'}
           </p>
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>
               취소
             </Button>
-            <Button onClick={handleConfirmSubmit}>확정</Button>
+            <Button onClick={handleConfirmSubmit}>{isExecutiveResubmit ? '수정 저장' : '확정'}</Button>
           </div>
         </div>
       </Dialog>
