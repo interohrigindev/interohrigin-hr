@@ -1269,10 +1269,9 @@ ${completedText || '아직 없음'}
               )
             }
 
-            return (
-              <div className="space-y-3">
-                {/* 프로젝트별 그룹 */}
-                {groups.map((g) => {
+            const activeGroups = groups.filter((g) => !g.completed)
+            const completedGroups = groups.filter((g) => g.completed)
+            const renderGroup = (g: typeof groups[number]) => {
                   const palette = paletteFor(g.projectId)
                   return (
                     <div key={g.projectId} className={`rounded-lg border ${palette.border} overflow-hidden`}>
@@ -1391,7 +1390,23 @@ ${completedText || '아직 없음'}
                       </div>
                     </div>
                   )
-                })}
+            }
+
+            return (
+              <div className="space-y-3">
+                {/* 진행중 프로젝트 */}
+                {activeGroups.map(renderGroup)}
+
+                {/* 완료된 프로젝트 — 완료 후 7일간 표시 */}
+                {completedGroups.length > 0 && (
+                  <div className="space-y-3 rounded-xl border-2 border-emerald-200 bg-emerald-50/40 p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-emerald-700">✅ 완료된 프로젝트 ({completedGroups.length})</span>
+                      <span className="text-[11px] text-gray-500">완료 후 7일간 표시됩니다</span>
+                    </div>
+                    {completedGroups.map(renderGroup)}
+                  </div>
+                )}
 
                 {/* 제외된 프로젝트 — 복원 칩 */}
                 {dismissedProjects.size > 0 && (() => {
