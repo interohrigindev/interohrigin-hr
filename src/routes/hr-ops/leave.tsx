@@ -1030,7 +1030,7 @@ export default function LeaveManagementPage() {
         filteredData.length === 0 ? (
           <Card><CardContent className="py-12 text-center text-gray-400">연차 데이터가 없습니다</CardContent></Card>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
             {filteredData.map((emp) => {
               const isWarning = emp.remainingAnnual > 5 && emp.usageRate < 50
               const isUrgent = emp.remainingAnnual > 5 && emp.usageRate < 30
