@@ -128,7 +128,7 @@ const EMG_STATUS_COLORS: Record<string, string> = {
 }
 const EMG_KIND_LABELS: Record<string, string> = { emergency: '긴급사유', sick: '병가' }
 // 긴급연차 비상연락망 안내 (Q6: 상수 — 이메일 불가 시 구두 연락처)
-const EMERGENCY_CONTACT_NOTICE = '이메일 발송이 어려운 긴급 상황 시 구두 연락: 평일=경영관리본부 이민지 / 주말=경영관리본부 강은묵 이사'
+const EMERGENCY_CONTACT_NOTICE = '이메일 발송이 어려운 긴급 상황 시 구두 연락: 경영관리본부 강제묵 이사 (평일/주말 구분 없음)'
 
 // F1-2: SOS 신청 전 경고 안내문 (법률 리서치 기반 — 회사 취업규칙 근거 전제, 최종 법무 검토 권장)
 //   · 무급 결근: 근로 무제공분 임금 미지급 (적법, 취업규칙·근로계약 근거 필요)
