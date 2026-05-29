@@ -728,7 +728,7 @@ export function emergencyLeaveNotificationEmail(params: {
 }): { subject: string; html: string } {
   const {
     recipientName, applicantName, leaveKind, startDate, endDate, daysCount,
-    reason, handoverNotes, delegateName, hospitalPlan, sameDayFiling, detailUrl,
+    reason, handoverNotes, delegateName, hospitalPlan, sameDayFiling,
   } = params
 
   const kindLabel = leaveKind === 'sick' ? '병가' : '긴급사유'
@@ -736,7 +736,6 @@ export function emergencyLeaveNotificationEmail(params: {
     ? '미입력'
     : sameDayFiling ? '당일 전자결재 상신 가능' : '익일 사후 상신 예정'
   const period = startDate === endDate ? startDate : `${startDate} ~ ${endDate}`
-  const link = detailUrl || `${APP_URL}/admin/leave`
 
   // 선택 항목 행 (값 있을 때만 노출)
   const optionalRow = (label: string, value?: string | null) =>
@@ -796,16 +795,9 @@ export function emergencyLeaveNotificationEmail(params: {
         </table>
       </div>
 
-      <div style="text-align:center;margin:28px 0;">
-        <a href="${link}"
-           style="display:inline-block;background:#6B3FA0;color:#ffffff;padding:14px 36px;
-                  border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;">
-          HR 시스템에서 확인하기
-        </a>
-      </div>
-
       <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:24px 0 0;">
-        ※ 본 건은 결재선 없이 즉시 통보된 긴급연차입니다. 정식 연차 전환·승인은 별도 전자결재로 진행됩니다.
+        ※ 본 건은 결재선 없이 즉시 통보된 긴급연차입니다. 위 내용으로 확인이 완료되며, 별도 페이지 접속은 필요하지 않습니다.
+        정식 연차 전환·승인은 신청자가 출근 후 별도 전자결재로 진행됩니다.
       </p>
     </div>
 
