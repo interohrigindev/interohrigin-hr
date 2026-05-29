@@ -93,6 +93,11 @@ export default function CandidateReport() {
   const [sajuBirth, setSajuBirth] = useState('')
   const [sajuResult, setSajuResult] = useState('')
   const [sajuLoading, setSajuLoading] = useState(false)
+  // 사전질의서(2.0)에서 생년월일 자동 채움
+  useEffect(() => {
+    const bd = (pbdResponse?.meta as { birth_date?: string } | undefined)?.birth_date
+    if (bd) setSajuBirth((prev) => prev || String(bd))
+  }, [pbdResponse])
   const canChangeJob = ['director', 'division_head', 'ceo', 'admin', 'hr_admin'].includes(profile?.role || '')
   useEffect(() => {
     supabase.from('job_postings').select('id, title').order('created_at', { ascending: false })
@@ -1593,17 +1598,31 @@ ${surveyText || '응답 없음'}
     try {
       const config = await getAIConfigForFeature('saju_job_fit')
       if (!config) { toast('AI 설정이 필요합니다.', 'error'); setSajuLoading(false); return }
-      const prompt = `당신은 명리학(사주) 상담가입니다. 아래 정보를 바탕으로 지원 직무와의 적합성에 대한 "참고용 의견"을 한국어로 작성해주세요.
 
-지원자: ${candidate.name}
+      // 사전질의서 2.0(PBD) 진단 결과를 함께 반영
+      const pbdMeta = (pbdResponse?.meta as Record<string, string> | undefined) || {}
+      const hanja = pbdMeta.hanja_name || ''
+      let pbdContext = ''
+      if (pbdResponse?.pbd_answers) {
+        const { scorePbd } = await import('@/lib/pbd-questions')
+        const s = scorePbd(pbdResponse.pbd_answers as Record<string, number>)
+        if (s) {
+          pbdContext = `\n[사전질의서 2.0(PBD) 진단]\n- 도메인: ${s.domain} (${s.domain_strength})\n- 적합 직무군: ${s.fit_jobs.join(', ') || '-'}\n- MBTI: ${pbdMeta.mbti || '-'} / 내적일관성(ICI): ${s.ici}`
+        }
+      }
+
+      const prompt = `당신은 명리학(사주) 상담가입니다. 아래 지원자 정보와 사전질의서 2.0(성향 진단) 결과를 종합하여 지원 직무와의 적합성에 대한 "참고용 의견"을 한국어로 작성해주세요.
+
+지원자: ${candidate.name}${hanja ? ` (한자성명: ${hanja})` : ''}
 생년월일: ${sajuBirth}
-지원 직무: ${jobTitle || '미지정'}
+지원 직무: ${jobTitle || '미지정'}${pbdContext}
 
 작성 지침:
-1. 명리(사주) 관점의 성향·강점과 직무 적합성을 3~5문장으로 서술
-2. 단정/결정 표현 금지 — "~경향이 보입니다", "~을 참고할 수 있습니다" 등 참고·제안 어조만 사용
-3. 채용 합격/불합격을 판단하거나 권고하지 말 것 (참고 자료일 뿐)
-4. 마크다운 없이 일반 텍스트로 작성`
+1. 명리(사주) 관점의 성향·강점을 서술하되, 위 PBD 성향 진단(도메인/적합 직무군)과 일치하거나 보완되는 점을 함께 언급
+2. 사주와 PBD를 종합한 직무 적합성 참고 의견을 4~6문장으로 작성
+3. 단정/결정 표현 금지 — "~경향이 보입니다", "~을 참고할 수 있습니다" 등 참고·제안 어조만 사용
+4. 채용 합격/불합격을 판단하거나 권고하지 말 것 (참고 자료일 뿐)
+5. 마크다운 없이 일반 텍스트로 작성`
       const result = await generateAIContent(config, prompt, undefined, 'saju_job_fit')
       setSajuResult(result.content.trim())
       toast('사주 참고 의견이 생성되었습니다.', 'success')
@@ -1807,11 +1826,12 @@ ${surveyText || '응답 없음'}
               </div>
               <div className="flex items-end gap-2 flex-wrap">
                 <div>
-                  <label className="block text-[11px] text-gray-500 mb-1">생년월일</label>
+                  <label className="block text-[11px] text-gray-500 mb-1">생년월일 <span className="text-gray-400">(사전질의서에서 자동 입력)</span></label>
                   <input
-                    type="date"
+                    type="text"
                     value={sajuBirth}
                     onChange={(e) => setSajuBirth(e.target.value)}
+                    placeholder="예: 1990-05-21"
                     className="text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500"
                   />
                 </div>
@@ -1819,6 +1839,9 @@ ${surveyText || '응답 없음'}
                   {sajuLoading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 생성 중...</> : <><Sparkles className="h-4 w-4 mr-1" /> 참고 의견 생성</>}
                 </Button>
               </div>
+              <p className="text-[11px] text-gray-400">
+                이름·한자성명·생년월일과 <strong>사전질의서 2.0(PBD) 성향 진단(도메인·적합 직무군)</strong>을 함께 종합해 분석합니다.
+              </p>
               {sajuResult && (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800 whitespace-pre-line">{sajuResult}</div>
               )}

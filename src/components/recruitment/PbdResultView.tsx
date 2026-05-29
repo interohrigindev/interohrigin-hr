@@ -62,13 +62,50 @@ export default function PbdResultView({ row, showHeader = true, showQuestionBrea
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div className="bg-gradient-to-br from-brand-50 to-violet-50 border border-brand-200 rounded-lg p-4">
-              <div className="text-xs text-brand-700 font-medium mb-1">도메인 매핑</div>
-              <div className="text-base font-bold text-brand-900 mb-1">{scores.domain}</div>
-              <div className="text-xs text-slate-600">{scores.domain_strength}</div>
-              <div className="mt-2 text-xs">
-                <div className="text-slate-700 mb-1"><strong>적합 직무:</strong> {scores.fit_jobs.join(', ') || '-'}</div>
-                <div className="text-slate-500"><strong>검토 가능:</strong> {scores.check_jobs.join(', ') || '-'}</div>
-              </div>
+              <div className="text-xs text-brand-700 font-medium mb-1">도메인 매핑 (직무 연관)</div>
+              <div className="text-base font-bold text-brand-900 mb-0.5">{scores.domain}</div>
+              <div className="text-xs text-slate-600 mb-2 break-keep">{scores.domain_strength}</div>
+              {(() => {
+                const applied = String(meta.Q2 || '').trim()
+                const renderJobs = (jobs: string[], hitCls: string, baseCls: string) => (
+                  jobs.length === 0 ? <span className="text-slate-400">-</span> : (
+                    <div className="flex flex-wrap gap-1">
+                      {jobs.map((j) => {
+                        const hit = applied.length > 0 && applied.includes(j)
+                        return (
+                          <span key={j} className={`px-1.5 py-0.5 rounded text-[11px] border ${hit ? hitCls : baseCls}`}>
+                            {j}{hit && ' ◀ 지원'}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )
+                )
+                return (
+                  <div className="space-y-2 text-xs">
+                    <div>
+                      <div className="text-emerald-700 font-semibold mb-1">적합 직무군 (도메인 강점 부합)</div>
+                      {renderJobs(scores.fit_jobs, 'bg-emerald-600 text-white border-emerald-600 font-semibold', 'bg-white text-emerald-700 border-emerald-200')}
+                    </div>
+                    <div>
+                      <div className="text-amber-700 font-semibold mb-1">검토 가능 직무군 (보완 전제)</div>
+                      {renderJobs(scores.check_jobs, 'bg-amber-500 text-white border-amber-500 font-semibold', 'bg-white text-amber-700 border-amber-200')}
+                    </div>
+                    {applied && (
+                      <div className="pt-1.5 border-t border-brand-100 text-slate-500 break-keep">
+                        지원 분야: <span className="text-slate-700">{applied.length > 50 ? applied.slice(0, 50) + '…' : applied}</span>
+                        <span className="block mt-0.5 text-[11px]">
+                          {scores.fit_jobs.some((j) => applied.includes(j))
+                            ? '→ 지원 분야가 적합 직무군과 부합합니다.'
+                            : scores.check_jobs.some((j) => applied.includes(j))
+                              ? '→ 지원 분야는 검토 직무군에 해당 — 면접에서 보완 역량 확인 권장.'
+                              : '→ 지원 분야와 도메인 직무군의 직접 매칭은 확인되지 않음 (면접 확인 권장).'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
             <IciCard ici={scores.ici} />
           </div>
