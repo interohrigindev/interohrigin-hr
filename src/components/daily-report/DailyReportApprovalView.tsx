@@ -109,7 +109,7 @@ export function DailyReportApprovalView({ content }: { content: DailyReportConte
           const isEtc = pname === '기타'
           return (
             <div key={pname}>
-              <p className={`text-[11px] font-semibold mb-1 flex items-center gap-1.5 ${isEtc ? 'text-gray-400' : 'text-purple-700'}`}>
+              <p className={`text-base font-bold mb-1 flex items-center gap-1.5 ${isEtc ? 'text-gray-400' : 'text-purple-700'}`}>
                 <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${isEtc ? 'bg-gray-300' : 'bg-purple-400'}`} />
                 {pname}
               </p>

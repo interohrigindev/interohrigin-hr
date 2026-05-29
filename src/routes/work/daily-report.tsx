@@ -192,6 +192,8 @@ export default function DailyReportPage() {
     project_name: string
     today_activity_count: number
     my_stages: { name: string; status: string }[]
+    completed?: boolean
+    completed_at?: string | null
   }[]>([])
   const [myProjectsLoading, setMyProjectsLoading] = useState(true)
   // 0512: 작업 현황 — 다시 불러오기 진행 표시
@@ -330,10 +332,11 @@ export default function DailyReportPage() {
         // 0513: + 모든 stage 가 '완료' 인 active 프로젝트도 사실상 완료된 것으로 간주하여 제외
         //       (unified-dashboard.tsx 의 완료 판정 로직과 동일)
         // 0513-2: + 프로젝트 멤버가 아니어도 pipeline_stages.stage_assignee_ids 에 본인이 있으면 포함
+        // 0528: 완료 프로젝트도 완료 시점 7일 이내면 노출 유지 → active + completed 모두 로드
         const { data: allProjects } = await supabase
           .from('project_boards')
-          .select('id, project_name, assignee_ids, manager_id, leader_id, executive_id, status')
-          .eq('status', 'active')
+          .select('id, project_name, assignee_ids, manager_id, leader_id, executive_id, status, updated_at')
+          .in('status', ['active', 'completed'])
         if (cancelled) return
 
         // 1) 프로젝트 멤버로 참여 중인 active 프로젝트
@@ -352,11 +355,11 @@ export default function DailyReportPage() {
         // 2) 단계 담당자(stage_assignee_ids) 인 단계가 있는 active 프로젝트도 포함
         //    → 전체 active 프로젝트의 stages 한 번에 조회
         const allActiveIds = (allProjects || []).map((p: { id: string }) => p.id)
-        let allStages: { project_id: string; stage_name: string; status: string; stage_assignee_ids: string[] | null; stage_order: number }[] = []
+        let allStages: { project_id: string; stage_name: string; status: string; stage_assignee_ids: string[] | null; stage_order: number; completed_at: string | null }[] = []
         if (allActiveIds.length > 0) {
           const { data: stagesData } = await supabase
             .from('pipeline_stages')
-            .select('project_id, stage_name, status, stage_assignee_ids, stage_order')
+            .select('project_id, stage_name, status, stage_assignee_ids, stage_order, completed_at')
             .in('project_id', allActiveIds)
           allStages = (stagesData || []) as typeof allStages
         }
@@ -383,21 +386,46 @@ export default function DailyReportPage() {
           if (stageOwnerProjectIds.has(p.id)) candidateMap.set(p.id, { id: p.id, project_name: p.project_name })
         })
 
-        // 4) 모든 stage 가 '완료' 인 프로젝트는 제외 (대시보드 완료 판정 동일)
-        const mine: { id: string; project_name: string; my_stages: { name: string; status: string }[] }[] = []
+        // 0528: 완료 판정 + 완료 시점 7일 이내만 노출 (unified-dashboard 완료 판정 동일)
+        //   - 완료 판정: status='completed' 또는 모든 stage='완료'
+        //   - 완료 시점: stage.completed_at 중 가장 늦은 값, 없으면 project_boards.updated_at
+        //   - 완료 7일 경과 시 자동 숨김
+        const projectMetaById = new Map<string, { status: string; updated_at: string | null }>()
+        ;(allProjects || []).forEach((p: { id: string; status: string; updated_at: string | null }) =>
+          projectMetaById.set(p.id, { status: p.status, updated_at: p.updated_at })
+        )
+        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+        const nowMs = Date.now()
+
+        const mine: { id: string; project_name: string; my_stages: { name: string; status: string }[]; completed: boolean; completed_at: string | null }[] = []
         for (const [pid, info] of candidateMap) {
           const stages = stagesByProject.get(pid) ?? []
-          if (stages.length > 0 && stages.every((s) => s.status === '완료')) continue
+          const meta = projectMetaById.get(pid)
+          const allStagesDone = stages.length > 0 && stages.every((s) => s.status === '완료')
+          const isCompleted = meta?.status === 'completed' || allStagesDone
+
+          let completedAt: string | null = null
+          if (isCompleted) {
+            const stageDates = stages.map((s) => s.completed_at).filter((d): d is string => !!d)
+            completedAt = stageDates.length > 0
+              ? stageDates.reduce((a, b) => (a > b ? a : b))
+              : (meta?.updated_at ?? null)
+            // 완료 시점 미상 또는 7일 경과 → 숨김
+            const ts = completedAt ? new Date(completedAt).getTime() : 0
+            if (!completedAt || nowMs - ts > SEVEN_DAYS_MS) continue
+          }
+
           // 본인이 담당으로 지정된 stage 만 my_stages 로 노출 (완료 단계 포함, 정렬 유지)
           const my_stages = stages
             .filter((s) => (s.stage_assignee_ids || []).includes(employeeId))
             .sort((a, b) => a.stage_order - b.stage_order)
             .map((s) => ({ name: s.stage_name, status: s.status }))
-          mine.push({ id: pid, project_name: info.project_name, my_stages })
+          mine.push({ id: pid, project_name: info.project_name, my_stages, completed: isCompleted, completed_at: completedAt })
         }
 
-        // 정렬: 내 단계가 있는 프로젝트 우선, 그 다음 프로젝트명
+        // 정렬: 진행중 우선 → 내 단계가 있는 프로젝트 우선 → 프로젝트명 (완료는 맨 아래)
         mine.sort((a, b) => {
+          if (a.completed !== b.completed) return a.completed ? 1 : -1
           if ((a.my_stages.length > 0) !== (b.my_stages.length > 0)) {
             return a.my_stages.length > 0 ? -1 : 1
           }
@@ -409,6 +437,8 @@ export default function DailyReportPage() {
           project_name: p.project_name,
           today_activity_count: 0,
           my_stages: p.my_stages,
+          completed: p.completed,
+          completed_at: p.completed_at,
         })))
       } finally {
         if (!cancelled) setMyProjectsLoading(false)
@@ -1188,22 +1218,23 @@ ${completedText || '아직 없음'}
               return HEADER_PALETTES[Math.abs(h) % HEADER_PALETTES.length]
             }
 
-            // 1) 진행중(active) 프로젝트만 노출 — myProjects 기반
+            // 1) 노출 대상 프로젝트 — myProjects 기반 (진행중 + 완료 7일 이내)
             const idSet = new Set<string>()
             const nameMap = new Map<string, string>()
-            myProjects.forEach((p) => { idSet.add(p.id); nameMap.set(p.id, p.project_name) })
+            const completedMap = new Map<string, boolean>()
+            myProjects.forEach((p) => { idSet.add(p.id); nameMap.set(p.id, p.project_name); completedMap.set(p.id, !!p.completed) })
 
-            // 2) 비프로젝트 + 비활성 프로젝트 task 는 "기타" 로 흡수
+            // 2) 비프로젝트 + 노출대상 외 프로젝트 task 는 "기타" 로 흡수
             const otherTasks: { task: DailyReportTask; idx: number }[] = []
             const projectTasksMap = new Map<string, { task: DailyReportTask; idx: number }[]>()
             completed.forEach((t, idx) => {
               if (t.project_id && idSet.has(t.project_id)) {
-                // 진행중 프로젝트 → 그룹
+                // 노출 대상 프로젝트 → 그룹
                 const arr = projectTasksMap.get(t.project_id) ?? []
                 arr.push({ task: t, idx })
                 projectTasksMap.set(t.project_id, arr)
               } else {
-                // project_id 없음 OR 완료/홀딩/취소된 프로젝트 → 기타
+                // project_id 없음 OR 완료 7일 경과/홀딩/취소된 프로젝트 → 기타
                 otherTasks.push({ task: t, idx })
               }
             })
@@ -1224,7 +1255,11 @@ ${completedText || '아직 없음'}
                 projectName: nameMap.get(pid) || '프로젝트',
                 tasks: projectTasksMap.get(pid) ?? [],
                 myStages: myStagesByProject.get(pid) ?? [],
-              })).sort((a, b) => b.tasks.length - a.tasks.length || a.projectName.localeCompare(b.projectName))
+                completed: completedMap.get(pid) ?? false,
+              })).sort((a, b) =>
+                (a.completed === b.completed ? 0 : a.completed ? 1 : -1) ||
+                b.tasks.length - a.tasks.length ||
+                a.projectName.localeCompare(b.projectName))
 
             if (groups.length === 0 && otherTasks.length === 0 && !myProjectsLoading) {
               return (
@@ -1247,7 +1282,10 @@ ${completedText || '아직 없음'}
                           <div className="flex items-center gap-2 min-w-0">
                             <span className={`inline-block w-1 h-5 rounded-full ${palette.accent} shrink-0`} />
                             <span className="text-base shrink-0">📁</span>
-                            <h3 className={`font-bold ${palette.text} text-sm break-keep [word-break:keep-all]`}>{g.projectName}</h3>
+                            <h3 className={`font-bold ${palette.text} text-lg break-keep [word-break:keep-all]`}>{g.projectName}</h3>
+                            {g.completed && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 shrink-0">완료</span>
+                            )}
                             {g.tasks.length > 0 && (
                               <span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold ${palette.badge} shrink-0`}>
                                 {g.tasks.length}
