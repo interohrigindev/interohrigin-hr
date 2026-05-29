@@ -4,8 +4,10 @@ import {
   Loader2, FileText, Mail, Phone, Briefcase, Calendar, AlertCircle, CheckCircle2,
   Download, ExternalLink, MessageCircle, Sparkles, Link2, FolderOpen,
   MapPin, Users, Banknote, Clock as ClockIcon, Compass,
+  Pencil, RefreshCw, Plus, X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { generateInterviewQuestions } from '@/lib/recruitment-ai'
 import { formatDate } from '@/lib/utils'
 import { SOURCE_CHANNEL_LABELS, EMPLOYMENT_TYPE_LABELS, EXPERIENCE_LEVEL_LABELS } from '@/lib/recruitment-constants'
 import type { SourceChannel, PreSurveyData } from '@/types/recruitment'
@@ -47,6 +49,7 @@ type ShareData = {
     pbd_survey_completed_at: string | null
     second_interview_questions: string[] | null
     second_interview_questions_generated_at: string | null
+    ai_recommended_questions: string[] | null
     interview_answers: Record<string, string> | null
     interview_answer_entries: Record<string, AnswerEntry[]> | null
     created_at: string
@@ -130,6 +133,13 @@ export default function CandidateSharePage() {
   const [newComment, setNewComment] = useState('')
   const [submittingComment, setSubmittingComment] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
+  // #5: AI 권장 면접 질문 지원자별 override (수정/새로고침 → 저장)
+  const [questionsOverride, setQuestionsOverride] = useState<string[] | null>(null)
+  const [editingQuestions, setEditingQuestions] = useState(false)
+  const [questionDraft, setQuestionDraft] = useState<string[]>([])
+  const [savingQuestions, setSavingQuestions] = useState(false)
+  const [regenLoading, setRegenLoading] = useState(false)
+  const [questionsError, setQuestionsError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!token) {
@@ -158,6 +168,10 @@ export default function CandidateSharePage() {
       // 면접관 코멘트 동기화 (이후 추가/삭제로 갱신)
       if (Array.isArray(sd?.candidate?.interviewer_comments)) {
         setCommentsState(sd.candidate.interviewer_comments)
+      }
+      // #5: 지원자별 AI 권장 질문 override 동기화
+      if (Array.isArray(sd?.candidate?.ai_recommended_questions)) {
+        setQuestionsOverride(sd.candidate.ai_recommended_questions as string[])
       }
 
       // 이력서/자기소개서
@@ -332,10 +346,68 @@ export default function CandidateSharePage() {
   const surveyAnswers = candidate.pre_survey_data?.answers || {}
   const surveyMeta = candidate.pre_survey_data?.meta || {}
   const interviewerComments = commentsState.length > 0 ? commentsState : (candidate.interviewer_comments || [])
-  // RPC 응답에 ai_questions 가 있으면 우선, 없으면 fallback (직접 조회) 사용
-  const aiQuestions = (job?.ai_questions && job.ai_questions.length > 0)
-    ? job.ai_questions
-    : fallbackAiQuestions
+  // #5: 지원자 override(questionsOverride) 우선 → 없으면 공고 ai_questions → fallback
+  const aiQuestions = (questionsOverride && questionsOverride.length > 0)
+    ? questionsOverride
+    : (job?.ai_questions && job.ai_questions.length > 0)
+      ? job.ai_questions
+      : fallbackAiQuestions
+
+  // #5: AI 권장 질문 수정/새로고침/저장 핸들러 (지원자 단위)
+  const startEditQuestions = () => {
+    setQuestionDraft(aiQuestions.length > 0 ? [...aiQuestions] : [''])
+    setQuestionsError(null)
+    setEditingQuestions(true)
+  }
+  const cancelEditQuestions = () => {
+    setEditingQuestions(false)
+    setQuestionsError(null)
+  }
+  const updateQuestionDraft = (i: number, val: string) =>
+    setQuestionDraft((prev) => prev.map((q, idx) => (idx === i ? val : q)))
+  const removeQuestionDraft = (i: number) =>
+    setQuestionDraft((prev) => prev.filter((_, idx) => idx !== i))
+  const addQuestionDraft = () => setQuestionDraft((prev) => [...prev, ''])
+  const regenerateQuestions = async () => {
+    if (!job) { setQuestionsError('채용공고 정보가 없어 질문을 생성할 수 없습니다'); return }
+    setRegenLoading(true)
+    setQuestionsError(null)
+    try {
+      const res = await generateInterviewQuestions({
+        title: job.title,
+        department: job.department,
+        position: job.position,
+        employment_type: job.employment_type,
+        experience_level: job.experience_level,
+        description: job.description,
+        requirements: job.requirements,
+        preferred: job.preferred,
+      })
+      if (!res.ok) { setQuestionsError(res.error); return }
+      setQuestionDraft(res.questions)
+    } catch (err) {
+      setQuestionsError(err instanceof Error ? err.message : 'AI 질문 생성 실패')
+    } finally {
+      setRegenLoading(false)
+    }
+  }
+  const saveQuestions = async () => {
+    const cleaned = questionDraft.map((q) => q.trim()).filter(Boolean)
+    if (cleaned.length === 0) { setQuestionsError('질문을 1개 이상 입력하세요'); return }
+    setSavingQuestions(true)
+    setQuestionsError(null)
+    try {
+      const { error: rpcErr } = await supabase.rpc('set_shared_ai_questions', {
+        p_token: token,
+        p_questions: cleaned,
+      })
+      if (rpcErr) { setQuestionsError(rpcErr.message); return }
+      setQuestionsOverride(cleaned)
+      setEditingQuestions(false)
+    } finally {
+      setSavingQuestions(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -741,11 +813,88 @@ export default function CandidateSharePage() {
 
         {/* 권장 면접 질문 — 1차/2차 모두에서 항상 보임. 미생성 시 안내 표시 */}
         <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
-          <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-brand-500" />
-            AI 권장 면접 질문 {aiQuestions.length > 0 && `(${aiQuestions.length}개)`}
-          </h2>
-          {aiQuestions.length > 0 ? (
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-brand-500" />
+              AI 권장 면접 질문 {aiQuestions.length > 0 && `(${aiQuestions.length}개)`}
+            </h2>
+            {!editingQuestions && (
+              <button
+                type="button"
+                onClick={startEditQuestions}
+                className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                <Pencil className="h-3.5 w-3.5" /> 수정
+              </button>
+            )}
+          </div>
+          {editingQuestions ? (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500">
+                질문을 직접 수정하거나 <strong>AI 새로고침</strong>으로 다시 생성한 뒤 <strong>저장</strong>하세요.
+                변경은 <strong className="text-brand-700">이 지원자에게만</strong> 적용됩니다.
+              </p>
+              {questionsError && <p className="text-[11px] text-red-500">{questionsError}</p>}
+              <ol className="space-y-2">
+                {questionDraft.map((q, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 text-xs font-bold mt-1">{i + 1}</span>
+                    <textarea
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 resize-y"
+                      rows={2}
+                      value={q}
+                      onChange={(e) => updateQuestionDraft(i, e.target.value)}
+                      placeholder="면접 질문을 입력하세요"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeQuestionDraft(i)}
+                      className="mt-1 text-gray-400 hover:text-red-500"
+                      title="삭제"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ol>
+              <button
+                type="button"
+                onClick={addQuestionDraft}
+                className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
+              >
+                <Plus className="h-3.5 w-3.5" /> 질문 추가
+              </button>
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={regenerateQuestions}
+                  disabled={regenLoading || savingQuestions}
+                  className="inline-flex items-center gap-1 rounded-md border border-brand-300 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                >
+                  {regenLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  AI 새로고침
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelEditQuestions}
+                    disabled={savingQuestions}
+                    className="rounded-md px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveQuestions}
+                    disabled={savingQuestions || regenLoading}
+                    className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {savingQuestions ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 저장 중</> : '저장'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : aiQuestions.length > 0 ? (
             <>
               <p className="text-xs text-gray-500 mb-3">
                 답변을 작성하고 <strong>저장</strong> 버튼을 누르면 아래에 누적됩니다.
