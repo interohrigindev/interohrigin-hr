@@ -89,6 +89,10 @@ export default function CandidateReport() {
   const [changingJob, setChangingJob] = useState(false)
   const [newJobId, setNewJobId] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+  // F4-1: 사주 기반 직무적합성 (참고용 제안 — 법무 검토 전, 채용 결정 근거 아님)
+  const [sajuBirth, setSajuBirth] = useState('')
+  const [sajuResult, setSajuResult] = useState('')
+  const [sajuLoading, setSajuLoading] = useState(false)
   const canChangeJob = ['director', 'division_head', 'ceo', 'admin', 'hr_admin'].includes(profile?.role || '')
   useEffect(() => {
     supabase.from('job_postings').select('id, title').order('created_at', { ascending: false })
@@ -1581,6 +1585,35 @@ ${surveyText || '응답 없음'}
     REJECT: { icon: XCircle, color: 'text-red-600', label: '부적합' },
   }
 
+  // F4-1: 사주 기반 직무적합성 참고 의견 생성 (참고용 — 결정 근거 아님, 법무 검토 전)
+  async function runSajuAnalysis() {
+    if (!candidate) return
+    if (!sajuBirth.trim()) { toast('생년월일을 입력하세요', 'error'); return }
+    setSajuLoading(true)
+    try {
+      const config = await getAIConfigForFeature('saju_job_fit')
+      if (!config) { toast('AI 설정이 필요합니다.', 'error'); setSajuLoading(false); return }
+      const prompt = `당신은 명리학(사주) 상담가입니다. 아래 정보를 바탕으로 지원 직무와의 적합성에 대한 "참고용 의견"을 한국어로 작성해주세요.
+
+지원자: ${candidate.name}
+생년월일: ${sajuBirth}
+지원 직무: ${jobTitle || '미지정'}
+
+작성 지침:
+1. 명리(사주) 관점의 성향·강점과 직무 적합성을 3~5문장으로 서술
+2. 단정/결정 표현 금지 — "~경향이 보입니다", "~을 참고할 수 있습니다" 등 참고·제안 어조만 사용
+3. 채용 합격/불합격을 판단하거나 권고하지 말 것 (참고 자료일 뿐)
+4. 마크다운 없이 일반 텍스트로 작성`
+      const result = await generateAIContent(config, prompt, undefined, 'saju_job_fit')
+      setSajuResult(result.content.trim())
+      toast('사주 참고 의견이 생성되었습니다.', 'success')
+    } catch (err) {
+      toast('생성 실패: ' + (err instanceof Error ? err.message : '알 수 없음'), 'error')
+    } finally {
+      setSajuLoading(false)
+    }
+  }
+
   async function handleChangeJob() {
     if (!candidate || !id || !newJobId || newJobId === candidate.job_posting_id) return
     const fromJob = jobList.find((j) => j.id === candidate.job_posting_id)
@@ -1759,6 +1792,39 @@ ${surveyText || '응답 없음'}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
+          {/* F4-1: 사주 기반 직무적합성 (참고용 제안 — 법무 검토 전, 결정 근거 아님) */}
+          <Card className="border-amber-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="h-4 w-4 text-amber-500" /> 사주 기반 직무적합성
+                <span className="text-[11px] font-normal text-amber-600">참고용 · 검토중</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 leading-relaxed">
+                ⚠️ 본 분석은 명리(사주) 기반 <strong>참고 자료</strong>이며 채용 합격/불합격 등 <strong>결정 근거로 사용하지 않습니다</strong>.
+                직무 무관 정보·차별 우려로 <strong>법무 검토 전</strong> 시범 기능입니다.
+              </div>
+              <div className="flex items-end gap-2 flex-wrap">
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">생년월일</label>
+                  <input
+                    type="date"
+                    value={sajuBirth}
+                    onChange={(e) => setSajuBirth(e.target.value)}
+                    className="text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+                <Button size="sm" onClick={runSajuAnalysis} disabled={sajuLoading}>
+                  {sajuLoading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 생성 중...</> : <><Sparkles className="h-4 w-4 mr-1" /> 참고 의견 생성</>}
+                </Button>
+              </div>
+              {sajuResult && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800 whitespace-pre-line">{sajuResult}</div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* 이력서/자기소개서 */}
           <Card>
             <CardHeader>
