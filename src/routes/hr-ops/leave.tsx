@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import {
   CalendarPlus, Download, Search,
@@ -164,6 +165,17 @@ export default function LeaveManagementPage() {
   // 긴급연차 (PDCA #4) — 신청 다이얼로그 상단 [일반]/[긴급] 토글
   const [reqMode, setReqMode] = useState<'normal' | 'emergency'>('normal')
   const [emgKind, setEmgKind] = useState<'emergency' | 'sick'>('emergency')
+
+  // 🔴 SOS 빠른메뉴 진입(?sos=1) → 긴급(SOS) 신청 다이얼로그 자동 오픈 (F1-1)
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    if (searchParams.get('sos') === '1') {
+      setReqMode('emergency')
+      setShowRequestDialog(true)
+      searchParams.delete('sos')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
   const [emgHandover, setEmgHandover] = useState('')
   const [emgDelegateId, setEmgDelegateId] = useState('')      // delegate_employee_id (직원 선택)
   const [emgDelegateName, setEmgDelegateName] = useState('')  // delegate_name_text (자유입력)

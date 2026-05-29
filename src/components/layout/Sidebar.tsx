@@ -551,6 +551,17 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             빠른 메뉴
           </div>
           {visibleQuickItems.map(renderStandaloneItem)}
+          {/* 🔴 SOS — 긴급연차 즉시 신청 (게시판 다음, 빨강 강조로 무분별 사용 억제) */}
+          <div data-tour="nav:sos">
+            <NavLink
+              to="/admin/leave?sos=1"
+              onClick={onClose}
+              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+            >
+              <AlertCircle className="h-5 w-5" />
+              <span className="flex-1">SOS</span>
+            </NavLink>
+          </div>
           {visibleOtherStandalone.length > 0 && (
             <div className="my-2 border-t border-gray-200" />
           )}
