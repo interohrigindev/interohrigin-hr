@@ -178,6 +178,13 @@ export default function LeaveManagementPage() {
   const [emgConfirmOpen, setEmgConfirmOpen] = useState(false)
   // F1-4: SOS 신청 완료 안내 팝업 (오전진료 후 오후출근 → 반차 유도)
   const [emgDoneOpen, setEmgDoneOpen] = useState(false)
+  // F5: 연차현황 타일 확장 상태 (기본 접힘 — 이름/잔여/촉진여부만, 클릭 시 상세)
+  const [expandedEmps, setExpandedEmps] = useState<Set<string>>(new Set())
+  const toggleEmpExpand = (id: string) => setExpandedEmps((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
 
   // 🔴 SOS 빠른메뉴 진입(?sos=1) → 긴급(SOS) 신청 다이얼로그 자동 오픈 (F1-1)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -1030,18 +1037,31 @@ export default function LeaveManagementPage() {
                   className={`${isUrgent ? 'border-red-200 bg-red-50/30' : isWarning ? 'border-amber-200 bg-amber-50/20' : 'hover:shadow-sm'} transition-shadow`}
                 >
                   <CardContent className="p-4">
-                    {/* 상단: 이름 + 상태 */}
-                    <div className="flex items-center justify-between mb-2 gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">{emp.name[0]}</div>
+                    {/* F5: 상단 요약(항상 표시, 클릭 시 상세 확장) — 이름 + 잔여 + 촉진여부, 임원 가독성 큰 폰트 */}
+                    <button
+                      type="button"
+                      onClick={() => toggleEmpExpand(emp.id)}
+                      className="w-full text-left flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center text-base font-bold text-blue-700 shrink-0">{emp.name[0]}</div>
                         <div className="min-w-0">
-                          <p className="font-medium text-gray-900 text-sm truncate">{emp.name}</p>
-                          <p className="text-[10px] text-gray-500 truncate">{getDeptName(emp.department_id)}</p>
+                          <p className="font-bold text-gray-900 text-lg truncate leading-tight">{emp.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{getDeptName(emp.department_id)}</p>
                         </div>
                       </div>
-                      {isUrgent ? <Badge variant="danger" className="text-[10px] shrink-0">촉진 필요</Badge> : isWarning ? <Badge variant="warning" className="text-[10px] shrink-0">주의</Badge> : emp.usageRate >= 80 ? <Badge variant="success" className="text-[10px] shrink-0">양호</Badge> : <Badge variant="default" className="text-[10px] shrink-0">정상</Badge>}
-                    </div>
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <div className="text-right leading-none">
+                          <span className="text-3xl font-extrabold text-blue-600">{emp.remainingAnnual}</span>
+                          <span className="text-xs text-gray-400 ml-0.5">일 잔여</span>
+                        </div>
+                        {isUrgent ? <Badge variant="danger" className="text-xs shrink-0">촉진 필요</Badge> : isWarning ? <Badge variant="warning" className="text-xs shrink-0">주의</Badge> : emp.usageRate >= 80 ? <Badge variant="success" className="text-xs shrink-0">양호</Badge> : <Badge variant="default" className="text-xs shrink-0">정상</Badge>}
+                        <span className="text-gray-300 text-sm">{expandedEmps.has(emp.id) ? '▲' : '▼'}</span>
+                      </div>
+                    </button>
 
+                    {expandedEmps.has(emp.id) && (
+                    <div className="mt-3">
                     {/* 촉진 이메일 자동 전송 버튼 — 촉진/주의 대상만 */}
                     {(isUrgent || isWarning) && emp.email && isAdmin && (
                       <button
@@ -1143,6 +1163,8 @@ export default function LeaveManagementPage() {
                         ) : <p className="text-sm font-medium text-gray-600">{emp.usedAnnual}일</p>}
                       </div>
                     </div>
+                    </div>
+                    )}
                   </CardContent>
                 </Card>
               )
