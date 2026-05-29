@@ -165,6 +165,8 @@ export default function LeaveManagementPage() {
   // 긴급연차 (PDCA #4) — 신청 다이얼로그 상단 [일반]/[긴급] 토글
   const [reqMode, setReqMode] = useState<'normal' | 'emergency'>('normal')
   const [emgKind, setEmgKind] = useState<'emergency' | 'sick'>('emergency')
+  // F1-3: SOS 사유 유형 (illness=질병→병가 / family=가족경조사 / accident=교통사고 / other=기타)
+  const [emgReasonType, setEmgReasonType] = useState('')
 
   // 🔴 SOS 빠른메뉴 진입(?sos=1) → 긴급(SOS) 신청 다이얼로그 자동 오픈 (F1-1)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -509,7 +511,7 @@ export default function LeaveManagementPage() {
 
   // ─── 긴급연차 신청 (PDCA #4) — 결재 없이 즉시 통보 + 임원급 이메일 자동 발송 ─────────
   function resetEmergencyForm() {
-    setReqMode('normal'); setEmgKind('emergency')
+    setReqMode('normal'); setEmgKind('emergency'); setEmgReasonType('')
     setEmgHandover(''); setEmgDelegateId(''); setEmgDelegateName('')
     setEmgHospitalPlan(''); setEmgSameDayFiling(null); setEmgFilingNote('')
     setReqStartDate(''); setReqEndDate(''); setReqDays(1); setReqReason('')
@@ -517,7 +519,8 @@ export default function LeaveManagementPage() {
 
   async function handleSubmitEmergency() {
     if (!profile?.id) return
-    // 필수: 날짜 + 사유. (병가 진단서 필수는 "전환 시점" 검증 — 신청 자체는 첨부 없이 가능)
+    // 필수: 사유 유형 + 날짜 + 사유. (병가 진단서 필수는 "전환 시점" 검증 — 신청 자체는 첨부 없이 가능)
+    if (!emgReasonType) { toast('사유 유형을 선택하세요', 'error'); return }
     if (!reqStartDate || !reqEndDate) { toast('연차 날짜를 입력하세요', 'error'); return }
     if (!reqReason.trim()) { toast('연차 사유를 입력하세요', 'error'); return }
     if (new Date(reqStartDate) > new Date(reqEndDate)) { toast('종료일이 시작일보다 빠를 수 없습니다', 'error'); return }
@@ -535,6 +538,7 @@ export default function LeaveManagementPage() {
       .insert({
         employee_id: profile.id,
         leave_kind: emgKind,
+        reason_type: emgReasonType,
         start_date: reqStartDate,
         end_date: reqEndDate,
         days_count: reqDays,
@@ -1438,9 +1442,31 @@ export default function LeaveManagementPage() {
           </>
           ) : (
           <>
-          {/* 긴급연차 전용 폼 (PDCA #4) */}
-          <Select label="유형 *" value={emgKind} onChange={(e) => setEmgKind(e.target.value as 'emergency' | 'sick')}
-            options={[{ value: 'emergency', label: '긴급사유 (개인 긴급 상황)' }, { value: 'sick', label: '병가 (질병/병원)' }]} />
+          {/* 긴급연차(SOS) 전용 폼 (PDCA #4 / F1-3) */}
+          {/* ① 사유 유형 선택 — 선택 시 내부 kind 자동 매핑 (질병→병가) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">① 사유 유형 *</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { v: 'illness', l: '갑작스러운 질병', kind: 'sick' as const },
+                { v: 'family', l: '가족 경조사', kind: 'emergency' as const },
+                { v: 'accident', l: '교통사고', kind: 'emergency' as const },
+                { v: 'other', l: '기타', kind: 'emergency' as const },
+              ].map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => { setEmgReasonType(opt.v); setEmgKind(opt.kind) }}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium border transition ${emgReasonType === opt.v ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-red-50 hover:border-red-300'}`}
+                >
+                  {opt.l}
+                </button>
+              ))}
+            </div>
+            {emgReasonType === 'illness' && (
+              <p className="text-[11px] text-gray-500 mt-1">※ 질병은 병가로 처리되어 진료확인서/진단서 증빙이 필요합니다.</p>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Input label="시작일 *" type="date" value={reqStartDate} onChange={(e) => setReqStartDate(e.target.value)} />
