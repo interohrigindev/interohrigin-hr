@@ -23,6 +23,8 @@ export const IOMALL_URL =
  * @param newTab 새 탭 여부 (기본: true)
  */
 export async function openIoMall(redirect: string = '/', newTab: boolean = true): Promise<void> {
+  // 토큰 회전 race 방지 — refreshSession 으로 가장 신선한 access/refresh 토큰 보장
+  await supabase.auth.refreshSession().catch(() => { /* getSession 으로 fallback */ })
   const { data: { session } } = await supabase.auth.getSession()
 
   // 세션 강제 — 토큰 없으면 IO Mall 신규 로그인 페이지로 보내지 않고 HR 재로그인 안내.

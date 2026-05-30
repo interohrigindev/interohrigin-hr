@@ -55,6 +55,8 @@ export async function openIoFinance(
 
   // 세션 강제 — 토큰 없으면 IO Finance 신규 로그인 페이지로 보내지 않고 HR 재로그인 안내
   // (사용자 요구: "새로운 로그인 페이지가 나오면 안 됨")
+  // 토큰 회전 race 방지 — refreshSession 으로 가장 신선한 access/refresh 토큰 보장
+  await supabase.auth.refreshSession().catch(() => { /* getSession 으로 fallback */ })
   const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token || !session?.refresh_token) {
     alert('HR 세션이 만료되어 IO Finance 로 자동 로그인할 수 없습니다.\nHR 에서 다시 로그인 후 시도해주세요.')
