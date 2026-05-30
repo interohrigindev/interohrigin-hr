@@ -22,10 +22,21 @@ interface InboxItem {
   status: string
 }
 
+// PDCA #6 Phase 3 — Design Ref: §5.1
+// approval_* 3종은 :id placeholder 를 related_entity_id 로 치환하여 navigate
 const RELATED_ROUTE: Record<string, string> = {
   leave_promotion: '/my/leave-promotion',
   overtime_request: '/my/overtime',
   anonymous_report: '/admin/system/anonymous-reports',
+  approval_pending: '/admin/approval/:id',
+  approval_completed: '/admin/approval/:id',
+  approval_rejected: '/admin/approval/:id',
+}
+
+function resolveRoute(template: string, id: string | null): string | null {
+  if (!template.includes(':id')) return template
+  if (!id) return null
+  return template.replace(':id', id)
 }
 
 const POLL_MS = 60_000
@@ -76,7 +87,9 @@ export function NotificationBell() {
 
   function openItem(item: InboxItem) {
     if (!item.read_at) markRead(item.id)
-    const route = item.related_entity_type ? RELATED_ROUTE[item.related_entity_type] : null
+    const template = item.related_entity_type ? RELATED_ROUTE[item.related_entity_type] : null
+    if (!template) return
+    const route = resolveRoute(template, item.related_entity_id)
     if (route) {
       navigate(route)
       setOpen(false)
@@ -122,7 +135,8 @@ export function NotificationBell() {
             )}
             {items.map((it) => {
               const isUnread = !it.read_at
-              const hasRoute = it.related_entity_type && RELATED_ROUTE[it.related_entity_type]
+              const tpl = it.related_entity_type ? RELATED_ROUTE[it.related_entity_type] : null
+              const hasRoute = !!(tpl && resolveRoute(tpl, it.related_entity_id))
               return (
                 <button
                   key={it.id}

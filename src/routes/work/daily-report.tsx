@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
+import { notifyApprovalSubmitted } from '@/lib/approval-notification'
 import type { DailyReport, DailyReportTask, Task } from '@/types/work'
 
 // PDCA #5 FR-08: 반복업무(recurring_task_occurrences) 당일 진행분을 일일보고에 반영.
@@ -1734,6 +1735,10 @@ ${completedText || '아직 없음'}
                     steps.map(s => ({ ...s, document_id: doc.id }))
                   )
                   if (stepErr) throw stepErr
+
+                  // PDCA #6 Phase 2 — 1단계 결재자에게 in_app + push + email + (kakao_work) 4채널 발송
+                  // Design Ref: §4.1, Plan SC-02. silent fail — 결재 흐름 무차단.
+                  notifyApprovalSubmitted(doc.id).catch(() => {})
 
                   toast('결재가 전송되었습니다. 결재선은 변경할 수 없습니다.', 'success')
                   setAlreadySubmitted(true)

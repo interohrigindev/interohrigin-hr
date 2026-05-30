@@ -912,3 +912,198 @@ export function recurringMissedEmail(params: {
 </body></html>`.trim(),
   }
 }
+
+// ────────────────────────────────────────────────────────────────────
+// 결재 통합 알림 — PDCA #6 Phase 4
+// Design Ref: §5.2 — 결재자에게 도착 / 작성자에게 완료 / 작성자에게 반려
+// Plan SC-07 — CTA 절대링크는 ProtectedRoute returnTo 로 자동 복귀 보장
+// ────────────────────────────────────────────────────────────────────
+
+const APPROVAL_CTA_NOTE = `메일에서 이동 시 로그인 화면이 뜨면 로그인 후 자동으로 결재 페이지로 돌아갑니다.`
+
+/**
+ * 결재 도착 (결재자에게)
+ *  - 1단계 송신: stepInfo 미전달
+ *  - 단계 전환: stepInfo = "2/3단계" 와 같은 형식
+ */
+export function approvalRequestEmail(params: {
+  docTitle: string
+  requesterName: string
+  docType: string
+  link: string
+  recipientName?: string
+  stepInfo?: string
+}): { subject: string; html: string } {
+  const { docTitle, requesterName, docType, link, recipientName = '결재자', stepInfo } = params
+  const stepBadge = stepInfo
+    ? `<span style="display:inline-block;background:#ede9fe;color:#6B3FA0;padding:3px 10px;border-radius:9999px;font-size:11px;font-weight:bold;margin-left:8px;">${escapeHtml(stepInfo)}</span>`
+    : ''
+  return {
+    subject: `[인터오리진] ${escapeHtml(docType)} 결재 요청 — ${escapeHtml(docTitle)}`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#6B3FA0,#4A2C6F);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
+      <p style="color:#d8b4fe;font-size:12px;margin:4px 0 0;">전자결재 · ${escapeHtml(docType)}</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${escapeHtml(recipientName)}</strong>님, 결재 요청이 도착했습니다.${stepBadge}
+      </p>
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin:16px 0;">
+        <table style="width:100%;font-size:14px;color:#374151;">
+          <tr><td style="padding:6px 0;color:#6b7280;width:30%;">문서 제목</td>
+              <td style="padding:6px 0;font-weight:bold;color:#1f2937;">${escapeHtml(docTitle)}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;">결재 종류</td>
+              <td style="padding:6px 0;">${escapeHtml(docType)}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;">신청자</td>
+              <td style="padding:6px 0;">${escapeHtml(requesterName)}</td></tr>
+        </table>
+      </div>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${link}"
+           style="display:inline-block;background:#6B3FA0;color:#ffffff;padding:14px 36px;
+                  border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;
+                  letter-spacing:0.5px;">
+          결재 페이지로 이동
+        </a>
+      </div>
+      <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:16px 0 0;">
+        ${APPROVAL_CTA_NOTE}<br>
+        버튼이 작동하지 않는 경우: <a href="${link}" style="color:#6B3FA0;word-break:break-all;">${link}</a>
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진아이앤씨 HR 시스템에서 자동 발송되었습니다.
+      </p>
+    </div>
+  </div>
+</body></html>`.trim(),
+  }
+}
+
+/**
+ * 결재 완료 (작성자에게)
+ */
+export function approvalCompletedEmail(params: {
+  docTitle: string
+  docType: string
+  link: string
+  requesterName: string
+}): { subject: string; html: string } {
+  const { docTitle, docType, link, requesterName } = params
+  return {
+    subject: `[인터오리진] ${escapeHtml(docType)} 결재 완료 — ${escapeHtml(docTitle)}`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#059669,#047857);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
+      <p style="color:#d1fae5;font-size:12px;margin:4px 0 0;">전자결재 · 최종 승인 완료 ✓</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${escapeHtml(requesterName)}</strong>님, 신청하신 결재가 <strong>최종 승인</strong>되었습니다.
+      </p>
+      <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:20px;margin:16px 0;">
+        <table style="width:100%;font-size:14px;color:#374151;">
+          <tr><td style="padding:6px 0;color:#6b7280;width:30%;">문서 제목</td>
+              <td style="padding:6px 0;font-weight:bold;color:#065f46;">${escapeHtml(docTitle)}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;">결재 종류</td>
+              <td style="padding:6px 0;">${escapeHtml(docType)}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;">처리 일시</td>
+              <td style="padding:6px 0;">${new Date().toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })}</td></tr>
+        </table>
+      </div>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${link}"
+           style="display:inline-block;background:#059669;color:#ffffff;padding:14px 36px;
+                  border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;
+                  letter-spacing:0.5px;">
+          결재 내역 보기
+        </a>
+      </div>
+      <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:16px 0 0;">
+        ${APPROVAL_CTA_NOTE}<br>
+        버튼이 작동하지 않는 경우: <a href="${link}" style="color:#059669;word-break:break-all;">${link}</a>
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진아이앤씨 HR 시스템에서 자동 발송되었습니다.
+      </p>
+    </div>
+  </div>
+</body></html>`.trim(),
+  }
+}
+
+/**
+ * 결재 반려 (작성자에게, 반려자 + 사유)
+ */
+export function approvalRejectedEmail(params: {
+  docTitle: string
+  docType: string
+  link: string
+  requesterName: string
+  rejectedByName: string
+  reason: string
+}): { subject: string; html: string } {
+  const { docTitle, docType, link, requesterName, rejectedByName, reason } = params
+  return {
+    subject: `[인터오리진] ${escapeHtml(docType)} 결재 반려 — ${escapeHtml(docTitle)}`,
+    html: `
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:linear-gradient(135deg,#dc2626,#991b1b);padding:28px 24px;text-align:center;">
+      <h1 style="color:#ffffff;font-size:20px;margin:0;letter-spacing:1px;">Interohrigin I&amp;C</h1>
+      <p style="color:#fecaca;font-size:12px;margin:4px 0 0;">전자결재 · 반려 안내</p>
+    </div>
+    <div style="padding:32px 28px;">
+      <p style="font-size:15px;color:#1f2937;margin:0 0 16px;">
+        <strong>${escapeHtml(requesterName)}</strong>님, 신청하신 결재가 <strong style="color:#dc2626;">반려</strong>되었습니다.
+      </p>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:20px;margin:16px 0;">
+        <table style="width:100%;font-size:14px;color:#374151;">
+          <tr><td style="padding:6px 0;color:#6b7280;width:30%;">문서 제목</td>
+              <td style="padding:6px 0;font-weight:bold;color:#7f1d1d;">${escapeHtml(docTitle)}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;">결재 종류</td>
+              <td style="padding:6px 0;">${escapeHtml(docType)}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;">반려자</td>
+              <td style="padding:6px 0;">${escapeHtml(rejectedByName)}</td></tr>
+        </table>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px dashed #fecaca;">
+          <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">반려 사유</div>
+          <div style="font-size:14px;color:#7f1d1d;line-height:1.6;white-space:pre-wrap;">${escapeHtml(reason)}</div>
+        </div>
+      </div>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${link}"
+           style="display:inline-block;background:#dc2626;color:#ffffff;padding:14px 36px;
+                  border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;
+                  letter-spacing:0.5px;">
+          결재 페이지로 이동
+        </a>
+      </div>
+      <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:16px 0 0;">
+        ${APPROVAL_CTA_NOTE}<br>
+        버튼이 작동하지 않는 경우: <a href="${link}" style="color:#dc2626;word-break:break-all;">${link}</a>
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:20px 28px;border-top:1px solid #e5e7eb;">
+      <p style="font-size:12px;color:#9ca3af;text-align:center;margin:0;">
+        본 메일은 인터오리진아이앤씨 HR 시스템에서 자동 발송되었습니다.
+      </p>
+    </div>
+  </div>
+</body></html>`.trim(),
+  }
+}

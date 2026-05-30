@@ -24,6 +24,12 @@ import { scanImagesInHtml, annotatePrivateAuthImages, describeHost } from '@/lib
 import { useAuth } from '@/hooks/useAuth'
 import { ApprovalLineViewer } from '@/components/approval/ApprovalLineViewer'
 import { ApprovalLineEditor, type EditableStep } from '@/components/approval/ApprovalLineEditor'
+import {
+  notifyApprovalSubmitted,
+  notifyApprovalStepAdvanced,
+  notifyApprovalFinalApproved,
+  notifyApprovalRejected,
+} from '@/lib/approval-notification'
 
 /* ────── Types ────── */
 
@@ -773,6 +779,12 @@ export default function ApprovalManagementPage() {
           completed_at: new Date().toISOString(),
         })
         .eq('id', docId)
+      // PDCA #6 Phase 2 — 작성자에게 반려 통보 (사유 포함). Design Ref: §4.1, Plan SC-05
+      notifyApprovalRejected(
+        docId,
+        { uid: profile.id, name: getEmpName(profile.id) || '결재자' },
+        actionComment || null,
+      ).catch(() => {})
       toast('반려 처리되었습니다', 'success')
     } else {
       // 4) 같은 step 의 다른 row 중 pending 이 남았는지 확인
@@ -825,6 +837,8 @@ export default function ApprovalManagementPage() {
               completed_at: new Date().toISOString(),
             })
             .eq('id', docId)
+          // PDCA #6 Phase 2 — 작성자에게 "결재 완료" 통보. Design Ref: §4.1, Plan SC-04
+          notifyApprovalFinalApproved(docId).catch(() => {})
           toast(isDelegated ? '전결 처리로 최종 승인 완료' : '최종 승인 완료', 'success')
         } else {
           await supabase
@@ -834,6 +848,9 @@ export default function ApprovalManagementPage() {
               current_step: nextStepToProcess,
             })
             .eq('id', docId)
+          // PDCA #6 Phase 2 — 다음 단계 결재자(N명)에게 도착 알림. Design Ref: §4.1, Plan SC-03/FR-03
+          // 같은 step 모든 row 처리 후에만 도달하므로 병렬결재 동안에는 알림 X (FR-03 충족)
+          notifyApprovalStepAdvanced(docId, nextStepToProcess).catch(() => {})
           const nextStepRows = steps.filter((s) => s.step_order === nextStepToProcess)
           const nextNames = nextStepRows.map((s) => getEmpName(s.approver_id)).filter(Boolean).join(', ')
           toast(`승인 완료. 다음 결재자(${nextNames})에게 전달되었습니다.`, 'success')
@@ -1077,6 +1094,10 @@ export default function ApprovalManagementPage() {
         return
       }
     }
+
+    // PDCA #6 Phase 2 — 1단계 결재자에게 4채널 통합 알림 발송 (silent fail, 결재 흐름 무차단)
+    // Design Ref: §4.1, Plan SC-02
+    notifyApprovalSubmitted(docData.id).catch(() => {})
 
     toast('결재 신청이 완료되었습니다', 'success')
     setSaving(false)

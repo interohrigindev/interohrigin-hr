@@ -34,7 +34,7 @@ export interface AuditLogRow {
   created_at: string
 }
 
-export type NotificationChannel = 'email' | 'push' | 'slack' | 'webhook' | 'in_app'
+export type NotificationChannel = 'email' | 'push' | 'slack' | 'webhook' | 'in_app' | 'kakao_work'
 export type NotificationStatus = 'queued' | 'sent' | 'failed' | 'skipped'
 
 export interface NotificationDeliveryRow {
