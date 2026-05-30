@@ -166,6 +166,15 @@ const QUICK_LINKS: { label: string; icon: React.ElementType; path: string }[] = 
 export default function Home() {
   const { profile, hasRole } = useAuth()
   const navigate = useNavigate()
+  // IO CS 카드 노출 여부 — 권한 비동기 확인 후 결정 (사용자 요구: 권한자에게만 카드 노출)
+  const [iocsAllowed, setIocsAllowed] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void checkIoCsAccess(profile as { id?: string; role?: string | null; department_id?: string | null } | null).then((ok) => {
+      if (!cancelled) setIocsAllowed(ok)
+    })
+    return () => { cancelled = true }
+  }, [profile?.id])
 
   // 관리자/임원이 아니면 기존 자기평가 또는 일일보고서로
   if (!hasRole('director')) {
@@ -199,6 +208,8 @@ export default function Home() {
         {ADMIN_BLOCKS.filter((block) => {
           // IO Finance 카드는 권한자(재무회계/강제묵 이사/대표이사)에게만 노출
           if (block.path === 'iofinance') return canAccessIoFinance(profile as { id?: string; role?: string | null; department_id?: string | null } | null)
+          // IO CS 카드도 권한자(CS부서/임원/BM리더/대표/시스템관리자 + 직원정보 'CS 접근 허용')에게만 노출
+          if (block.path === 'iocs') return iocsAllowed
           return true
         }).map((block) => (
           <button
@@ -245,6 +256,15 @@ export default function Home() {
 // 일반 직원용 홈
 function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }) {
   const { profile } = useAuth()
+  // IO CS 카드 노출 여부 — 권한 비동기 확인 후 결정
+  const [iocsAllowed, setIocsAllowed] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void checkIoCsAccess(profile as { id?: string; role?: string | null; department_id?: string | null } | null).then((ok) => {
+      if (!cancelled) setIocsAllowed(ok)
+    })
+    return () => { cancelled = true }
+  }, [profile?.id])
 
   const blocks: BlockItem[] = [
     {
@@ -340,6 +360,8 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
         {blocks.filter((block) => {
           // IO Finance 카드는 권한자(재무회계/강제묵 이사/대표이사)에게만 노출
           if (block.path === 'iofinance') return canAccessIoFinance(profile as { id?: string; role?: string | null; department_id?: string | null } | null)
+          // IO CS 카드도 권한자에게만 노출
+          if (block.path === 'iocs') return iocsAllowed
           return true
         }).map((block) => (
           <button
