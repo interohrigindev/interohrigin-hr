@@ -493,6 +493,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     if (item.featureKey && !enabledFeatures.has(item.featureKey)) {
       return false
     }
+    // IO Mall 외부 링크는 menu_permissions(allowedMenus) 권한 체크 우회.
+    // 자체 eligibilityCheck 만 적용 (예: healthkeeper 는 mall.healthkeeper_eligibility 로 제어).
+    // 그 외 외부 링크(복지몰 쇼핑/자원 예약)는 모든 직원에게 노출.
+    if (item.externalIomallPath) {
+      if (item.eligibilityCheck === 'healthkeeper' && !healthkeeperEligible) return false
+      return true
+    }
     // 우회 역할은 minRole 충족 여부와 무관하게 노출
     // (hr_admin 은 ROLE_HIERARCHY 가 2 라서 hasRole('director')=false 이지만 채용/직원/OJT 접근 필요)
     if (profile?.role && AUTO_BYPASS_ROLES.includes(profile.role)) {
