@@ -1204,7 +1204,7 @@ export default function ApprovalManagementPage() {
                 || (c && ('report_id' in c || 'report_date' in c)
                     && (Array.isArray(c.completed) || Array.isArray(c.in_progress) || Array.isArray(c.planned)))
               if (isDailyReport) {
-                return <DailyReportApprovalView content={doc.content as Parameters<typeof DailyReportApprovalView>[0]['content']} />
+                return <DailyReportApprovalView content={doc.content as Parameters<typeof DailyReportApprovalView>[0]['content']} documentId={doc.id} />
               }
               const bodyHtml = (doc.content as Record<string, unknown>)?.body_html as string | undefined
               return (
@@ -1705,7 +1705,7 @@ export default function ApprovalManagementPage() {
                   || (c && ('report_id' in c || 'report_date' in c)
                       && (Array.isArray(c.completed) || Array.isArray(c.in_progress) || Array.isArray(c.planned)))
                 if (isDailyReport) {
-                  return <DailyReportApprovalView content={doc.content as Parameters<typeof DailyReportApprovalView>[0]['content']} />
+                  return <DailyReportApprovalView content={doc.content as Parameters<typeof DailyReportApprovalView>[0]['content']} documentId={doc.id} />
                 }
                 // 다른 양식은 기존 key-value 렌더링
                 const bodyHtml = (doc.content as Record<string, any>)?.body_html as string | undefined

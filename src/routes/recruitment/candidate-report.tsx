@@ -1626,18 +1626,34 @@ ${surveyText || '응답 없음'}
         }
       }
 
-      const prompt = `당신은 명리학(사주) 상담가입니다. 아래 지원자 정보와 사전질의서 2.0(성향 진단) 결과를 종합하여 지원 직무와의 적합성에 대한 "참고용 의견"을 한국어로 작성해주세요.
+      // 결과를 가독성 높은 구조(JSON)로 받아 PbdResultView 의 SajuPanel 이 섹션화하여 렌더링.
+      const prompt = `당신은 명리학(사주) 상담가입니다. 아래 지원자 정보와 사전질의서 2.0(PBD 성향 진단) 결과를 종합하여 직무 적합성 "참고용 의견"을 작성해주세요.
 
-지원자: ${candidate.name}${hanja ? ` (한자성명: ${hanja})` : ''}
-생년월일: ${sajuBirth}
-지원 직무: ${jobTitle || '미지정'}${pbdContext}
+[지원자]
+- 이름: ${candidate.name}${hanja ? ` (한자성명: ${hanja})` : ''}
+- 생년월일: ${sajuBirth}
+- 지원 직무: ${jobTitle || '미지정'}
+${pbdContext}
 
-작성 지침:
-1. 명리(사주) 관점의 성향·강점을 서술하되, 위 PBD 성향 진단(도메인/적합 직무군)과 일치하거나 보완되는 점을 함께 언급
-2. 사주와 PBD를 종합한 직무 적합성 참고 의견을 4~6문장으로 작성
-3. 단정/결정 표현 금지 — "~경향이 보입니다", "~을 참고할 수 있습니다" 등 참고·제안 어조만 사용
-4. 채용 합격/불합격을 판단하거나 권고하지 말 것 (참고 자료일 뿐)
-5. 마크다운 없이 일반 텍스트로 작성`
+[작성 지침]
+- 단정/결정 표현 금지 — "~경향이 보입니다", "~을 참고할 수 있습니다" 등 참고·제안 어조만 사용
+- 채용 합격/불합격을 판단하거나 권고하지 말 것 (참고 자료일 뿐)
+- PBD 도메인/적합 직무군과 사주 해석이 일치/보완되는 지점을 구체적으로 짚을 것
+- 위 PBD "적합 직무군" 각 항목별로 사주적 부합도 코멘트를 추가 (도메인 매핑 세분화)
+
+[반드시 아래 JSON 한 줄만 출력 — 코드펜스/설명 금지]
+{
+  "summary": "지원자의 성향과 직무 적합성에 대한 한 줄 요약 (40~70자, 결정/단정 어조 금지)",
+  "key_traits": ["사주에서 도출되는 핵심 성향 키워드 3~5개 (각 2~6자)"],
+  "domain_link": "PBD 도메인 진단과 사주 해석의 일치/보완점을 2~3문장으로 (참고 어조)",
+  "job_fit": [
+    {"job": "PBD 적합 직무군 중 하나(정확한 명칭)", "alignment": "부합|보강|보완필요 중 하나", "note": "해당 직무에 대한 사주 관점 1~2문장 코멘트"}
+  ],
+  "body": "사주 명리 기반 종합 상세 분석 4~6문장 (오행/일간/계절 등 근거 간단 언급, 마크다운 금지)",
+  "cautions": "참고 시 유의할 점 1~2문장 (없으면 빈 문자열)"
+}
+
+job_fit 은 위 PBD "적합 직무군" 에 있는 직무만 포함. 항목이 없으면 빈 배열.`
       const result = await generateAIContent(config, prompt, undefined, 'saju_job_fit')
       const text = result.content.trim()
       setSajuResult(text)
@@ -1836,45 +1852,7 @@ ${surveyText || '응답 없음'}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
-          {/* F4-1: 사주 기반 직무적합성 (참고용 제안 — 법무 검토 전, 결정 근거 아님) */}
-          <Card className="border-amber-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Sparkles className="h-4 w-4 text-amber-500" /> 사주 기반 직무적합성
-                <span className="text-[11px] font-normal text-amber-600">참고용 · 검토중</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 leading-relaxed">
-                ⚠️ 본 분석은 명리(사주) 기반 <strong>참고 자료</strong>이며 채용 합격/불합격 등 <strong>결정 근거로 사용하지 않습니다</strong>.
-                직무 무관 정보·차별 우려로 <strong>법무 검토 전</strong> 시범 기능입니다.
-              </div>
-              <div className="flex items-end gap-2 flex-wrap">
-                <div>
-                  <label className="block text-[11px] text-gray-500 mb-1">생년월일 <span className="text-gray-400">(사전질의서에서 자동 입력)</span></label>
-                  <input
-                    type="text"
-                    value={sajuBirth}
-                    onChange={(e) => setSajuBirth(e.target.value)}
-                    placeholder="예: 1990-05-21"
-                    className="text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-brand-500"
-                  />
-                </div>
-                <Button size="sm" variant={sajuResult ? 'outline' : 'primary'} onClick={() => runSajuAnalysis(false)} disabled={sajuLoading}>
-                  {sajuLoading
-                    ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> 분석 중...</>
-                    : <><Sparkles className="h-4 w-4 mr-1" /> {sajuResult ? '다시 생성' : '참고 의견 생성'}</>}
-                </Button>
-              </div>
-              <p className="text-[11px] text-gray-400">
-                사전질의서(PBD)가 수신되면 생년월일을 참고해 <strong>자동 생성</strong>됩니다.
-                이름·한자성명·생년월일 + <strong>PBD 2.0 성향 진단(도메인·적합 직무군)</strong>을 종합해 분석합니다.
-              </p>
-              {sajuResult && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800 whitespace-pre-line">{sajuResult}</div>
-              )}
-            </CardContent>
-          </Card>
+          {/* 사주 분석은 사전질의서(PBD) 결과 카드 안의 '응답자 프로필' 바로 아래로 이동 (PbdResultView saju prop) */}
 
           {/* 이력서/자기소개서 */}
           <Card>
@@ -2383,7 +2361,18 @@ ${surveyText || '응답 없음'}
                 </div>
               </CardHeader>
               <CardContent>
-                <PbdResultView row={pbdResponse} showHeader={true} />
+                <PbdResultView
+                  row={pbdResponse}
+                  showHeader={true}
+                  saju={{
+                    raw: (candidate as { saju_analysis?: string | null } | null)?.saju_analysis ?? null,
+                    birth: sajuBirth,
+                    onChangeBirth: setSajuBirth,
+                    generatedAt: (candidate as { saju_analysis_generated_at?: string | null } | null)?.saju_analysis_generated_at ?? null,
+                    loading: sajuLoading,
+                    onGenerate: () => runSajuAnalysis(false),
+                  }}
+                />
               </CardContent>
             </Card>
           )}

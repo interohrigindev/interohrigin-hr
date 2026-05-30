@@ -3,8 +3,8 @@
 //   - /admin/survey-test-results (DetailDrawer 내부)
 //   - /admin/candidates/:id (지원자 상세 페이지 인라인)
 
-import { useState } from 'react'
-import { ChevronDown, ChevronUp, Info } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ChevronDown, ChevronUp, Info, Sparkles, Loader2, RefreshCw } from 'lucide-react'
 import {
   PBD_QUESTIONS, scorePbd, AXIS_DETAILS, DOMAIN_PROFILES,
   type PbdScores, type PbdAxis,
@@ -23,13 +23,25 @@ export interface PbdResultRow {
   created_at?: string
 }
 
+// 사주 분석 결과 — 사전질의서 완료 시 AI 가 응답자 프로필 + PBD 진단을 종합해 자동 생성
+export interface SajuPanelProps {
+  raw?: string | null              // candidates.saju_analysis (JSON 문자열 또는 legacy plain text)
+  birth: string
+  generatedAt?: string | null
+  loading?: boolean
+  onChangeBirth?: (v: string) => void
+  onGenerate?: () => void          // "다시 생성" / "참고 의견 생성" 버튼 액션
+  applyingFor?: string             // 지원 분야 텍스트 (도메인 매핑 요약 카드와 동일 소스)
+}
+
 interface Props {
   row: PbdResultRow
   showHeader?: boolean // false 면 응답자 프로필 카드 생략 (지원자 상세에서는 이미 표시되므로)
   showQuestionBreakdown?: boolean // false 면 P1~P20 문항별 응답 섹션 생략 (외부 공유 페이지에서는 비공개)
+  saju?: SajuPanelProps            // 지원자 상세에서만 전달 (외부 공유에서는 사주 노출 금지)
 }
 
-export default function PbdResultView({ row, showHeader = true, showQuestionBreakdown = true }: Props) {
+export default function PbdResultView({ row, showHeader = true, showQuestionBreakdown = true, saju }: Props) {
   const scores: PbdScores | null = scorePbd(row.pbd_answers || {})
   const meta = (row.meta as Record<string, unknown>) || {}
   const consent = (row.consent as Record<string, unknown>) || {}
@@ -49,6 +61,16 @@ export default function PbdResultView({ row, showHeader = true, showQuestionBrea
             {!!meta.Q2 && <ProfileItem label="지원 분야" value={String(meta.Q2)} fullWidth />}
           </dl>
         </section>
+      )}
+
+      {/* 사주 기반 분석 — 응답자 프로필 바로 아래, 지원자 상세에서만 노출 */}
+      {saju && (scores || saju.raw || saju.loading) && (
+        <SajuPanel
+          {...saju}
+          domain={scores?.domain}
+          fitJobs={scores?.fit_jobs}
+          applyingFor={saju.applyingFor ?? (typeof meta.Q2 === 'string' ? meta.Q2 : undefined)}
+        />
       )}
 
       {scores && (
@@ -344,6 +366,213 @@ function DomainProfileSection({ domain, mbti }: { domain: string; mbti?: string 
           <p className="text-sm text-slate-700 leading-relaxed break-keep">{p.career_path}</p>
         </div>
       </div>
+    </section>
+  )
+}
+
+// ─── 사주 기반 분석 패널 ────────────────────────────────────────
+// raw 는 candidates.saju_analysis 컬럼(text). 신규는 JSON 문자열, 구버전(legacy)은 평문.
+type SajuJobFit = { job: string; alignment?: string; note: string }
+interface SajuParsed {
+  summary: string
+  key_traits: string[]
+  domain_link: string
+  job_fit: SajuJobFit[]
+  body: string
+  cautions: string
+  legacy: boolean
+}
+
+function parseSaju(raw: string | null | undefined): SajuParsed | null {
+  if (!raw) return null
+  const trimmed = String(raw).trim()
+  if (!trimmed) return null
+  // 1) JSON 시도 (코드펜스 제거 후)
+  try {
+    const cleaned = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+    const m = cleaned.match(/\{[\s\S]*\}/)
+    if (m) {
+      const parsed = JSON.parse(m[0]) as Record<string, unknown>
+      const hasStructured = parsed && (parsed.summary || parsed.body || parsed.domain_link || parsed.key_traits)
+      if (hasStructured) {
+        const jf = Array.isArray(parsed.job_fit) ? (parsed.job_fit as unknown[]) : []
+        return {
+          summary: typeof parsed.summary === 'string' ? parsed.summary.trim() : '',
+          key_traits: Array.isArray(parsed.key_traits) ? (parsed.key_traits as unknown[]).map((x) => String(x)).filter(Boolean) : [],
+          domain_link: typeof parsed.domain_link === 'string' ? parsed.domain_link.trim() : '',
+          job_fit: jf.map((it) => {
+            const o = (it ?? {}) as Record<string, unknown>
+            return {
+              job: typeof o.job === 'string' ? o.job : '',
+              alignment: typeof o.alignment === 'string' ? o.alignment : undefined,
+              note: typeof o.note === 'string' ? o.note : '',
+            }
+          }).filter((x) => x.job),
+          body: typeof parsed.body === 'string' ? parsed.body.trim() : '',
+          cautions: typeof parsed.cautions === 'string' ? parsed.cautions.trim() : '',
+          legacy: false,
+        }
+      }
+    }
+  } catch {
+    // fall through
+  }
+  // 2) Legacy plain text — 본문에 그대로 표시
+  return { summary: '', key_traits: [], domain_link: '', job_fit: [], body: trimmed, cautions: '', legacy: true }
+}
+
+function SajuPanel({
+  raw, birth, generatedAt, loading, onChangeBirth, onGenerate,
+  domain, fitJobs, applyingFor,
+}: SajuPanelProps & { domain?: string; fitJobs?: string[]; applyingFor?: string }) {
+  const parsed = useMemo(() => parseSaju(raw), [raw])
+  const [bodyOpen, setBodyOpen] = useState(false)
+  const hasResult = !!parsed
+  const alignmentBadge = (a?: string) => {
+    if (!a) return 'bg-slate-100 text-slate-600 border-slate-200'
+    if (a.includes('부합') || a.includes('보강') || a.includes('적합')) return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+    if (a.includes('보완') || a.includes('주의')) return 'bg-amber-100 text-amber-700 border-amber-200'
+    return 'bg-slate-100 text-slate-600 border-slate-200'
+  }
+  return (
+    <section className="border border-amber-200 bg-gradient-to-br from-amber-50/60 to-white rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
+          <Sparkles className="h-4 w-4 text-amber-500" />
+          사주 기반 분석
+          <span className="text-[11px] font-normal text-amber-600">참고용 · 검토중</span>
+        </h3>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={birth}
+            onChange={(e) => onChangeBirth?.(e.target.value)}
+            placeholder="YYYY-MM-DD"
+            className="text-xs border border-slate-300 rounded px-2 py-1 w-28 focus:outline-none focus:border-amber-400"
+          />
+          {onGenerate && (
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={loading}
+              className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              {hasResult ? '다시 생성' : '분석 생성'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-2.5 py-1.5 leading-relaxed">
+        ⚠️ 명리(사주) 기반 <strong>참고 자료</strong> — 채용 합격/불합격 등 <strong>결정 근거로 사용하지 않습니다</strong>. 직무 무관 정보·차별 우려로 <strong>법무 검토 전</strong> 시범 기능입니다.
+      </div>
+
+      {!hasResult && !loading && (
+        <p className="text-xs text-slate-500">
+          사전질의서(PBD) 응답 + 생년월일이 확보되면 <strong>자동 생성</strong>됩니다.
+          {!birth && ' 생년월일이 비어있어 자동 생성이 멈춰 있습니다. 위에 입력 후 "분석 생성"을 눌러주세요.'}
+        </p>
+      )}
+      {loading && !hasResult && (
+        <p className="text-xs text-amber-700 flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> 분석 중...</p>
+      )}
+
+      {parsed && parsed.legacy && (
+        <>
+          <p className="text-[11px] text-slate-500">※ 기존 형식 결과입니다. <strong>"다시 생성"</strong>을 누르면 요약/직무 연계 분석을 포함한 새 형식으로 갱신됩니다.</p>
+          <div className="text-sm text-slate-800 leading-relaxed whitespace-pre-line rounded-md border border-slate-200 bg-white p-3">
+            {parsed.body}
+          </div>
+        </>
+      )}
+
+      {parsed && !parsed.legacy && (
+        <div className="space-y-3">
+          {/* 요약 */}
+          {parsed.summary && (
+            <div className="rounded-md border border-amber-200 bg-white p-3">
+              <div className="text-[11px] font-semibold text-amber-700 mb-1">요약</div>
+              <p className="text-sm text-slate-900 leading-relaxed break-keep">{parsed.summary}</p>
+            </div>
+          )}
+
+          {/* 핵심 키워드 */}
+          {parsed.key_traits.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {parsed.key_traits.map((t, i) => (
+                <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">{t}</span>
+              ))}
+            </div>
+          )}
+
+          {/* PBD 도메인 연계 */}
+          {parsed.domain_link && (
+            <div className="rounded-md border border-brand-200 bg-brand-50/50 p-3">
+              <div className="text-[11px] font-semibold text-brand-700 mb-1">
+                PBD 도메인 연계{domain ? ` · ${domain}` : ''}
+              </div>
+              <p className="text-sm text-slate-800 leading-relaxed break-keep">{parsed.domain_link}</p>
+            </div>
+          )}
+
+          {/* 직무별 사주 코멘트 — 도메인 매핑 세분화 */}
+          {parsed.job_fit.length > 0 && (
+            <div className="rounded-md border border-slate-200 bg-white p-3">
+              <div className="text-[11px] font-semibold text-slate-700 mb-2">적합 직무군 · 사주 연계 코멘트</div>
+              <div className="space-y-1.5">
+                {parsed.job_fit.map((jf, i) => {
+                  const hitApplied = !!applyingFor && applyingFor.includes(jf.job)
+                  const hitFit = (fitJobs || []).includes(jf.job)
+                  return (
+                    <div key={i} className="flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-2 text-sm">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className={`text-[11px] px-1.5 py-0.5 rounded border font-semibold ${hitApplied ? 'bg-emerald-600 text-white border-emerald-600' : hitFit ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                          {jf.job}{hitApplied && ' ◀ 지원'}
+                        </span>
+                        {jf.alignment && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${alignmentBadge(jf.alignment)}`}>{jf.alignment}</span>
+                        )}
+                      </div>
+                      <span className="text-slate-700 leading-relaxed break-keep">{jf.note}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 유의점 */}
+          {parsed.cautions && (
+            <div className="rounded-md border border-rose-200 bg-rose-50/40 p-3">
+              <div className="text-[11px] font-semibold text-rose-700 mb-1">유의점</div>
+              <p className="text-sm text-slate-700 leading-relaxed break-keep">{parsed.cautions}</p>
+            </div>
+          )}
+
+          {/* 상세 (접힘) */}
+          {parsed.body && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setBodyOpen((v) => !v)}
+                className="text-xs text-slate-500 hover:text-slate-800 underline-offset-2 hover:underline"
+              >
+                {bodyOpen ? '상세 분석 접기 ▲' : '상세 분석 보기 ▼'}
+              </button>
+              {bodyOpen && (
+                <p className="mt-1.5 text-sm text-slate-700 leading-relaxed whitespace-pre-line rounded-md border border-slate-100 bg-slate-50 p-3">
+                  {parsed.body}
+                </p>
+              )}
+            </div>
+          )}
+
+          {generatedAt && (
+            <p className="text-[10px] text-slate-400 text-right">생성: {new Date(generatedAt).toLocaleString('ko-KR')}</p>
+          )}
+        </div>
+      )}
     </section>
   )
 }
