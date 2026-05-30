@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   BarChart3,
@@ -121,12 +121,7 @@ const standaloneItems: NavItem[] = [
     label: '내 OJT',
     icon: <GraduationCap className="h-5 w-5" />,
   },
-  // 사용 매뉴얼 (전 직원 노출 — 공통 매뉴얼 + 메뉴별 사용 매뉴얼)
-  {
-    to: '/manual',
-    label: '사용 매뉴얼',
-    icon: <BookOpen className="h-5 w-5" />,
-  },
+  // 사용 매뉴얼은 인사평가 그룹 직후에 standalone 렌더링 (Sidebar component 내 별도 처리)
   // 법적 리스크 대응 P1-1: 직원 본인의 연장근로 신청 (feature toggle 로 노출)
   {
     to: '/my/overtime',
@@ -576,11 +571,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="my-2 border-t border-gray-200" />
       )}
 
-      {/* 그룹 메뉴 */}
+      {/* 그룹 메뉴 (인사평가 그룹 직후 '사용 매뉴얼' standalone 끼워넣음) */}
       {visibleGroups.map((group) => {
         const isExpanded = expandedGroups[group.id] ?? false
         return (
-          <div key={group.id} data-tour={`group:${group.id}`}>
+          <Fragment key={group.id}>
+          <div data-tour={`group:${group.id}`}>
             <button
               onClick={() => toggleGroup(group.id)}
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
@@ -627,6 +623,27 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </div>
             )}
           </div>
+          {/* 인사평가 그룹 직후 — 사용 매뉴얼 standalone (전 직원 노출) */}
+          {group.id === 'hr-eval' && (
+            <div data-tour="nav:/manual">
+              <NavLink
+                to="/manual"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  )
+                }
+              >
+                <BookOpen className="h-5 w-5" />
+                <span className="flex-1">사용 매뉴얼</span>
+              </NavLink>
+            </div>
+          )}
+          </Fragment>
         )
       })}
 

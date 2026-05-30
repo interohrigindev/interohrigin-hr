@@ -5,7 +5,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 import { usePushSubscription } from '@/hooks/usePushSubscription'
 import { GlobalTourOverlay } from '@/components/manual/GlobalTourOverlay'
-import { FloatingHelpButton } from '@/components/manual/FloatingHelpButton'
+// FloatingHelpButton 은 IO 플로팅(FloatingAIAgent) 빠른 링크로 통합되어 제거 (2026-05-30)
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -29,8 +29,7 @@ export default function DashboardLayout() {
       {/* 매뉴얼 Tour 글로벌 오버레이 — 어느 라우트에서든 활성 유지 */}
       <GlobalTourOverlay />
 
-      {/* 도움말 센터 — 우하단 ? 버튼 (컨텍스트 도움말) */}
-      <FloatingHelpButton />
+      {/* 사용 매뉴얼은 IO 플로팅(FloatingAIAgent) 빠른 링크에서 진입 */}
     </div>
   )
 }

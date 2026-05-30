@@ -213,6 +213,12 @@ export default function FloatingAIAgent() {
                     desc="평가 허브"
                     onClick={() => { setShowQuickMenu(false); navigate('/evaluation') }}
                   />
+                  <QuickLinkItem
+                    icon="📖"
+                    label="사용 매뉴얼"
+                    desc="앱 사용법·FAQ"
+                    onClick={() => { setShowQuickMenu(false); navigate('/manual') }}
+                  />
                 </div>
               </div>
             </>
