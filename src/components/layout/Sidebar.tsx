@@ -47,9 +47,14 @@ import {
   ScrollText,
   ToggleRight,
   Repeat,
+  ShoppingBag,
+  Heart,
+  Gift,
+  ExternalLink,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { openIoMall } from '@/lib/iomall'
 import { cn } from '@/lib/utils'
 import type { EmployeeRole } from '@/types/database'
 import logoSvg from '@/assets/logo.svg'
@@ -72,6 +77,10 @@ interface NavItem {
   end?: boolean
   /** 법적 리스크 대응 P1+: feature_rollouts 키 — 미지정이면 항상 노출 / 지정되면 토글 ON 시에만 노출 */
   featureKey?: string
+  /** 지정 시 NavLink 대신 IO Mall SSO 새 탭 오픈 (메뉴명 옆 ExternalLink 아이콘 자동 표시) */
+  externalIomallPath?: string
+  /** 동적 자격 체크 — 'healthkeeper' 면 mall.healthkeeper_eligibility.is_eligible=true 인 직원만 노출 */
+  eligibilityCheck?: 'healthkeeper'
 }
 
 interface NavGroup {
@@ -264,6 +273,25 @@ const navGroups: NavGroup[] = [
       { to: '/admin/hr/sync', label: '데이터 동기화', icon: <RefreshCw className="h-4 w-4" />, minRole: 'director' as EmployeeRole },
     ],
   },
+  // 복리후생 — IO Mall 외부 링크 (SSO 토큰 전달, 새 탭 오픈)
+  {
+    id: 'welfare',
+    label: '복리후생',
+    icon: <Gift className="h-5 w-5" />,
+    items: [
+      { externalIomallPath: '/brands', to: '/brands', label: '복지몰 쇼핑', icon: <ShoppingBag className="h-4 w-4" /> },
+      { externalIomallPath: '/healthkeeper', to: '/healthkeeper', label: '헬스키퍼', icon: <Heart className="h-4 w-4" />, eligibilityCheck: 'healthkeeper' },
+    ],
+  },
+  // 예약 — IO Mall 자원 예약 외부 링크
+  {
+    id: 'reservation',
+    label: '예약',
+    icon: <CalendarDays className="h-5 w-5" />,
+    items: [
+      { externalIomallPath: '/resources', to: '/resources', label: '자원 예약 바로가기', icon: <Calendar className="h-4 w-4" /> },
+    ],
+  },
   // 시스템 관리 — 법적 리스크 대응 P0 인프라 (감사 로그 / 기능 토글)
   // CEO/admin/hr_admin 등 상위 권한만 노출
   {
@@ -310,6 +338,29 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const [isResigning, setIsResigning] = useState(false)
   // 법적 리스크 대응 P1+ : 활성화된 feature_rollouts 키 집합 (메뉴 표시 제어)
   const [enabledFeatures, setEnabledFeatures] = useState<Set<string>>(new Set())
+  // IO Mall 헬스키퍼 자격 (mall.healthkeeper_eligibility.is_eligible)
+  const [healthkeeperEligible, setHealthkeeperEligible] = useState(false)
+
+  // 헬스키퍼 자격 1회 조회 (IO Mall 관리자가 토글한 mall.healthkeeper_eligibility 조회)
+  useEffect(() => {
+    if (!profile?.id) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        // mall 스키마 (IO Mall) — Supabase types 에 미정의이므로 any cast
+        const client = supabase as unknown as { schema: (s: string) => { from: (t: string) => { select: (q: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: { is_eligible: boolean } | null; error: unknown }> } } } } }
+        const { data } = await client.schema('mall')
+          .from('healthkeeper_eligibility')
+          .select('is_eligible')
+          .eq('employee_id', profile.id)
+          .maybeSingle()
+        if (!cancelled) setHealthkeeperEligible(!!data?.is_eligible)
+      } catch {
+        if (!cancelled) setHealthkeeperEligible(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [profile?.id])
 
   // feature_rollouts 로드
   useEffect(() => {
@@ -595,10 +646,34 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 {group.items.filter((it) => {
                   // 0512: '나의 인수인계' 는 퇴사 예정자에게만 노출
                   if (typeof it.to === 'string' && it.to === '/my/handover' && !isResigning) return false
+                  // 헬스키퍼 자격 동적 체크 (mall.healthkeeper_eligibility)
+                  if (it.eligibilityCheck === 'healthkeeper' && !healthkeeperEligible) return false
                   return isItemVisible(it)
                 }).map((item) => {
                   const path = resolvePath(item)
                   const tourKey = `nav:${typeof item.to === 'string' ? item.to : path}`
+
+                  // 외부 링크 (IO Mall SSO) — NavLink 대신 button + 새창 + ExternalLink 아이콘
+                  if (item.externalIomallPath) {
+                    return (
+                      <div key={`ext-${item.externalIomallPath}`} data-tour={tourKey}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onClose()
+                            void openIoMall(item.externalIomallPath!)
+                          }}
+                          className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors text-left"
+                          title={`IO Mall — ${item.label} (새 탭으로 열림)`}
+                        >
+                          {item.icon}
+                          <span className="flex-1">{item.label}</span>
+                          <ExternalLink className="h-3.5 w-3.5 text-gray-400 shrink-0" aria-label="새 탭" />
+                        </button>
+                      </div>
+                    )
+                  }
+
                   return (
                     <div key={path} data-tour={tourKey}>
                       <NavLink
@@ -623,8 +698,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </div>
             )}
           </div>
-          {/* 인사평가 그룹 직후 — 사용 매뉴얼 standalone (전 직원 노출) */}
-          {group.id === 'hr-eval' && (
+          {/* 예약 그룹 직후 — 사용 매뉴얼 standalone (전 직원 노출, 시스템관리 그룹 직전) */}
+          {group.id === 'reservation' && (
             <div data-tour="nav:/manual">
               <NavLink
                 to="/manual"
