@@ -22,12 +22,14 @@ import {
   UserPlus,
   FolderKanban,
   Clock,
-  ShoppingBag,
+  // ShoppingBag, // IO Mall 카드 제거(2026-05-30)로 미사용 — 사이드바 복리후생 그룹에서 진입
+  DollarSign,
   MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { openIoMall } from '@/lib/iomall'
+// import { openIoMall } from '@/lib/iomall' // IO Mall 카드 제거(2026-05-30)로 미사용 — 사이드바 복리후생 그룹에서 진입
 import { openIoCs as openIoCsSso } from '@/lib/iocs'
+import { openIoFinance } from '@/lib/iofinance'
 import { DateWeatherWidget } from '@/components/DateWeatherWidget'
 
 // 0513: IO CS 고객관리 플랫폼 접근 — 역할/부서 기반 자동 판정
@@ -131,23 +133,24 @@ const ADMIN_BLOCKS: BlockItem[] = [
     bg: 'bg-gray-50 hover:bg-gray-100 border-gray-200',
     path: '/settings/general',
   },
-  {
-    title: 'IO Mall',
-    description: '복지 포인트 몰 (별도 탭에서 열림)',
-    icon: ShoppingBag,
-    color: 'text-gold-600',
-    bg: 'bg-amber-50 hover:bg-amber-100 border-amber-200',
-    path: 'iomall',
-    onClick: () => openIoMall('/'),
-  },
+  // IO Mall 은 사이드바 '복리후생' 그룹에서 진입 (메인 카드에서 제거 — 중복 노출 방지, 2026-05-30)
   // 0513: IO CS — onClick 은 컴포넌트 내부에서 profile 주입해 덮어씀
   {
     title: 'IO CS',
-    description: '고객관리 플랫폼 (승인된 사용자만 / 별도 탭)',
+    description: '고객관리 플랫폼 — cs.interohrigin.com (승인된 사용자만 / 별도 탭)',
     icon: MessageSquare,
     color: 'text-sky-600',
     bg: 'bg-sky-50 hover:bg-sky-100 border-sky-200',
     path: 'iocs',
+  },
+  {
+    title: 'IO Finance',
+    description: '회계 플랫폼 — fn.interohrigin.com (별도 탭에서 열림)',
+    icon: DollarSign,
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200',
+    path: 'iofinance',
+    onClick: () => openIoFinance('/'),
   },
 ]
 
@@ -288,23 +291,24 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
       bg: 'bg-gray-50 hover:bg-gray-100 border-gray-200',
       path: '/my-profile',
     },
-    {
-      title: 'IO Mall',
-      description: '복지 포인트로 쇼핑하기 (별도 탭에서 열림)',
-      icon: ShoppingBag,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50 hover:bg-amber-100 border-amber-200',
-      path: 'iomall',
-      onClick: () => openIoMall('/'),
-    },
+    // IO Mall 은 사이드바 '복리후생' 그룹에서 진입 (메인 카드에서 제거)
     // 0513: IO CS — 승인된 사용자만 접근
     {
       title: 'IO CS',
-      description: '고객관리 플랫폼 (승인된 사용자만 / 별도 탭)',
+      description: '고객관리 플랫폼 — cs.interohrigin.com (승인된 사용자만 / 별도 탭)',
       icon: MessageSquare,
       color: 'text-sky-600',
       bg: 'bg-sky-50 hover:bg-sky-100 border-sky-200',
       path: 'iocs',
+    },
+    {
+      title: 'IO Finance',
+      description: '회계 플랫폼 — fn.interohrigin.com (별도 탭에서 열림)',
+      icon: DollarSign,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200',
+      path: 'iofinance',
+      onClick: () => openIoFinance('/'),
     },
   ]
 
