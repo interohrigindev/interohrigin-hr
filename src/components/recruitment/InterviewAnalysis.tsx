@@ -104,6 +104,8 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
   const [driveFetching, setDriveFetching] = useState<string | null>(null)
   const [driveFiles, setDriveFiles] = useState<Record<string, DriveFile[]>>({})
   const [driveDownloading, setDriveDownloading] = useState<string | null>(null)
+  // 진행 단계 라벨 (사용자 가시 — 작은 스피너 보강용)
+  const [analyzeStage, setAnalyzeStage] = useState<string>('')
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -220,6 +222,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
   ) {
     const key = group.schedule?.id || 'new'
     setDriveDownloading(key)
+    setAnalyzeStage(`Google Drive 에서 "${driveFile.name}" 가져오는 중...`)
 
     try {
       // 1. Drive에서 파일 다운로드 (프록시 경유)
@@ -292,12 +295,14 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
       toast('파일 가져오기 실패: ' + err.message, 'error')
     }
     setDriveDownloading(null)
+    setAnalyzeStage('')
   }
 
   // Gemini 회의록 텍스트 기반 면접 분석
   async function handleAnalyzeFromMeetingNotes(group: InterviewGroup, meetingText: string, _fileName: string) {
     const groupKey = group.schedule?.id || 'new'
     setAnalyzingId(groupKey)
+    setAnalyzeStage('회의록 텍스트 분석 준비 중...')
 
     try {
       // 텍스트 기반 회의록 분석 — 설정된 provider(Claude/OpenAI/Gemini) 그대로 사용
@@ -373,6 +378,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
       let result: any = null
       let lastError = '분석 실패'
       for (const cfg of attempts) {
+        setAnalyzeStage(`${cfg.provider} AI 로 회의록 분석 중... (1~3분 소요)`)
         const res = await fetch('/api/transcribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -386,8 +392,19 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
             context,
           }),
         })
+        // 응답 본문은 한 번만 읽을 수 있어 raw 보관 후 JSON 시도
+        const rawText = await res.text().catch(() => '')
         let attempt: any
-        try { attempt = JSON.parse(await res.text()) } catch { attempt = { error: '서버 응답 파싱 실패' } }
+        try {
+          attempt = rawText ? JSON.parse(rawText) : { error: '빈 응답' }
+        } catch {
+          // 파싱 실패 — raw 응답 일부를 에러에 포함해 디버깅 가능하게
+          const preview = rawText.slice(0, 200).replace(/\s+/g, ' ').trim()
+          console.error('[interview-analyze] non-JSON response:', { provider: cfg.provider, status: res.status, preview })
+          attempt = {
+            error: `서버 응답 파싱 실패 (HTTP ${res.status}, ${cfg.provider}). 응답: "${preview || '(빈 응답)'}"`,
+          }
+        }
         if (res.ok && attempt.success) { result = attempt; break }
         const errLow = String(attempt.error || '').toLowerCase()
         const isKeyOrQuotaErr =
@@ -424,9 +441,15 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
       toast('회의록 기반 면접 분석이 완료되었습니다.', 'success')
       fetchData()
     } catch (err: any) {
-      toast('분석 오류: ' + err.message, 'error')
+      // 파싱 실패/분석 실패 — 사용자가 다음 행동 알 수 있게 메시지 보강
+      const msg = String(err?.message || '알 수 없는 오류')
+      const suggestion = msg.includes('파싱 실패') || msg.includes('파싱')
+        ? '\n→ AI 서비스 응답에 문제가 있습니다. 잠시 후 재시도하거나 다른 AI provider(설정 → AI 설정)로 변경해보세요.'
+        : ''
+      toast('분석 오류: ' + msg + suggestion, 'error')
     }
     setAnalyzingId(null)
+    setAnalyzeStage('')
   }
 
   /* ─── 파일 업로드 (화상/대면 공통) ─────────────── */
@@ -680,6 +703,7 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
       toast('분석 오류: ' + err.message, 'error')
     }
     setAnalyzingId(null)
+    setAnalyzeStage('')
   }
 
   /* ─── 확인 완료 → 원본 파일 삭제 ───────────────── */
@@ -796,6 +820,21 @@ export default function InterviewAnalysis({ candidateId, candidateName }: Interv
             accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm"
             className="hidden"
           />
+
+          {/* 진행 상태 전역 배너 — Drive 다운로드 / AI 분석 중일 때 항상 가시 */}
+          {(driveDownloading || analyzingId) && (
+            <div className="sticky top-0 z-10 rounded-lg border border-blue-300 bg-blue-50 p-3 flex items-center gap-3 shadow-sm">
+              <Loader2 className="h-5 w-5 text-blue-600 animate-spin shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-blue-900">
+                  {driveDownloading ? '📥 Google Drive 에서 파일 가져오는 중...' : '🤖 AI 면접 분석 진행 중...'}
+                </p>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  {analyzeStage || (driveDownloading ? '파일 크기에 따라 10초~1분 소요됩니다.' : '회의록 길이에 따라 1~3분 소요됩니다. 페이지를 닫지 마세요.')}
+                </p>
+              </div>
+            </div>
+          )}
 
           {groups.map((group, idx) => {
             const key = group.schedule?.id || group.recording?.id || `group-${idx}`
