@@ -12,7 +12,7 @@ import {
   Settings,
   Search,
   CalendarDays,
-  Bot,
+  // Bot, // AI 챗봇 숨김 처리로 미사용 (2026-05-30)
   PenSquare,
   FileText,
   ClipboardList,
