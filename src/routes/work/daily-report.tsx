@@ -1650,6 +1650,34 @@ ${completedText || '아직 없음'}
                     ojt_weekly_report_status: ojtInfo.weekly_report_status,
                   } : {}
 
+                  // 결재자 가독성 개선: 한 줄 총평을 업무내용/개인 소견으로 자동 분리·요약
+                  // 실패해도 결재 전송 자체는 차단하지 않음 (원문 fallback 표시).
+                  let aiSummary: { work: string; personal: string } | null = null
+                  const commentText = satisfactionComment.trim()
+                  if (commentText.length >= 80) {
+                    try {
+                      const cfg = await getAIConfigForFeature('daily_report')
+                      if (cfg) {
+                        const sumPrompt = `아래는 직원이 오늘 일일 업무보고서에 작성한 "한 줄 총평" 원문입니다.\n결재자가 빠르게 파악하도록 두 가지로 요약해주세요.\n\n[원문]\n${commentText}\n\n[요구사항]\n1) 업무내용 요약: 오늘 한 일/성과/이슈를 사실 위주로 2~3줄 한국어로 요약\n2) 개인 소견 요약: 직원의 감정·소감·다짐·감사 표현 등 주관적 내용을 1~2줄 한국어로 요약\n3) 해당 항목에 적절한 내용이 없으면 빈 문자열로 둘 것 (추측 금지)\n4) 추가 해석·평가·권고는 절대 추가하지 말 것 (요약만)\n\n반드시 아래 JSON 한 줄만 출력 (코드펜스/설명 금지):\n{"work":"...","personal":"..."}`
+                        const sumRes = await generateAIContent(cfg, sumPrompt, undefined, 'daily_report_summary')
+                        const raw = (sumRes.content || '').trim()
+                        // 코드펜스가 끼어들 경우 제거
+                        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+                        const m = cleaned.match(/\{[\s\S]*\}/)
+                        if (m) {
+                          const parsed = JSON.parse(m[0]) as { work?: unknown; personal?: unknown }
+                          aiSummary = {
+                            work: typeof parsed.work === 'string' ? parsed.work.trim() : '',
+                            personal: typeof parsed.personal === 'string' ? parsed.personal.trim() : '',
+                          }
+                          if (!aiSummary.work && !aiSummary.personal) aiSummary = null
+                        }
+                      }
+                    } catch {
+                      aiSummary = null
+                    }
+                  }
+
                   const { data: doc, error: docErr } = await supabase.from('approval_documents').insert({
                     doc_type: 'daily_report',
                     title: `일일 업무보고 (${selectedDate})`,
@@ -1662,6 +1690,8 @@ ${completedText || '아직 없음'}
                       // P1-#8 #9: 업무 만족도 + 한 줄 총평 누락 보강
                       satisfaction_score: satisfaction,
                       satisfaction_comment: satisfactionComment.trim() || null,
+                      // 결재자 가독성: 업무/소견 분리 요약 (실패 시 null, 뷰는 원문만 표시)
+                      ai_summary: aiSummary,
                       ...ojtContext,
                     },
                     requester_id: profile.id,

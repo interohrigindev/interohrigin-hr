@@ -26,6 +26,8 @@ interface DailyReportContent {
   project_memos?: Record<string, string>
   satisfaction_score?: number
   satisfaction_comment?: string
+  // 결재자 가독성: 한 줄 총평 자동 요약 (업무/소견 분리). 제출 시 AI 1회 생성, 실패 시 null.
+  ai_summary?: { work?: string; personal?: string } | null
   blockers?: string
 }
 
@@ -200,9 +202,9 @@ export function DailyReportApprovalView({ content }: { content: DailyReportConte
         </div>
       )}
 
-      {/* 만족도 + 한줄총평 + 블로커 */}
+      {/* 만족도 + 한줄총평(요약+원문) + 블로커 */}
       {(content.satisfaction_score != null || content.satisfaction_comment || content.blockers) && (
-        <div className="border border-gray-200 rounded-lg p-3 bg-white space-y-1.5">
+        <div className="border border-gray-200 rounded-lg p-3 bg-white space-y-2">
           {content.satisfaction_score != null && (
             <p className="text-sm">
               <span className="text-gray-500">만족도:</span>{' '}
@@ -210,10 +212,10 @@ export function DailyReportApprovalView({ content }: { content: DailyReportConte
             </p>
           )}
           {content.satisfaction_comment && (
-            <p className="text-sm">
-              <span className="text-gray-500">한 줄 총평:</span>{' '}
-              <span className="text-gray-900">{content.satisfaction_comment}</span>
-            </p>
+            <SatisfactionCommentView
+              comment={content.satisfaction_comment}
+              summary={content.ai_summary ?? null}
+            />
           )}
           {content.blockers && (
             <p className="text-sm">
@@ -231,6 +233,56 @@ export function DailyReportApprovalView({ content }: { content: DailyReportConte
         (!content.project_memos || Object.keys(content.project_memos).length === 0) && (
           <p className="text-sm text-gray-400 text-center py-4">작성된 업무가 없습니다</p>
         )}
+    </div>
+  )
+}
+
+// 한 줄 총평: AI 요약(업무/소견 분리)을 먼저 보여주고, 원문은 토글로 펼쳐서 확인
+function SatisfactionCommentView({
+  comment,
+  summary,
+}: {
+  comment: string
+  summary: { work?: string; personal?: string } | null
+}) {
+  const work = (summary?.work || '').trim()
+  const personal = (summary?.personal || '').trim()
+  const hasSummary = Boolean(work || personal)
+  // 요약이 있을 때만 원문을 기본 접힘, 없으면 원문이 곧 본문
+  const [expanded, setExpanded] = useState(!hasSummary)
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-semibold text-gray-500">한 줄 총평</p>
+      {hasSummary ? (
+        <div className="rounded-md border border-brand-100 bg-brand-50/40 p-2.5 space-y-1.5">
+          {work && (
+            <div className="text-sm flex gap-2">
+              <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">업무</span>
+              <span className="text-gray-900 leading-relaxed">{work}</span>
+            </div>
+          )}
+          {personal && (
+            <div className="text-sm flex gap-2">
+              <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700">소견</span>
+              <span className="text-gray-700 leading-relaxed">{personal}</span>
+            </div>
+          )}
+          <p className="text-[10px] text-gray-400 pt-0.5">🤖 AI 요약 · 참고용</p>
+        </div>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="text-[11px] text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline"
+      >
+        {expanded ? '원문 접기 ▲' : '원문 보기 ▼'}
+      </button>
+      {expanded && (
+        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed rounded-md border border-gray-100 bg-gray-50 p-2.5">
+          {comment}
+        </p>
+      )}
     </div>
   )
 }
