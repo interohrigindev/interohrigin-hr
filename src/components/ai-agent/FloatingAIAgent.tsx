@@ -176,13 +176,14 @@ export default function FloatingAIAgent() {
                   <p className="text-xs font-bold">IO 빠른 링크</p>
                 </div>
                 <div className="py-1.5">
-                  <QuickLinkItem
+                  {/* AI 챗봇 항목은 일시 숨김 (사용자 요청 2026-05-30) — 필요 시 주석 해제 */}
+                  {/* <QuickLinkItem
                     icon="🤖"
                     label="AI 챗봇"
                     desc="문의·요청 대화"
                     onClick={() => { setShowQuickMenu(false); setIsOpen(true) }}
                     accent
-                  />
+                  /> */}
                   <QuickLinkItem
                     icon="🏠"
                     label="메인"
