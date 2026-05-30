@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@block65/webcrypto-web-push": "^1.0.2",
     "@supabase/supabase-js": "^2.98.0",
     "@tiptap/extension-color": "^3.22.0",
     "@tiptap/extension-image": "^3.22.0",

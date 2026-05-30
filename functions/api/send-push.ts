@@ -1,15 +1,25 @@
 /**
- * Cloudflare Pages Function — Web Push 발송
+ * Cloudflare Pages Function — Web Push 발송 (RFC8030 aes128gcm 완전 동작)
  * POST /api/send-push
  * Body: { recipient_uid, title, body, url? }
  *
+ * Design Ref: §7.1 — @block65/webcrypto-web-push 채택 (Web Crypto 네이티브, wrangler.toml 불요)
+ * Plan SC: SC-01, FR-12
+ *
  * 환경변수 (Cloudflare Pages Settings):
- *   VAPID_PUBLIC_KEY    — VAPID 공개키 (DB notification_channel_configs 와 동일해야 함)
- *   VAPID_PRIVATE_KEY   — VAPID 비공개키 (DB 에 저장 X)
- *   VAPID_SUBJECT       — 발신자 식별 mailto: (예: mailto:hr@interohrigin.com)
+ *   VAPID_PUBLIC_KEY    — base64url 인코딩된 VAPID 공개키 (DB notification_channel_configs.vapid_public_key 와 동일)
+ *   VAPID_PRIVATE_KEY   — base64url 인코딩된 VAPID 비공개키 (32 bytes raw key)
+ *   VAPID_SUBJECT       — mailto: 또는 https: URL (예: mailto:hr@interohrigin.com)
  *   VITE_SUPABASE_URL          — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_ROLE_KEY  — Service Role Key (push_subscriptions 조회용)
  */
+
+import {
+  buildPushPayload,
+  type PushSubscription,
+  type PushMessage,
+  type VapidKeys,
+} from '@block65/webcrypto-web-push'
 
 interface Env {
   VAPID_PUBLIC_KEY?: string
@@ -26,6 +36,12 @@ interface PushRequestBody {
   url?: string
 }
 
+interface PushSubscriptionRow {
+  endpoint: string
+  p256dh: string
+  auth_secret: string
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -37,52 +53,6 @@ function jsonResponse(data: unknown, status = 200) {
     status,
     headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
   })
-}
-
-// Base64URL → Uint8Array
-function b64urlToBytes(s: string): Uint8Array {
-  const pad = '='.repeat((4 - (s.length % 4)) % 4)
-  const b64 = (s + pad).replace(/-/g, '+').replace(/_/g, '/')
-  const bin = atob(b64)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-  return out
-}
-
-function bytesToB64url(bytes: ArrayBuffer | Uint8Array): string {
-  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
-  let s = ''
-  for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i])
-  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-// ECDSA P-256 JWT 서명 (ES256)
-async function signJWT(header: object, payload: object, privateKeyB64url: string): Promise<string> {
-  const enc = new TextEncoder()
-  const h = bytesToB64url(enc.encode(JSON.stringify(header)))
-  const p = bytesToB64url(enc.encode(JSON.stringify(payload)))
-  const data = `${h}.${p}`
-  const dBytes = b64urlToBytes(privateKeyB64url)
-  // JWK 형태로 import
-  const jwk = {
-    kty: 'EC',
-    crv: 'P-256',
-    d: privateKeyB64url,
-    // 공개키는 서명에만 쓰는 경우 생략 가능하나, 안전을 위해 d 만 사용
-    // 단, browser/worker 호환을 위해 x, y 도 함께 제공해야 할 수 있음.
-    // 비공개키만으로 sign 하려면 PKCS8 import 가 더 안정적이지만, 여기선 d만 사용.
-    x: '',
-    y: '',
-  }
-  // 위 jwk import 는 환경에 따라 실패할 수 있음 — raw d 로 PKCS8 import 시도
-  // 보다 안정적 경로: PKCS8 키를 환경변수로 받는 것을 권장하지만,
-  // VAPID 표준 발급 도구는 raw 32-byte 비공개키를 제공하므로 직접 EC 서명 시도
-  void dBytes
-  void jwk
-  // 단순 fallback: Worker 환경에서 ECDSA 서명이 복잡 — 외부 라이브러리 없이 구현 한계
-  // 여기서는 PKCS8 형식의 비공개키를 환경변수로 받는 것을 권장
-  throw new Error('VAPID signing requires PKCS8 private key — see deployment notes')
-  return data
 }
 
 export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS_HEADERS })
@@ -100,7 +70,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     const body = (await ctx.request.json()) as PushRequestBody
     if (!body.recipient_uid) return jsonResponse({ error: 'recipient_uid 필수' }, 400)
 
-    // 1) 대상의 구독 목록 조회 (Service Role 로)
+    // 1) 대상 구독 목록 조회 (service role)
     const subRes = await fetch(
       `${env.VITE_SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${body.recipient_uid}&select=endpoint,p256dh,auth_secret`,
       {
@@ -111,45 +81,81 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       },
     )
     if (!subRes.ok) return jsonResponse({ error: '구독 조회 실패' }, 500)
-    const subs = (await subRes.json()) as { endpoint: string; p256dh: string; auth_secret: string }[]
-    if (subs.length === 0) return jsonResponse({ error: '등록된 구독 없음 (직원이 알림 권한 미허용 또는 미접속)' }, 404)
+    const subs = (await subRes.json()) as PushSubscriptionRow[]
+    if (subs.length === 0) {
+      return jsonResponse({ sent: 0, results: [], note: '등록된 구독 없음 (직원이 알림 권한 미허용 또는 미접속)' })
+    }
 
-    // 2) Payload
-    const payload = JSON.stringify({
+    // 2) VAPID 키 객체
+    const vapid: VapidKeys = {
+      subject: env.VAPID_SUBJECT,
+      publicKey: env.VAPID_PUBLIC_KEY,
+      privateKey: env.VAPID_PRIVATE_KEY,
+    }
+
+    // 3) Payload (Service Worker 가 받을 데이터)
+    const messageData = JSON.stringify({
       title: body.title,
       body: body.body,
       url: body.url || '/',
     })
 
-    // 3) 각 endpoint 로 전송
-    //    Web Push 프로토콜은 RFC8030 (aes128gcm) — Cloudflare Workers 환경에서
-    //    완전한 자체 구현은 복잡하므로, 추후 web-push 호환 라이브러리 도입 권장.
-    //    현재는 endpoint 별로 단순 POST (aes128gcm 미적용) — FCM 등 일부 제공자만 동작 가능.
-    //    프로덕션 운영 시 https://github.com/web-push-libs/web-push 호환 구현 필요.
-    const results = []
-    for (const sub of subs) {
-      try {
-        // 임시: 알림 페이로드를 aud=endpoint 로 단순 전달
-        // 실제 발송은 aes128gcm 암호화 + VAPID JWT 헤더가 필요함
-        await signJWT(
-          { typ: 'JWT', alg: 'ES256' },
-          {
-            aud: new URL(sub.endpoint).origin,
-            exp: Math.floor(Date.now() / 1000) + 12 * 3600,
-            sub: env.VAPID_SUBJECT,
-          },
-          env.VAPID_PRIVATE_KEY,
-        )
-        results.push({ endpoint: sub.endpoint, status: 'queued' })
-      } catch (err: any) {
-        results.push({ endpoint: sub.endpoint, status: 'failed', error: err?.message })
-      }
+    const message: PushMessage = {
+      data: messageData,
+      options: {
+        ttl: 60 * 60, // 1시간
+        urgency: 'normal',
+      },
     }
 
+    // 4) 각 endpoint 로 발송 (allSettled — 일부 실패 무관)
+    const results: Array<{ endpoint: string; status: number | 'error'; error?: string }> = []
+
+    await Promise.allSettled(
+      subs.map(async (sub) => {
+        const subscription: PushSubscription = {
+          endpoint: sub.endpoint,
+          expirationTime: null,
+          keys: {
+            p256dh: sub.p256dh,
+            auth: sub.auth_secret,
+          },
+        }
+        try {
+          const pushInit = await buildPushPayload(message, subscription, vapid)
+          const res = await fetch(sub.endpoint, pushInit)
+          results.push({ endpoint: sub.endpoint, status: res.status })
+
+          // 410 Gone / 404 Not Found — 구독 만료. 자동 정리.
+          if (res.status === 404 || res.status === 410) {
+            await fetch(
+              `${env.VITE_SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(sub.endpoint)}`,
+              {
+                method: 'DELETE',
+                headers: {
+                  apikey: env.SUPABASE_SERVICE_ROLE_KEY!,
+                  Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY!}`,
+                },
+              },
+            ).catch(() => {})
+          }
+        } catch (err: any) {
+          results.push({
+            endpoint: sub.endpoint,
+            status: 'error',
+            error: err?.message || 'unknown',
+          })
+        }
+      }),
+    )
+
+    const successCount = results.filter(
+      (r) => typeof r.status === 'number' && r.status >= 200 && r.status < 300,
+    ).length
     return jsonResponse({
-      sent: results.length,
+      sent: successCount,
+      total: results.length,
       results,
-      warning: 'Web Push aes128gcm 암호화는 web-push 라이브러리 도입 후 완전 동작합니다. 현재는 구독 등록 + 페이로드 전송 인프라까지 구축됨.',
     })
   } catch (err: any) {
     return jsonResponse({ error: err?.message || '발송 실패' }, 500)
