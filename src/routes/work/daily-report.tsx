@@ -1050,6 +1050,53 @@ ${completedText || '아직 없음'}
     if (!employeeId) return
     setSaving(true)
 
+    const commentText = satisfactionComment.trim()
+
+    // 한 줄 총평 AI 요약 — 저장 시 1회 생성, 동일 텍스트면 재호출 스킵(토큰 절약).
+    // 결재자는 저장된 요약을 그대로 표시(반복 AI 호출 없음).
+    let nextAiSummary: { work: string[]; personal: string[] } | null = null
+    let nextAiSummarySource: string | null = null
+    const prevSource = (report as { ai_summary_source?: string | null } | null)?.ai_summary_source ?? null
+    const prevSummary = (report as { ai_summary?: { work?: string[]; personal?: string[] } | null } | null)?.ai_summary ?? null
+
+    if (!commentText) {
+      // 총평 비어있으면 요약 클리어
+      nextAiSummary = null
+      nextAiSummarySource = null
+    } else if (commentText.length < 80) {
+      // 너무 짧으면 굳이 요약 안 함
+      nextAiSummary = null
+      nextAiSummarySource = commentText
+    } else if (prevSource === commentText && prevSummary && (prevSummary.work?.length || prevSummary.personal?.length)) {
+      // 직전 요약과 같은 본문 — 재호출 스킵, 기존 값 유지
+      nextAiSummary = { work: prevSummary.work || [], personal: prevSummary.personal || [] }
+      nextAiSummarySource = prevSource
+    } else {
+      // 새로 요약 (실패해도 저장은 진행 — 다음 저장 때 재시도)
+      try {
+        const cfg = await getAIConfigForFeature('daily_report')
+        if (cfg) {
+          const sumPrompt = `아래는 직원이 일일 업무보고서에 작성한 "한 줄 총평" 원문입니다.\n결재자가 빠르게 파악하도록 정리된 짧은 문장 리스트로 분리해 주세요.\n\n[원문]\n${commentText}\n\n[요구사항]\n1) 업무내용(work): 오늘 한 일/성과/이슈를 사실 위주 짧은 문장 2~4개 (한 문장 30자 내외, 종결 어미 포함)\n2) 개인 소견(personal): 감정·소감·다짐·감사 등 주관적 내용 짧은 문장 1~3개 (한 문장 30자 내외, 종결 어미 포함)\n3) 한 항목에 적절한 내용이 없으면 빈 배열 [] 로 둘 것 (추측 금지)\n4) 해석·평가·권고는 절대 추가하지 말 것 (요약만)\n5) 마크다운/번호/불릿 기호 없이 순수 문장만\n\n반드시 아래 JSON 한 줄만 출력 (코드펜스/설명 금지):\n{"work":["...","..."],"personal":["..."]}`
+          const res = await generateAIContent(cfg, sumPrompt, undefined, 'daily_report_summary')
+          const raw = (res.content || '').trim()
+          const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
+          const m = cleaned.match(/\{[\s\S]*\}/)
+          if (m) {
+            const parsed = JSON.parse(m[0]) as { work?: unknown; personal?: unknown }
+            const toArr = (v: unknown): string[] => Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : []
+            const w = toArr(parsed.work)
+            const p = toArr(parsed.personal)
+            if (w.length || p.length) {
+              nextAiSummary = { work: w, personal: p }
+              nextAiSummarySource = commentText
+            }
+          }
+        }
+      } catch {
+        // 실패해도 저장은 진행
+      }
+    }
+
     const payload = {
       employee_id: employeeId,
       report_date: selectedDate,
@@ -1059,11 +1106,13 @@ ${completedText || '아직 없음'}
       carryover_tasks: carryover.filter((t) => t.title.trim()),
       ai_priority_suggestion: aiSuggestion,
       satisfaction_score: satisfaction,
-      satisfaction_comment: satisfactionComment.trim() || null,
+      satisfaction_comment: commentText || null,
       blockers: blockers.trim() || null,
       work_memo: workMemo.trim() || null,
       project_memos: projectMemos,
       excluded_projects: Array.from(dismissedProjects),
+      ai_summary: nextAiSummary,
+      ai_summary_source: nextAiSummarySource,
     }
 
     if (report?.id) {
@@ -1650,33 +1699,9 @@ ${completedText || '아직 없음'}
                     ojt_weekly_report_status: ojtInfo.weekly_report_status,
                   } : {}
 
-                  // 결재자 가독성 개선: 한 줄 총평을 업무내용/개인 소견으로 자동 분리·요약
-                  // 실패해도 결재 전송 자체는 차단하지 않음 (원문 fallback 표시).
-                  let aiSummary: { work: string; personal: string } | null = null
-                  const commentText = satisfactionComment.trim()
-                  if (commentText.length >= 80) {
-                    try {
-                      const cfg = await getAIConfigForFeature('daily_report')
-                      if (cfg) {
-                        const sumPrompt = `아래는 직원이 오늘 일일 업무보고서에 작성한 "한 줄 총평" 원문입니다.\n결재자가 빠르게 파악하도록 두 가지로 요약해주세요.\n\n[원문]\n${commentText}\n\n[요구사항]\n1) 업무내용 요약: 오늘 한 일/성과/이슈를 사실 위주로 2~3줄 한국어로 요약\n2) 개인 소견 요약: 직원의 감정·소감·다짐·감사 표현 등 주관적 내용을 1~2줄 한국어로 요약\n3) 해당 항목에 적절한 내용이 없으면 빈 문자열로 둘 것 (추측 금지)\n4) 추가 해석·평가·권고는 절대 추가하지 말 것 (요약만)\n\n반드시 아래 JSON 한 줄만 출력 (코드펜스/설명 금지):\n{"work":"...","personal":"..."}`
-                        const sumRes = await generateAIContent(cfg, sumPrompt, undefined, 'daily_report_summary')
-                        const raw = (sumRes.content || '').trim()
-                        // 코드펜스가 끼어들 경우 제거
-                        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
-                        const m = cleaned.match(/\{[\s\S]*\}/)
-                        if (m) {
-                          const parsed = JSON.parse(m[0]) as { work?: unknown; personal?: unknown }
-                          aiSummary = {
-                            work: typeof parsed.work === 'string' ? parsed.work.trim() : '',
-                            personal: typeof parsed.personal === 'string' ? parsed.personal.trim() : '',
-                          }
-                          if (!aiSummary.work && !aiSummary.personal) aiSummary = null
-                        }
-                      }
-                    } catch {
-                      aiSummary = null
-                    }
-                  }
+                  // 결재자 가독성: 저장 시 daily_reports.ai_summary 에 만들어둔 요약을 그대로 사본 저장.
+                  // 결재 전송 시 AI 재호출 없음 — 토큰/중복 호출 방지.
+                  const aiSummary = (report as { ai_summary?: { work?: string[]; personal?: string[] } | null } | null)?.ai_summary ?? null
 
                   const { data: doc, error: docErr } = await supabase.from('approval_documents').insert({
                     doc_type: 'daily_report',

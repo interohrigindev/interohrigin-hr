@@ -5,9 +5,8 @@
  * **프로젝트명** 표시. 보고서 본문에는 task id 만 있으므로 tasks → projects
  * 조인 1회 fetch 후 client-side 매핑.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { generateAIContent, getAIConfigForFeature } from '@/lib/ai-client'
 
 interface ReportTask {
   id?: string
@@ -27,8 +26,9 @@ interface DailyReportContent {
   project_memos?: Record<string, string>
   satisfaction_score?: number
   satisfaction_comment?: string
-  // 결재자 가독성: 한 줄 총평 자동 요약 (업무/소견 분리). 제출 시 AI 1회 생성, 실패 시 null.
-  ai_summary?: { work?: string; personal?: string } | null
+  // 결재자 가독성: 한 줄 총평 자동 요약 (업무/소견 분리). 작성자 저장 시 1회 생성, 결재 전송 시 그대로 복사.
+  // 신규 형식: { work: string[], personal: string[] } | 구 형식: { work: string, personal: string }
+  ai_summary?: { work?: string | string[]; personal?: string | string[] } | null
   blockers?: string
 }
 
@@ -36,8 +36,8 @@ interface ProjectInfo {
   name: string
 }
 
-// documentId 가 있으면 기존(요약 없는) 결재건도 화면 로드 시 1회 AI 요약 후 approval_documents 에 persist
-export function DailyReportApprovalView({ content, documentId }: { content: DailyReportContent; documentId?: string }) {
+// 결재자는 저장된 ai_summary 만 표시 (작성자 저장 시 1회 생성 → 결재 전송 시 사본 저장됨)
+export function DailyReportApprovalView({ content }: { content: DailyReportContent }) {
   const [taskProjectMap, setTaskProjectMap] = useState<Record<string, string>>({})
   const [projectMemoNames, setProjectMemoNames] = useState<Record<string, string>>({})
 
@@ -217,8 +217,6 @@ export function DailyReportApprovalView({ content, documentId }: { content: Dail
             <SatisfactionCommentView
               comment={content.satisfaction_comment}
               summary={content.ai_summary ?? null}
-              documentId={documentId}
-              fullContent={content}
             />
           )}
           {content.blockers && (
@@ -241,108 +239,69 @@ export function DailyReportApprovalView({ content, documentId }: { content: Dail
   )
 }
 
-// 한 줄 총평: AI 요약(업무/소견 분리)을 먼저 보여주고, 원문은 토글로 펼쳐서 확인
-// - summary 가 있으면 그대로 표시 (제출 시 생성한 결과)
-// - summary 가 없고 documentId 가 있으면 화면 로드 시 1회 AI 요약 후 approval_documents 에 persist
+// 한 줄 총평: 저장된 AI 요약(업무/소견 불릿)을 먼저 표시, 원문은 토글로 펼침.
+// 결재자 화면에서는 AI 호출 없음 — 작성자 저장 시점 1회 생성된 결과만 표시.
 function SatisfactionCommentView({
   comment,
   summary,
-  documentId,
-  fullContent,
 }: {
   comment: string
-  summary: { work?: string; personal?: string } | null
-  documentId?: string
-  fullContent?: DailyReportContent
+  summary: { work?: string | string[]; personal?: string | string[] } | null
 }) {
-  const initialWork = (summary?.work || '').trim()
-  const initialPersonal = (summary?.personal || '').trim()
-  const hadInitialSummary = Boolean(initialWork || initialPersonal)
-
-  const [localWork, setLocalWork] = useState(initialWork)
-  const [localPersonal, setLocalPersonal] = useState(initialPersonal)
-  const [generating, setGenerating] = useState(false)
-  const triedRef = useRef(false)
-
-  // 기존 결재건 보강: summary 없고 documentId 있고 본문이 충분히 길면 1회 AI 호출 → DB persist
-  useEffect(() => {
-    if (hadInitialSummary) return
-    if (triedRef.current) return
-    if (!documentId) return
-    const text = comment.trim()
-    if (text.length < 80) return
-    triedRef.current = true
-
-    let cancelled = false
-    ;(async () => {
-      setGenerating(true)
-      try {
-        const cfg = await getAIConfigForFeature('daily_report')
-        if (!cfg) return
-        const sumPrompt = `아래는 직원이 일일 업무보고서에 작성한 "한 줄 총평" 원문입니다.\n결재자가 빠르게 파악하도록 두 가지로 요약해주세요.\n\n[원문]\n${text}\n\n[요구사항]\n1) 업무내용 요약: 오늘 한 일/성과/이슈를 사실 위주로 2~3줄 한국어로 요약\n2) 개인 소견 요약: 직원의 감정·소감·다짐·감사 표현 등 주관적 내용을 1~2줄 한국어로 요약\n3) 해당 항목에 적절한 내용이 없으면 빈 문자열로 둘 것 (추측 금지)\n4) 추가 해석·평가·권고는 절대 추가하지 말 것 (요약만)\n\n반드시 아래 JSON 한 줄만 출력 (코드펜스/설명 금지):\n{"work":"...","personal":"..."}`
-        const res = await generateAIContent(cfg, sumPrompt, undefined, 'daily_report_summary')
-        if (cancelled) return
-        const raw = (res.content || '').trim()
-        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()
-        const m = cleaned.match(/\{[\s\S]*\}/)
-        if (!m) return
-        const parsed = JSON.parse(m[0]) as { work?: unknown; personal?: unknown }
-        const w = typeof parsed.work === 'string' ? parsed.work.trim() : ''
-        const p = typeof parsed.personal === 'string' ? parsed.personal.trim() : ''
-        if (!w && !p) return
-        setLocalWork(w)
-        setLocalPersonal(p)
-        // approval_documents.content.ai_summary 에 persist (실패 무시 — 다음 조회 시 재시도)
-        if (fullContent) {
-          try {
-            await supabase
-              .from('approval_documents')
-              .update({ content: { ...fullContent, ai_summary: { work: w, personal: p } } })
-              .eq('id', documentId)
-          } catch {
-            // RLS 차단 등은 무시 (화면에는 이미 표시됨)
-          }
-        }
-      } catch {
-        // AI 실패 — 원문 fallback 유지
-      } finally {
-        if (!cancelled) setGenerating(false)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [hadInitialSummary, documentId, comment, fullContent])
-
-  const work = localWork
-  const personal = localPersonal
-  const hasSummary = Boolean(work || personal)
-  // 요약 있으면 원문 접힘, 요약 생성 중이면 접힘 유지, 둘 다 없으면 원문 표시
-  const [expanded, setExpanded] = useState(!hasSummary && !generating && !documentId)
+  // 구 형식(string) ↔ 신 형식(string[]) 호환 정규화
+  const toLines = (v?: string | string[]): string[] => {
+    if (!v) return []
+    if (Array.isArray(v)) return v.map((s) => String(s).trim()).filter(Boolean)
+    const s = String(v).trim()
+    if (!s) return []
+    // 구 형식 string 은 줄바꿈/마침표 기준으로 가볍게 쪼개기 (단일 문장이면 1개)
+    const parts = s.split(/\n+|(?<=[。\.!?])\s+/).map((x) => x.trim()).filter(Boolean)
+    return parts.length > 0 ? parts : [s]
+  }
+  const workLines = toLines(summary?.work)
+  const personalLines = toLines(summary?.personal)
+  const hasSummary = workLines.length > 0 || personalLines.length > 0
+  // 요약이 있으면 원문 접힘, 없으면 원문 즉시 표시
+  const [expanded, setExpanded] = useState(!hasSummary)
 
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-semibold text-gray-500">한 줄 총평</p>
-      {hasSummary ? (
-        <div className="rounded-md border border-brand-100 bg-brand-50/40 p-2.5 space-y-1.5">
-          {work && (
-            <div className="text-sm flex gap-2">
-              <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">업무</span>
-              <span className="text-gray-900 leading-relaxed">{work}</span>
+      {hasSummary && (
+        <div className="rounded-md border border-brand-100 bg-brand-50/40 p-3 space-y-2.5">
+          {workLines.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-emerald-700 mb-1 flex items-center gap-1">
+                <span className="inline-block w-1 h-3 bg-emerald-500 rounded-sm" /> 업무 내용
+              </p>
+              <ul className="space-y-0.5 pl-3">
+                {workLines.map((line, i) => (
+                  <li key={i} className="text-sm text-gray-900 flex gap-1.5 leading-relaxed">
+                    <span className="text-emerald-500 shrink-0">·</span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
-          {personal && (
-            <div className="text-sm flex gap-2">
-              <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700">소견</span>
-              <span className="text-gray-700 leading-relaxed">{personal}</span>
+          {personalLines.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-violet-700 mb-1 flex items-center gap-1">
+                <span className="inline-block w-1 h-3 bg-violet-500 rounded-sm" /> 개인 소견
+              </p>
+              <ul className="space-y-0.5 pl-3">
+                {personalLines.map((line, i) => (
+                  <li key={i} className="text-sm text-gray-700 flex gap-1.5 leading-relaxed">
+                    <span className="text-violet-500 shrink-0">·</span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
-          <p className="text-[10px] text-gray-400 pt-0.5">🤖 AI 요약 · 참고용</p>
+          <p className="text-[10px] text-gray-400 pt-0.5">🤖 AI 요약 · 작성자 저장 시점 생성 · 참고용</p>
         </div>
-      ) : generating ? (
-        <div className="rounded-md border border-brand-100 bg-brand-50/40 p-2.5 text-xs text-brand-700 flex items-center gap-2">
-          <span className="inline-block w-3 h-3 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
-          AI 요약 생성 중...
-        </div>
-      ) : null}
+      )}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}

@@ -68,6 +68,9 @@ export interface DailyReport {
   satisfaction_score: number | null
   satisfaction_comment: string | null
   blockers: string | null
+  // 한 줄 총평 AI 요약 (저장 시 1회 생성, 결재자 표시용)
+  ai_summary: { work?: string[]; personal?: string[] } | null
+  ai_summary_source: string | null
   created_at: string
   updated_at: string
 }
