@@ -14,17 +14,29 @@ import { PageSpinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { Bell, Send, AlertCircle, ExternalLink, Save, MessageSquare, Link2, Smartphone, Mail } from 'lucide-react'
+import { Bell, Send, AlertCircle, ExternalLink, Save, MessageSquare, Link2, Smartphone, Mail, MessageCircle, RefreshCw, BookOpen } from 'lucide-react'
 import { sendNotification, invalidateChannelConfigCache } from '@/lib/notification-sender'
 import { logAudit } from '@/lib/audit-logger'
 
-type Channel = 'email' | 'in_app' | 'slack' | 'webhook' | 'push'
+// PDCA #6 Phase 7 — kakao_work 추가
+type Channel = 'email' | 'in_app' | 'slack' | 'webhook' | 'push' | 'kakao_work'
 
 interface ChannelConfig {
   slack_webhook_url: string | null
   generic_webhook_url: string | null
   vapid_public_key: string | null
   enabled_channels: Channel[]
+  // KakaoWork (Phase 7)
+  kakaowork_app_key: string | null
+  kakaowork_bot_name: string | null
+  kakaowork_enabled: boolean
+}
+
+interface KakaoSyncResult {
+  total: number
+  matched: number
+  failed: number
+  failedList: Array<{ employee_id: string; email: string; name: string | null; reason: string }>
 }
 
 export default function NotificationChannelConfigPage() {
@@ -38,7 +50,13 @@ export default function NotificationChannelConfigPage() {
     generic_webhook_url: '',
     vapid_public_key: '',
     enabled_channels: ['email', 'in_app'],
+    kakaowork_app_key: '',
+    kakaowork_bot_name: '',
+    kakaowork_enabled: false,
   })
+  // KakaoWork 동기화 상태
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<KakaoSyncResult | null>(null)
 
   const canManage = !!profile?.role && ['admin', 'hr_admin', 'ceo'].includes(profile.role)
 
@@ -55,6 +73,9 @@ export default function NotificationChannelConfigPage() {
         generic_webhook_url: data.generic_webhook_url || '',
         vapid_public_key: data.vapid_public_key || '',
         enabled_channels: (data.enabled_channels as Channel[]) || ['email', 'in_app'],
+        kakaowork_app_key: (data as any).kakaowork_app_key || '',
+        kakaowork_bot_name: (data as any).kakaowork_bot_name || '',
+        kakaowork_enabled: !!(data as any).kakaowork_enabled,
       })
     }
     setLoading(false)
@@ -70,9 +91,12 @@ export default function NotificationChannelConfigPage() {
         generic_webhook_url: cfg.generic_webhook_url || null,
         vapid_public_key: cfg.vapid_public_key || null,
         enabled_channels: cfg.enabled_channels,
+        kakaowork_app_key: cfg.kakaowork_app_key || null,
+        kakaowork_bot_name: cfg.kakaowork_bot_name || null,
+        kakaowork_enabled: cfg.kakaowork_enabled,
         updated_at: new Date().toISOString(),
         updated_by: profile?.id || null,
-      })
+      } as any)
       .eq('config_key', 'default')
     setSaving(false)
     if (error) { toast('저장 실패: ' + error.message, 'error'); return }
@@ -120,6 +144,48 @@ export default function NotificationChannelConfigPage() {
     slack: { label: 'Slack', icon: MessageSquare, desc: 'Incoming Webhook 으로 채널 전송' },
     webhook: { label: '일반 Webhook', icon: Link2, desc: '외부 시스템 (Discord/Teams/자체) JSON POST' },
     push: { label: '웹 푸시', icon: Smartphone, desc: '브라우저 알림 (VAPID 필요)' },
+    kakao_work: { label: '카카오워크', icon: MessageCircle, desc: '결재자 1:1 DM (Bot Token 필요)' },
+  }
+
+  async function runKakaoSync() {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      // Supabase JWT 를 그대로 사용 (관리자 인증)
+      const session = await supabase.auth.getSession()
+      const token = session.data.session?.access_token
+      if (!token) { toast('세션 없음 — 다시 로그인하세요', 'error'); setSyncing(false); return }
+      const res = await fetch('/api/kakaowork-sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({}),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { toast(`동기화 실패: ${json?.error || res.status}`, 'error'); setSyncing(false); return }
+      setSyncResult(json as KakaoSyncResult)
+      toast(`매핑 완료 — ${json.matched}/${json.total}명 매칭, ${json.failed}명 실패`, 'success')
+    } catch (err: any) {
+      toast(`동기화 오류: ${err?.message || '알 수 없음'}`, 'error')
+    }
+    setSyncing(false)
+  }
+
+  async function testKakao() {
+    setTesting('kakao_work')
+    const result = await sendNotification({
+      channel: 'kakao_work',
+      recipientUid: profile?.id,
+      subject: '[테스트] 카카오워크 연동 확인',
+      body: '카카오워크 연동이 정상 작동 중입니다. 결재 알림이 이 채널로 전달됩니다.',
+      relatedEntity: { type: 'test' },
+    })
+    setTesting(null)
+    if (result.status === 'sent') toast('카카오워크 테스트 발송 성공 — 카카오워크 앱에서 확인하세요', 'success')
+    else if (result.status === 'skipped') toast(`카카오워크 skip: ${result.error || '미설정/미매핑'} (먼저 토큰 입력 + 매핑 동기화 실행)`, 'error')
+    else toast(`카카오워크 테스트 실패: ${result.error || result.status}`, 'error')
   }
 
   return (
@@ -139,7 +205,7 @@ export default function NotificationChannelConfigPage() {
           <CardTitle className="text-base">활성 채널</CardTitle>
           <p className="text-xs text-gray-500 mt-1">체크된 채널에만 발송됩니다. 채널별 URL/키는 아래 섹션에서 설정.</p>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
           {(Object.keys(CHANNEL_META) as Channel[]).map((ch) => {
             const meta = CHANNEL_META[ch]
             const Icon = meta.icon
@@ -242,6 +308,113 @@ export default function NotificationChannelConfigPage() {
               <Send className="h-3 w-3 mr-1" /> {testing === 'push' ? '발송 중...' : '본인에게 테스트 푸시'}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* KakaoWork — PDCA #6 Phase 7 */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MessageCircle className="h-4 w-4" /> 카카오워크 (KakaoWork)
+            <span className={`ml-2 text-[10px] px-2 py-0.5 rounded-full ${cfg.kakaowork_enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+              {cfg.kakaowork_enabled ? '활성' : '비활성'}
+            </span>
+          </CardTitle>
+          <p className="text-xs text-gray-500 mt-1">결재자에게 카카오워크 봇이 1:1 DM 발송. 토큰 입력 + 매핑 동기화 1회로 즉시 활성화.</p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* 활성화 토글 */}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={cfg.kakaowork_enabled}
+              onChange={(e) => setCfg({ ...cfg, kakaowork_enabled: e.target.checked })}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <span className="font-medium">카카오워크 채널 활성화</span>
+            <span className="text-xs text-gray-500">— OFF 면 다른 3채널(in_app/push/email)만 발송</span>
+          </label>
+
+          <Input
+            label="Bot Access Token (App Key) — Bearer 토큰"
+            type="password"
+            value={cfg.kakaowork_app_key || ''}
+            onChange={(e) => setCfg({ ...cfg, kakaowork_app_key: e.target.value })}
+            placeholder="발급받은 Bot Access Token 입력 (시크릿 — 저장 시 마스킹)"
+          />
+          <Input
+            label="봇 표시 이름 (참고용)"
+            value={cfg.kakaowork_bot_name || ''}
+            onChange={(e) => setCfg({ ...cfg, kakaowork_bot_name: e.target.value })}
+            placeholder="예: HR결재봇"
+          />
+
+          {/* 안내 */}
+          <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800 space-y-1">
+            <p className="font-semibold flex items-center gap-1"><AlertCircle className="h-3 w-3" /> 카카오워크 연동 절차</p>
+            <ol className="ml-5 list-decimal space-y-0.5">
+              <li>카카오워크 관리자 콘솔 → 봇 생성 → <strong>App Key (Access Token)</strong> 발급</li>
+              <li>위 입력란에 토큰 붙여넣기 + "활성화" 체크 → <strong>전체 설정 저장</strong></li>
+              <li>아래 <strong>매핑 동기화</strong> 클릭 → 직원 이메일 → 카카오워크 user_id 자동 매칭</li>
+              <li>매핑 실패 직원은 카카오워크 가입 이메일이 HR 시스템과 다른 경우 → 수동 처리 필요</li>
+              <li>본인 카카오워크로 테스트 발송 → 정상 수신 확인</li>
+            </ol>
+            <p className="mt-2">
+              <a href="/docs/카카오워크-연동-매뉴얼.md" target="_blank" rel="noreferrer" className="text-amber-900 underline inline-flex items-center gap-0.5">
+                <BookOpen className="h-3 w-3" /> 상세 매뉴얼 보기
+              </a>
+            </p>
+          </div>
+
+          {/* 매핑 동기화 */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={runKakaoSync}
+              disabled={!cfg.kakaowork_app_key || !cfg.kakaowork_enabled || syncing}
+            >
+              <RefreshCw className={`h-3 w-3 mr-1 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? '동기화 중...' : '이메일 매핑 동기화'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={testKakao}
+              disabled={!cfg.kakaowork_app_key || !cfg.kakaowork_enabled || testing === 'kakao_work'}
+            >
+              <Send className="h-3 w-3 mr-1" /> {testing === 'kakao_work' ? '발송 중...' : '본인에게 테스트 발송'}
+            </Button>
+          </div>
+
+          {/* 동기화 결과 */}
+          {syncResult && (
+            <div className="mt-2 bg-gray-50 border border-gray-200 rounded p-3 text-xs">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="font-semibold text-gray-700">동기화 결과</span>
+                <span className="text-emerald-700">✓ 매칭 {syncResult.matched}</span>
+                <span className="text-rose-700">✗ 실패 {syncResult.failed}</span>
+                <span className="text-gray-500">총 {syncResult.total}명</span>
+              </div>
+              {syncResult.failedList.length > 0 && (
+                <details className="text-gray-600">
+                  <summary className="cursor-pointer font-medium">실패 직원 목록 (이메일이 카카오워크 가입과 다른 경우)</summary>
+                  <ul className="mt-2 ml-4 list-disc space-y-0.5">
+                    {syncResult.failedList.slice(0, 30).map((f) => (
+                      <li key={f.employee_id}>
+                        <span className="font-medium">{f.name || '(이름없음)'}</span>{' '}
+                        <span className="font-mono text-[10px]">{f.email}</span>{' '}
+                        <span className="text-rose-600">— {f.reason}</span>
+                      </li>
+                    ))}
+                    {syncResult.failedList.length > 30 && (
+                      <li className="text-gray-400">... 외 {syncResult.failedList.length - 30}명</li>
+                    )}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

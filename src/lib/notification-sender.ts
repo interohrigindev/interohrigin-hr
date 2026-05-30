@@ -191,6 +191,39 @@ export async function sendNotification(args: SendNotificationArgs): Promise<Send
       return { deliveryId, status: 'sent' }
     }
 
+    if (args.channel === 'kakao_work') {
+      // PDCA #6 Phase 7 — KakaoWork plug-and-play
+      // Design Ref: §7.2 — 서버에서 enabled/token/매핑 lookup 후 skip or send (미설정/미매핑 = silent skip)
+      if (!args.recipientUid) throw new Error('recipientUid 필수 (kakao_work)')
+      const res = await fetch('/api/send-kakaowork', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient_uid: args.recipientUid,
+          title: subject || '알림',
+          body: stripHtml(body).slice(0, 500),
+          link: (() => {
+            const re = args.relatedEntity
+            if (re && re.id && (re.type === 'approval_pending' || re.type === 'approval_completed' || re.type === 'approval_rejected')) {
+              const origin = typeof window !== 'undefined' ? window.location.origin : ''
+              return `${origin}/admin/approval/${re.id}`
+            }
+            return undefined
+          })(),
+        }),
+      })
+      const json: any = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json?.error || `KakaoWork 발송 실패 (HTTP ${res.status})`)
+      }
+      if (json?.skipped) {
+        const deliveryId = await recordDelivery(args, subject, body, 'skipped', json.reason || 'kakaowork-skipped')
+        return { deliveryId, status: 'skipped' }
+      }
+      const deliveryId = await recordDelivery(args, subject, body, 'sent')
+      return { deliveryId, status: 'sent' }
+    }
+
     // 알 수 없는 채널
     const deliveryId = await recordDelivery(args, subject, body, 'skipped', `${args.channel} 채널 미지원`)
     return { deliveryId, status: 'skipped' }
