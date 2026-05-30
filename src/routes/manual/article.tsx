@@ -19,9 +19,9 @@ export default function ManualArticle() {
   if (!article) {
     return (
       <div className="max-w-3xl mx-auto p-6">
-        <p className="text-gray-600 mb-3">도움말을 찾을 수 없습니다.</p>
+        <p className="text-gray-600 mb-3">매뉴얼을 찾을 수 없습니다.</p>
         <Button variant="outline" onClick={() => navigate('/manual')}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> 도움말 센터로
+          <ArrowLeft className="h-4 w-4 mr-1" /> 사용 매뉴얼로
         </Button>
       </div>
     )

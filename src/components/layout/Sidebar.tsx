@@ -121,10 +121,10 @@ const standaloneItems: NavItem[] = [
     label: '내 OJT',
     icon: <GraduationCap className="h-5 w-5" />,
   },
-  // 도움말 센터 (전 직원 노출 — Help Center + 컨텍스트 도움말)
+  // 사용 매뉴얼 (전 직원 노출 — 공통 매뉴얼 + 메뉴별 사용 매뉴얼)
   {
     to: '/manual',
-    label: '도움말',
+    label: '사용 매뉴얼',
     icon: <BookOpen className="h-5 w-5" />,
   },
   // 법적 리스크 대응 P1-1: 직원 본인의 연장근로 신청 (feature toggle 로 노출)

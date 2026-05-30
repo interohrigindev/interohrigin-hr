@@ -61,8 +61,8 @@ export function FloatingHelpButton() {
       <button
         onClick={() => setOpen(true)}
         className="fixed bottom-24 right-6 z-40 h-12 w-12 rounded-full bg-brand-600 hover:bg-brand-700 text-white shadow-lg shadow-brand-300/50 flex items-center justify-center transition-all hover:scale-105 md:bottom-6 md:right-24"
-        aria-label="도움말 열기"
-        title="도움말 (?)"
+        aria-label="사용 매뉴얼 열기"
+        title="사용 매뉴얼 (?)"
       >
         <HelpCircle className="h-6 w-6" />
       </button>
@@ -80,7 +80,7 @@ export function FloatingHelpButton() {
           <aside
             className="fixed top-0 right-0 bottom-0 z-[9999] w-full sm:w-[420px] bg-white shadow-2xl flex flex-col"
             role="dialog"
-            aria-label="도움말 센터"
+            aria-label="사용 매뉴얼"
           >
             {/* 헤더 */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -88,7 +88,7 @@ export function FloatingHelpButton() {
                 <div className="rounded-lg bg-brand-100 p-1.5">
                   <HelpCircle className="h-4 w-4 text-brand-600" />
                 </div>
-                <h2 className="text-base font-bold text-gray-900">도움말</h2>
+                <h2 className="text-base font-bold text-gray-900">사용 매뉴얼</h2>
               </div>
               <button
                 onClick={() => setOpen(false)}
@@ -128,7 +128,7 @@ export function FloatingHelpButton() {
                   {/* 컨텍스트 추천 (현재 페이지 기준) */}
                   {contextual.length > 0 && (
                     <SectionList
-                      title="이 화면 관련 도움말"
+                      title="이 화면 관련 매뉴얼"
                       subtitle="지금 화면에서 자주 묻는 내용"
                       articles={contextual}
                       onOpen={openArticle}
@@ -139,7 +139,7 @@ export function FloatingHelpButton() {
                   {/* 추천 글 */}
                   {featured.length > 0 && (
                     <SectionList
-                      title="추천 도움말"
+                      title="추천 매뉴얼"
                       articles={featured.filter((a) => !contextual.includes(a))}
                       onOpen={openArticle}
                     />
@@ -159,7 +159,7 @@ export function FloatingHelpButton() {
                   navigate('/manual')
                 }}
               >
-                <BookOpen className="h-3.5 w-3.5 mr-1" /> 전체 도움말
+                <BookOpen className="h-3.5 w-3.5 mr-1" /> 전체 매뉴얼
               </Button>
             </div>
           </aside>

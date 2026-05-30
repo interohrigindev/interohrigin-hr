@@ -582,3 +582,23 @@ export function getAllCategories(): ArticleCategory[] {
   HELP_ARTICLES.forEach((a) => set.add(a.category))
   return Array.from(set)
 }
+
+// ─── 사용 매뉴얼 그룹 분류 ─────────────────────────────────────
+// 사용자 요청: "본인 권한 메뉴 사용 내용 + 공통 내용" 두 섹션 분리.
+// 카테고리 단위로 단순 분류 (모든 article 은 검색 가능, 권한 없이도 열람 가능).
+//
+// - common  : 신규 입사·온보딩·시스템 사용법 등 전 직원이 알아둘 기본 내용
+// - menu    : 메뉴별 사용법 — 본인이 자주 쓰는 화면 매뉴얼
+const COMMON_CATEGORIES: ArticleCategory[] = ['시작하기', '메뉴 안내', 'FAQ']
+
+export function getCommonArticles(): HelpArticle[] {
+  return HELP_ARTICLES.filter((a) => COMMON_CATEGORIES.includes(a.category))
+}
+
+export function getMenuArticles(): HelpArticle[] {
+  return HELP_ARTICLES.filter((a) => !COMMON_CATEGORIES.includes(a.category))
+}
+
+export function isCommonCategory(cat: ArticleCategory): boolean {
+  return COMMON_CATEGORIES.includes(cat)
+}
