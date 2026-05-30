@@ -96,6 +96,9 @@ export function installGlobalErrorHandlers() {
   window.addEventListener('error', (event) => {
     // 이미지·css 로드 실패 등 ResourceError 는 message 비어있음 → 스킵
     if (!event.message) return
+    // 크로스 오리진 스크립트 에러 (브라우저 확장 등) — message='Script error.' + filename/error 정보 없음.
+    // 우리가 디버깅 가능한 정보가 0이므로 모니터링 큐에 쌓이면 노이즈만 됨 → 스킵.
+    if (event.message === 'Script error.' && !event.filename && !event.error) return
     reportError({
       errorType: 'window_error',
       message: event.message,
