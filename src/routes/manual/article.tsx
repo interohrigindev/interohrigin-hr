@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { ArticleContent } from '@/components/manual/ArticleContent'
+import { PwaSetupTutorial } from '@/components/manual/tutorials/PwaSetupTutorial'
 import { getArticleById } from '@/lib/manual/articles'
 import { getChapterById } from '@/lib/manual/chapters'
 
@@ -47,12 +48,16 @@ export default function ManualArticle() {
         <h1 className="text-2xl font-bold text-gray-900">{article.title}</h1>
       </div>
 
-      {/* 본문 */}
-      <Card>
-        <CardContent className="p-6">
-          <ArticleContent content={article.content} />
-        </CardContent>
-      </Card>
+      {/* 본문 — 특정 article 은 시각적 튜토리얼 컴포넌트로 렌더링 */}
+      {article.id === 'pwa-notification-setup' ? (
+        <PwaSetupTutorial />
+      ) : (
+        <Card>
+          <CardContent className="p-6">
+            <ArticleContent content={article.content} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* 체험형 투어 추천 */}
       {tour && (
