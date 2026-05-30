@@ -20,6 +20,11 @@ export const IOFINANCE_URL =
 const FINANCE_DEPT_ID = '063197e4-375c-47ac-9342-991149398128'  // 재무회계
 const KANG_JM_ID = '70323171-d1f2-4828-a14e-80896ee4eccf'       // 강제묵 이사
 
+// 개별 허용 사용자 id (화이트리스트) — 부서/역할 외 추가 허용 인원
+const ALLOWED_USER_IDS = new Set<string>([
+  '5973135f-a384-45d8-bbce-31cd73d27099',  // 차주용 (테스트 권한 — Finance SSO 검증 후 운영 결정)
+])
+
 export interface IoFinanceAccessCheck {
   id?: string
   role?: string | null
@@ -32,6 +37,7 @@ export function canAccessIoFinance(p: IoFinanceAccessCheck | null | undefined): 
   if (p.role === 'ceo' || p.role === 'admin') return true
   if (p.id === KANG_JM_ID) return true
   if (p.department_id === FINANCE_DEPT_ID) return true
+  if (p.id && ALLOWED_USER_IDS.has(p.id)) return true
   return false
 }
 
