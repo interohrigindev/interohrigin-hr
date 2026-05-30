@@ -155,7 +155,8 @@ const QUICK_LINKS: { label: string; icon: React.ElementType; path: string }[] = 
   { label: '직원 검색', icon: Search, path: '/admin/employees/search' },
   { label: '채용공고', icon: Briefcase, path: '/admin/recruitment/jobs' },
   { label: '면접 일정', icon: CalendarDays, path: '/admin/recruitment/schedules' },
-  { label: 'AI 챗봇', icon: Bot, path: '/work/chat' },
+  // AI 챗봇 일시 숨김 (사용자 요청 2026-05-30) — 필요 시 주석 해제
+  // { label: 'AI 챗봇', icon: Bot, path: '/work/chat' },
   { label: '일일 보고서', icon: CalendarDays, path: '/work/daily-report' },
 ]
 
@@ -270,14 +271,15 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
       bg: 'bg-amber-50 hover:bg-amber-100 border-amber-200',
       path: '/admin/work/tasks',
     },
-    {
-      title: 'AI 챗봇',
-      description: '업무 관련 질문을 AI에게 물어봅니다',
-      icon: Bot,
-      color: 'text-violet-600',
-      bg: 'bg-violet-50 hover:bg-violet-100 border-violet-200',
-      path: '/work/chat',
-    },
+    // AI 챗봇 카드 일시 숨김 (사용자 요청 2026-05-30) — 필요 시 주석 해제
+    // {
+    //   title: 'AI 챗봇',
+    //   description: '업무 관련 질문을 AI에게 물어봅니다',
+    //   icon: Bot,
+    //   color: 'text-violet-600',
+    //   bg: 'bg-violet-50 hover:bg-violet-100 border-violet-200',
+    //   path: '/work/chat',
+    // },
     {
       title: '내 정보',
       description: '개인 정보를 확인하고 수정합니다',
