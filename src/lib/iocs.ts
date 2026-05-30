@@ -25,17 +25,19 @@ export const IOCS_URL =
 export async function openIoCs(redirect: string = '/', newTab: boolean = true): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession()
 
-  let url: string
+  // 세션 강제 — 토큰 없으면 IO CS 신규 로그인 페이지로 보내지 않고 HR 재로그인 안내.
+  // (사용자 요구: "새로운 로그인 페이지가 나오면 안 됨" 2026-05-30)
   if (!session?.access_token || !session?.refresh_token) {
-    url = `${IOCS_URL}/login`
-  } else {
-    const params = new URLSearchParams({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      redirect,
-    })
-    url = `${IOCS_URL}/sso#${params.toString()}`
+    alert('HR 세션이 만료되어 IO CS 로 자동 로그인할 수 없습니다.\nHR 에서 다시 로그인 후 시도해주세요.')
+    return
   }
+
+  const params = new URLSearchParams({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+    redirect,
+  })
+  const url = `${IOCS_URL}/sso#${params.toString()}`
 
   if (newTab) {
     window.open(url, '_blank', 'noopener,noreferrer')

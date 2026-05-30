@@ -29,7 +29,7 @@ import {
 import { cn } from '@/lib/utils'
 // import { openIoMall } from '@/lib/iomall' // IO Mall 카드 제거(2026-05-30)로 미사용 — 사이드바 복리후생 그룹에서 진입
 import { openIoCs as openIoCsSso } from '@/lib/iocs'
-import { openIoFinance } from '@/lib/iofinance'
+import { openIoFinance, canAccessIoFinance } from '@/lib/iofinance'
 import { DateWeatherWidget } from '@/components/DateWeatherWidget'
 
 // 0513: IO CS 고객관리 플랫폼 접근 — 역할/부서 기반 자동 판정
@@ -196,11 +196,16 @@ export default function Home() {
 
       {/* 메인 블록 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {ADMIN_BLOCKS.map((block) => (
+        {ADMIN_BLOCKS.filter((block) => {
+          // IO Finance 카드는 권한자(재무회계/강제묵 이사/대표이사)에게만 노출
+          if (block.path === 'iofinance') return canAccessIoFinance(profile as { id?: string; role?: string | null; department_id?: string | null } | null)
+          return true
+        }).map((block) => (
           <button
             key={block.path}
             onClick={() => {
               if (block.path === 'iocs') { openIoCs(profile as { id?: string; role?: string | null; department_id?: string | null } | null); return }
+              if (block.path === 'iofinance') { void openIoFinance('/', true, profile as { id?: string; role?: string | null; department_id?: string | null } | null); return }
               if (block.onClick) block.onClick()
               else navigate(block.path)
             }}
@@ -332,11 +337,16 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
       <UrgentTasksBanner navigate={navigate} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {blocks.map((block) => (
+        {blocks.filter((block) => {
+          // IO Finance 카드는 권한자(재무회계/강제묵 이사/대표이사)에게만 노출
+          if (block.path === 'iofinance') return canAccessIoFinance(profile as { id?: string; role?: string | null; department_id?: string | null } | null)
+          return true
+        }).map((block) => (
           <button
             key={block.path}
             onClick={() => {
               if (block.path === 'iocs') { openIoCs(profile as { id?: string; role?: string | null; department_id?: string | null } | null); return }
+              if (block.path === 'iofinance') { void openIoFinance('/', true, profile as { id?: string; role?: string | null; department_id?: string | null } | null); return }
               if (block.onClick) block.onClick()
               else navigate(block.path)
             }}
