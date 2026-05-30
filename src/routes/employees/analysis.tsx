@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
+// PBD(사전질의서 v2.0) 점수 계산 — 직원에 PBD 응답이 있으면 분석에 포함
+import { scorePbd } from '@/lib/pbd-questions'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -15,6 +17,21 @@ interface EmployeeWithProfile extends Employee {
   employee_profiles?: EmployeeProfile[]
 }
 
+// React #31 방어 — 어떤 값이든 안전하게 텍스트로. AI 응답이 string 대신 object 를 반환하는 경우 보호.
+function renderText(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try { return JSON.stringify(value, null, 2) } catch { return String(value) }
+}
+
+// PBD(사전질의서 v2.0) 응답 — 직원 email 기준 매핑
+interface PbdResponse {
+  pbd_answers?: Record<string, number> | null
+  meta?: Record<string, unknown> | null
+  created_at?: string
+}
+
 export default function PersonalityAnalysisPage() {
   const { toast } = useToast()
   const { hasRole } = useAuth()
@@ -26,6 +43,8 @@ export default function PersonalityAnalysisPage() {
   const [aiRunning, setAiRunning] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [visibility, setVisibility] = useState<Record<string, boolean>>({})
+  // PBD(사전질의서 v2.0) 직원 응답 — email 기준 조회. 있으면 분석에 포함.
+  const [pbdResponse, setPbdResponse] = useState<PbdResponse | null>(null)
 
   const canSeeDetails = hasRole('director')
 
@@ -53,8 +72,9 @@ export default function PersonalityAnalysisPage() {
   async function handleSelectEmployee(emp: EmployeeWithProfile) {
     setShowDetail(true)
     setAnalysisLoading(true)
+    setPbdResponse(null)
     try {
-      const [analysisRes, visRes, profileRes] = await Promise.all([
+      const [analysisRes, visRes, profileRes, pbdRes] = await Promise.all([
         supabase
           .from('personality_analysis')
           .select('*')
@@ -70,6 +90,16 @@ export default function PersonalityAnalysisPage() {
           .select('*')
           .eq('employee_id', emp.id)
           .limit(1),
+        // PBD 응답 조회 — tester_email = 직원 이메일 (사전질의서 v2.0 도입 후 입사한 직원만 결과 보유)
+        emp.email
+          ? supabase
+              .from('survey_test_responses')
+              .select('pbd_answers, meta, created_at')
+              .eq('tester_email', emp.email)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
       ])
 
       // employee_profiles를 직접 조회하여 병합 (JOIN RLS 이슈 우회)
@@ -80,6 +110,10 @@ export default function PersonalityAnalysisPage() {
       setSelectedEmployee(updatedEmp)
 
       setAnalyses((analysisRes.data ?? []) as any)
+      // PBD 응답 저장 (있는 경우만)
+      if (pbdRes && 'data' in pbdRes && pbdRes.data) {
+        setPbdResponse(pbdRes.data as PbdResponse)
+      }
       if (visRes.data && visRes.data.length > 0) {
         const v = visRes.data[0] as any
         setVisibility({
@@ -153,6 +187,16 @@ export default function PersonalityAnalysisPage() {
       const apiKey = config.apiKey
       const model = config.model
 
+      // PBD(사전질의서 v2.0) 점수 — 있으면 prompt 에 포함 (사전질의서 도입 후 입사자 한정)
+      let pbdContext = ''
+      if (pbdResponse?.pbd_answers) {
+        const s = scorePbd(pbdResponse.pbd_answers)
+        if (s) {
+          const pbdMeta = (pbdResponse.meta || {}) as Record<string, unknown>
+          pbdContext = `\n\n[사전질의서 v2.0(PBD) 진단 — 입사 시 응답]\n- 도메인: ${s.domain} (${s.domain_strength})\n- 적합 직무군: ${(s.fit_jobs || []).join(', ') || '-'}\n- 검토 직무군: ${(s.check_jobs || []).join(', ') || '-'}\n- ICI(내적 일관성 지수): ${s.ici}\n- 사고방식 C1: ${s.C1}(${s.c1_label}) / 추론 C3: ${s.C3}(${s.c3_label}) / 통제 S1: ${s.S1}(${s.s1_label}) / 역할 S3: ${s.S3}(${s.s3_label})\n- 한자성명: ${pbdMeta.hanja_name || '-'}`
+        }
+      }
+
       const prompt = `다음 직원의 사주/MBTI 기반 성향 분석을 해주세요.
 
 이름: ${selectedEmployee.name}
@@ -160,18 +204,21 @@ export default function PersonalityAnalysisPage() {
 출생시간: ${profile?.birth_time ?? '미제공'}
 음력 여부: ${profile?.lunar_birth ? '음력' : '양력'}
 MBTI: ${mbti ?? '미제공'}
-혈액형: ${profile?.blood_type ?? '미제공'}
+혈액형: ${profile?.blood_type ?? '미제공'}${pbdContext}
 
-다음 항목을 JSON 형식으로 분석해주세요:
+${pbdContext ? '※ 사전질의서(PBD) 진단 결과가 있는 경우 사주·MBTI 와 함께 종합적으로 일치/보완점을 분석해주세요.\n\n' : ''}다음 항목을 JSON 형식으로 분석해주세요:
 {
   "summary": "종합 성향 요약 (2-3문장)",
   "strengths": ["강점1", "강점2", "강점3"],
   "cautions": ["주의사항1", "주의사항2"],
   "job_fit": { "적합직무": ["직무1", "직무2"], "부적합직무": ["직무1"] },
   "team_fit": { "잘맞는유형": ["유형1"], "주의유형": ["유형1"] },
-  "saju_analysis": "사주 기반 분석 (해당되는 경우)",
-  "mbti_detail": "MBTI 상세 분석 (해당되는 경우)"
+  "saju_analysis": "사주 기반 분석 (해당되는 경우) — 반드시 문자열로 작성",
+  "mbti_detail": "MBTI 상세 분석 (해당되는 경우) — 반드시 문자열로 작성",
+  "pbd_integration": "사전질의서(PBD) 진단과 사주/MBTI 의 일치·보완점 종합 (PBD 정보가 제공된 경우만, 4~6문장 문자열)"
 }
+
+⚠️ 모든 필드는 위 명시된 타입(string 또는 array)을 반드시 지킬 것. saju_analysis/mbti_detail/summary/pbd_integration 은 무조건 단일 문자열로 반환 (객체나 nested 금지).
 
 참고: 사주/MBTI는 참고 자료이며 과학적 근거가 제한적입니다. 분석은 참고용으로만 활용됩니다.`
 
@@ -324,9 +371,28 @@ MBTI: ${mbti ?? '미제공'}
               </div>
             </div>
 
+            {/* 사전질의서(PBD) 응답 보유 안내 — 있으면 분석 prompt 에 자동 포함됨 */}
+            {pbdResponse && (() => {
+              const s = pbdResponse.pbd_answers ? scorePbd(pbdResponse.pbd_answers) : null
+              return (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+                  <p className="text-xs font-bold text-emerald-800 mb-1">📋 사전질의서 v2.0 (PBD) 응답 보유</p>
+                  {s ? (
+                    <p className="text-xs text-emerald-900 leading-relaxed">
+                      도메인 <strong>{s.domain}</strong> · 적합 직무군 <strong>{(s.fit_jobs || []).slice(0,3).join(', ') || '-'}</strong> · ICI <strong>{s.ici}</strong>
+                      <br />
+                      <span className="text-emerald-700">→ AI 분석 실행 시 사주·MBTI 와 함께 종합 분석됩니다.</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-emerald-700">PBD 점수 계산 불가 (응답 데이터 형식 확인 필요)</p>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* AI Analysis Button */}
             <Button onClick={handleRunAIAnalysis} disabled={aiRunning} className="w-full">
-              {aiRunning ? 'AI 분석 실행 중...' : 'AI 분석 실행'}
+              {aiRunning ? 'AI 분석 실행 중...' : pbdResponse ? 'AI 분석 실행 (PBD 포함)' : 'AI 분석 실행'}
             </Button>
 
             {/* Analysis Results */}
@@ -349,9 +415,9 @@ MBTI: ${mbti ?? '미제공'}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {/* Summary */}
-                    {(analysis.result as any)?.summary && (
-                      <p className="text-sm text-gray-700">{(analysis.result as any).summary}</p>
+                    {/* Summary — renderText 로 객체 들어와도 안전 */}
+                    {(analysis.result as any)?.summary != null && (
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{renderText((analysis.result as any).summary)}</p>
                     )}
                     {/* Strengths */}
                     {analysis.strengths.length > 0 && (
@@ -359,7 +425,7 @@ MBTI: ${mbti ?? '미제공'}
                         <p className="text-xs font-medium text-gray-500 mb-1">강점</p>
                         <div className="flex flex-wrap gap-1">
                           {analysis.strengths.map((s, i) => (
-                            <Badge key={i} variant="success">{s}</Badge>
+                            <Badge key={i} variant="success">{renderText(s)}</Badge>
                           ))}
                         </div>
                       </div>
@@ -370,22 +436,29 @@ MBTI: ${mbti ?? '미제공'}
                         <p className="text-xs font-medium text-gray-500 mb-1">주의사항</p>
                         <div className="flex flex-wrap gap-1">
                           {analysis.cautions.map((c, i) => (
-                            <Badge key={i} variant="warning">{c}</Badge>
+                            <Badge key={i} variant="warning">{renderText(c)}</Badge>
                           ))}
                         </div>
                       </div>
                     )}
                     {/* Raw result for deeper info */}
-                    {(analysis.result as any)?.saju_analysis && (
+                    {(analysis.result as any)?.saju_analysis != null && (
                       <div>
                         <p className="text-xs font-medium text-gray-500 mb-1">사주 분석</p>
-                        <p className="text-sm text-gray-600">{(analysis.result as any).saju_analysis}</p>
+                        <p className="text-sm text-gray-600 whitespace-pre-wrap">{renderText((analysis.result as any).saju_analysis)}</p>
                       </div>
                     )}
-                    {(analysis.result as any)?.mbti_detail && (
+                    {(analysis.result as any)?.mbti_detail != null && (
                       <div>
                         <p className="text-xs font-medium text-gray-500 mb-1">MBTI 상세</p>
-                        <p className="text-sm text-gray-600">{(analysis.result as any).mbti_detail}</p>
+                        <p className="text-sm text-gray-600 whitespace-pre-wrap">{renderText((analysis.result as any).mbti_detail)}</p>
+                      </div>
+                    )}
+                    {/* 사전질의서(PBD) 연계 분석 — pbd 데이터 있는 직원에 한정 */}
+                    {(analysis.result as any)?.pbd_integration != null && (
+                      <div className="rounded-md border border-brand-200 bg-brand-50/50 p-2.5">
+                        <p className="text-xs font-bold text-brand-700 mb-1">📋 사전질의서(PBD) 연계</p>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap">{renderText((analysis.result as any).pbd_integration)}</p>
                       </div>
                     )}
                   </CardContent>
