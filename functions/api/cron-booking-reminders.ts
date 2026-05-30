@@ -10,7 +10,7 @@
  * 채널: in_app + push (이메일 제외 — 빈번하면 피로)
  * Dedupe: notification_deliveries.related_entity_id = booking.id 로 1회만 발송
  *
- * 권장 cron 빈도: 매 5분 (`*/5 * * * *`) — Cloudflare Worker(cron-router) 에 등록
+ * 권장 cron 빈도: 매 5분 (cron expr: 슬래시-5 공백 별 공백 별 공백 별 공백 별) — Cloudflare Worker(cron-router) 에 등록
  *
  * 환경변수:
  *   CRON_SECRET                — 무단 호출 방지
