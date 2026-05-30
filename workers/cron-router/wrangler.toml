@@ -1,0 +1,21 @@
+# INTEROHRIGIN 통합 Cron 라우터 Worker
+# 배포: cd workers/cron-router && wrangler deploy
+# Secret 등록: wrangler secret put CRON_SECRET (HR Pages 와 같은 값)
+
+name = "interohrigin-cron-router"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Cron Triggers — UTC 기준 (KST = UTC+9)
+# 새 서비스 cron 추가 시 src/index.ts 의 ROUTES 와 함께 같은 expression 등록.
+[triggers]
+crons = [
+  "30 23 * * *",   # KST 08:30 — HR 미결재 결재 리마인더
+  # "0 0 * * *",   # KST 09:00 — Finance 일일 마감 (도입 시 주석 해제)
+  # "0 23 * * *",  # KST 08:00 — CS 미처리 티켓 (도입 시 주석 해제)
+  # "0 1 * * *",   # KST 10:00 — Mall 주문 점검 (도입 시 주석 해제)
+]
+
+# 관찰성 (실행 로그 보존)
+[observability]
+enabled = true

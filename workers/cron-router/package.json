@@ -1,0 +1,14 @@
+{
+  "name": "interohrigin-cron-router",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "wrangler": "^3.95.0",
+    "typescript": "^5.0.0"
+  }
+}
