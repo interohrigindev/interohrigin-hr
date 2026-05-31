@@ -427,7 +427,8 @@ ${prevSummary}
     if (targetEmp) {
       const ROUND_OFFSET = [14, 42, 70] as const
       const idx = STAGES.indexOf(selectedStage)
-      const hire = targetEmp.hire_date ? new Date(targetEmp.hire_date) : null
+      // KST 자정 기준 — UTC 자정 파싱 시 KST 새벽 시간대 하루 어긋남 방지
+      const hire = targetEmp.hire_date ? new Date(`${targetEmp.hire_date}T00:00:00+09:00`) : null
 
       // 캐시된 closures 가 stale 일 수 있어 — DB 에서 최신 상태 재조회
       const { data: freshClosuresRaw } = await supabase
@@ -592,8 +593,29 @@ ${prevSummary}
           return <div className="p-8 text-center text-sm text-gray-500">{emptyLabel}</div>
         }
 
+        // KST(Asia/Seoul) 기준 자정 시각을 ms 로 반환 — D-day 계산 시 UTC/KST 혼동으로
+        // KST 오전 9시 이전에 하루 일찍 D-1 로 표시되던 버그 fix (2026-06-01)
+        const KST_OFFSET_MS = 9 * 60 * 60 * 1000
+        function kstMidnightMs(d: Date): number {
+          // d 의 KST 자정 시각을 UTC ms 로 환산
+          const kstDateStr = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+          }).format(d)
+          // kstDateStr 예: '2026-06-01' → KST 자정 = UTC 전날 15:00
+          return new Date(`${kstDateStr}T00:00:00+09:00`).getTime()
+        }
+        function kstDiffDays(target: Date, base: Date): number {
+          return Math.round((kstMidnightMs(target) - kstMidnightMs(base)) / 86400000)
+        }
         const today = new Date()
-        const formatDate = (d: Date | null) => d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}` : '-'
+        // KST 기준 YYYY.MM.DD 포맷 (UTC getMonth/getDate 사용 시 시각대 혼동 방지)
+        const formatDate = (d: Date | null) => {
+          if (!d) return '-'
+          const s = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+          }).format(d)
+          return s.replace(/-/g, '.')
+        }
 
         // 회차별 일자 + 활성 회차 판정 + D-day 정렬
         const ROUND_OFFSET_DAYS = [14, 42, 70] as const // 1·2·6주차→14일, 2회차→42일, 3회차→70일
@@ -601,7 +623,8 @@ ${prevSummary}
 
         type RoundMeta = { stage: ProbationStage; date: Date | null; isCompleted: boolean; isClosed: boolean }
         const buildRounds = (emp: typeof probEmpsRaw[number]): RoundMeta[] => {
-          const hire = emp.hire_date ? new Date(emp.hire_date) : null
+          // 입사일을 KST 자정 기준으로 파싱 (UTC 자정으로 파싱하면 KST 새벽 시간대에 하루 어긋남)
+          const hire = emp.hire_date ? new Date(`${emp.hire_date}T00:00:00+09:00`) : null
           return STAGES.map((stage, i) => {
             const date = hire ? new Date(hire.getTime() + ROUND_OFFSET_DAYS[i] * 86400 * 1000) : null
             const empEvals = evaluations.filter((ev) => ev.employee_id === emp.id && ev.stage === stage)
@@ -627,14 +650,14 @@ ${prevSummary}
           for (let i = 0; i < idx; i++) {
             if (!rounds[i].isCompleted) return { allowed: false, reason: `${STAGE_LABELS[STAGES[i]]} 평가가 먼저 완료되어야 합니다.` }
           }
-          // 7일 자동 마감
+          // 7일 자동 마감 — KST 자정 기준 비교
           const r = rounds[idx]
           if (!r.date) return { allowed: false, reason: '입사일이 등록되지 않았습니다.' }
-          const start = r.date.getTime()
-          const end = start + ACTIVE_WINDOW_DAYS * 86400 * 1000
-          const now = Date.now()
-          if (now < start) return { allowed: false, reason: '회차 시작일 전입니다.' }
-          if (now > end && !r.isCompleted) return { allowed: false, reason: '7일 자동 마감되었습니다 (관리자 강제 해제 필요).' }
+          const startMs = kstMidnightMs(r.date)
+          const endMs = startMs + ACTIVE_WINDOW_DAYS * 86400 * 1000
+          const todayMs = kstMidnightMs(today)
+          if (todayMs < startMs) return { allowed: false, reason: '회차 시작일 전입니다.' }
+          if (todayMs > endMs && !r.isCompleted) return { allowed: false, reason: '7일 자동 마감되었습니다 (관리자 강제 해제 필요).' }
           return { allowed: true }
         }
 
@@ -646,7 +669,7 @@ ${prevSummary}
           const rounds = buildRounds(emp)
           const uncompleted = rounds.filter((r) => !r.isCompleted && r.date)
           if (uncompleted.length === 0) return { group: 3, value: 0 }
-          const diffs = uncompleted.map((r) => Math.ceil((r.date!.getTime() - today.getTime()) / 86400000))
+          const diffs = uncompleted.map((r) => kstDiffDays(r.date!, today))
           const upcoming = diffs.filter((d) => d >= 0)
           if (upcoming.length > 0) return { group: 1, value: Math.min(...upcoming) }
           // 미완료 모두 지남 → 가장 최근에 지난 것 (절대값 최소)
@@ -671,12 +694,13 @@ ${prevSummary}
           const isLeaderOther = profile?.role === 'leader' && (!profile?.department_id || e.department_id !== profile.department_id)
           if (isLeaderOther) return acc
           if (!e.hire_date) return acc
-          const hire = new Date(e.hire_date)
+          // KST 자정 기준 — UTC 새벽 시각대 하루 어긋남 방지
+          const hire = new Date(`${e.hire_date}T00:00:00+09:00`)
           const offsets = [14, 42, 70]
           let count = 0
           STAGES.forEach((stg, i) => {
             const sDate = new Date(hire.getTime() + offsets[i] * 86400000)
-            const d = Math.ceil((sDate.getTime() - today.getTime()) / 86400000)
+            const d = kstDiffDays(sDate, today)
             if (d > 0) return
             if (closures.some((c) => c.employee_id === e.id && c.stage === stg)) return
             const stEvals = evaluations.filter((ev) => ev.employee_id === e.id && ev.stage === stg)
@@ -719,7 +743,8 @@ ${prevSummary}
                   </thead>
                   <tbody>
                     {probEmps.map((emp) => {
-                      const hire = emp.hire_date ? new Date(emp.hire_date) : null
+                      // KST 자정 기준 — UTC 자정 파싱 시 KST 새벽 시간대 하루 어긋남 방지
+                      const hire = emp.hire_date ? new Date(`${emp.hire_date}T00:00:00+09:00`) : null
                       const endDate = hire ? new Date(hire.getTime() + 90 * 24 * 60 * 60 * 1000) : null
                       const empEvals = evaluations.filter((ev) => ev.employee_id === emp.id)
 
@@ -797,7 +822,7 @@ ${prevSummary}
                           )
                         }
                         if (!roundDate) return <span className="text-gray-400">-</span>
-                        const diff = Math.ceil((roundDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                        const diff = kstDiffDays(roundDate, today)
                         const dateLabel = formatDate(roundDate)
                         // 입사일 기준 평가 예정일을 함께 표시 (D-day 와 함께)
                         if (diff < 0) {
@@ -865,7 +890,7 @@ ${prevSummary}
                             const isCompleted = stageEvals.length > 0 || isClosed
                             const stageLabel = stg === 'round1' ? '1회차' : stg === 'round2' ? '2회차' : '3회차'
                             const rdate = roundDates[sIdx]
-                            const diff = rdate ? Math.ceil((rdate.getTime() - today.getTime()) / 86400000) : null
+                            const diff = rdate ? kstDiffDays(rdate, today) : null
                             const isOverdue = diff !== null && diff < 0
                             const isFuture = diff !== null && diff > 0
                             // D-day 도달(diff <= 0) + 미완료 → 보라(brand) 강조 / 그 외 활성 → 앰버
@@ -1031,9 +1056,9 @@ ${prevSummary}
                   if (e.employment_type === 'full_time') return false
                   const hasProbType = e.employment_type === 'probation' || (e.position ?? '').includes('수습')
                   if (!hasProbType) return false
-                  // 수습 90일 종료된 직원도 제외
+                  // 수습 90일 종료된 직원도 제외 (KST 자정 기준)
                   if (e.hire_date) {
-                    const probEnd = new Date(new Date(e.hire_date).getTime() + 90 * 86400000)
+                    const probEnd = new Date(new Date(`${e.hire_date}T00:00:00+09:00`).getTime() + 90 * 86400000)
                     if (probEnd.getTime() < new Date().getTime()) return false
                   }
                   // 리더는 본인 부서 직원만 평가 가능 (임원/대표/관리자는 전체)
@@ -1062,9 +1087,20 @@ ${prevSummary}
             {selectedEmployeeId && (() => {
               const emp = employees.find((e) => e.id === selectedEmployeeId)
               if (!emp) return null
-              const hireDate = emp.hire_date ? new Date(emp.hire_date) : null
+              // KST 자정 기준 — UTC 자정 파싱 시 KST 새벽 시간대 하루 어긋남 방지
+              const hireDate = emp.hire_date ? new Date(`${emp.hire_date}T00:00:00+09:00`) : null
               const endDate = hireDate ? new Date(hireDate.getTime() + 90 * 24 * 60 * 60 * 1000) : null
-              const formatDate = (d: Date | null) => d ? `${d.getFullYear().toString().slice(2)}년 ${d.getMonth() + 1}월 ${d.getDate()}일` : '-'
+              const formatDate = (d: Date | null) => {
+                if (!d) return '-'
+                // KST 기준 YY년 M월 D일
+                const parts = new Intl.DateTimeFormat('ko-KR', {
+                  timeZone: 'Asia/Seoul', year: '2-digit', month: 'numeric', day: 'numeric',
+                }).formatToParts(d)
+                const yy = parts.find(p => p.type === 'year')?.value || ''
+                const mm = parts.find(p => p.type === 'month')?.value || ''
+                const dd = parts.find(p => p.type === 'day')?.value || ''
+                return `${yy}년 ${mm}월 ${dd}일`
+              }
 
               const STAGE_INTROS: Record<ProbationStage, string> = {
                 round1: '본 평가는 1회차(입사 2주 차) 평가입니다.\n실무 성과보다는 조직 적응력, 기본 태도, 업무 파악 노력에 초점을 맞춰 평가해 주시기 바랍니다.',
