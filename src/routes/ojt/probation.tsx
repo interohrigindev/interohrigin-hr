@@ -797,9 +797,9 @@ ${prevSummary}
                           // 진행중이면 예정일을, 완료면 최종 제출일을 노출 (조기 평가 케이스 대비)
                           const displayDate = fullyDone ? latestDate : (roundDate ? formatDate(roundDate) : latestDate)
                           return (
-                            <span className="inline-flex flex-col items-center leading-tight">
-                              <span className="inline-flex items-center gap-1">
-                                <span className={`text-sm font-bold ${fullyDone ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            <span className="inline-flex flex-col items-center leading-tight whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                <span className={`text-sm font-bold whitespace-nowrap ${fullyDone ? 'text-emerald-600' : 'text-amber-600'}`}>
                                   {avg.toFixed(0)}점{fullyDone ? ' 완료' : ' (진행중)'}
                                 </span>
                                 {canDeleteRole && (
@@ -813,10 +813,10 @@ ${prevSummary}
                                   </button>
                                 )}
                               </span>
-                              <span className="text-[10px] text-gray-500">
+                              <span className="text-[10px] text-gray-500 whitespace-nowrap">
                                 {stageEvals.length}/{requiredTotal}명 평가
                               </span>
-                              {displayDate && <span className="text-[10px] text-gray-400">{displayDate}</span>}
+                              {displayDate && <span className="text-[10px] text-gray-400 whitespace-nowrap">{displayDate}</span>}
                             </span>
                           )
                         }
@@ -826,32 +826,32 @@ ${prevSummary}
                         // 입사일 기준 평가 예정일을 함께 표시 (D-day 와 함께)
                         if (diff < 0) {
                           return (
-                            <span className="inline-flex flex-col items-center leading-tight">
-                              <span className="text-brand-700 font-bold text-sm">D+{Math.abs(diff)} 초과</span>
-                              <span className="text-[10px] text-brand-400">{dateLabel}</span>
+                            <span className="inline-flex flex-col items-center leading-tight whitespace-nowrap">
+                              <span className="text-brand-700 font-bold text-sm whitespace-nowrap">D+{Math.abs(diff)} 초과</span>
+                              <span className="text-[10px] text-brand-400 whitespace-nowrap">{dateLabel}</span>
                             </span>
                           )
                         }
                         if (diff === 0) {
                           return (
-                            <span className="inline-flex flex-col items-center leading-tight">
-                              <span className="text-brand-700 font-bold text-sm">D-day</span>
-                              <span className="text-[10px] text-brand-500">{dateLabel}</span>
+                            <span className="inline-flex flex-col items-center leading-tight whitespace-nowrap">
+                              <span className="text-brand-700 font-bold text-sm whitespace-nowrap">D-day</span>
+                              <span className="text-[10px] text-brand-500 whitespace-nowrap">{dateLabel}</span>
                             </span>
                           )
                         }
                         if (diff <= 7) {
                           return (
-                            <span className="inline-flex flex-col items-center leading-tight">
-                              <span className="text-amber-600 font-semibold text-sm">D-{diff}</span>
-                              <span className="text-[10px] text-gray-500">{dateLabel}</span>
+                            <span className="inline-flex flex-col items-center leading-tight whitespace-nowrap">
+                              <span className="text-amber-600 font-semibold text-sm whitespace-nowrap">D-{diff}</span>
+                              <span className="text-[10px] text-gray-500 whitespace-nowrap">{dateLabel}</span>
                             </span>
                           )
                         }
                         return (
-                          <span className="inline-flex flex-col items-center leading-tight">
-                            <span className="text-gray-700 text-sm font-medium">{dateLabel}</span>
-                            <span className="text-[10px] text-gray-400">D-{diff}</span>
+                          <span className="inline-flex flex-col items-center leading-tight whitespace-nowrap">
+                            <span className="text-gray-700 text-sm font-medium whitespace-nowrap">{dateLabel}</span>
+                            <span className="text-[10px] text-gray-400 whitespace-nowrap">D-{diff}</span>
                           </span>
                         )
                       }
