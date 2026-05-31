@@ -9,7 +9,7 @@
  *           + (role IN executive/director/division_head)
  *           + (role=ceo)
  *  - 채널: in_app + email + push
- *  - dedupe: related_entity_type='probation_dday', related_entity_id='{emp_id}:{stage}'
+ *  - dedupe: related_entity_type='probation_dday', related_entity_id=emp_id (uuid). stage 별 dedupe 는 notification_deliveries 조회 시 sent_at 일자+stage 라벨로 추가 필터.
  *
  * 환경변수:
  *   CRON_SECRET                — 무단 호출 방지
@@ -114,7 +114,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const idsParam = ddayEmpIds.map((id) => `"${id}"`).join(',')
   const [evalRes, closureRes, menuRes] = await Promise.all([
     fetch(`${baseUrl}/rest/v1/probation_evaluations?select=employee_id,stage&employee_id=in.(${idsParam})`, { headers: sbHeaders }),
-    fetch(`${baseUrl}/rest/v1/probation_closures?select=employee_id,stage&employee_id=in.(${idsParam})`, { headers: sbHeaders }),
+    fetch(`${baseUrl}/rest/v1/probation_round_closures?select=employee_id,stage&employee_id=in.(${idsParam})`, { headers: sbHeaders }),
     fetch(`${baseUrl}/rest/v1/menu_permissions?select=employee_id,allowed_menus`, { headers: sbHeaders }),
   ])
   const evals: Evaluation[] = evalRes.ok ? await evalRes.json() : []
@@ -188,12 +188,14 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     } catch (err) { return `error:${(err as Error).message.slice(0, 60)}` }
   }
 
-  // 5) dedupe — 이미 오늘 발송한 (평가자, 회차) 쌍은 스킵
-  const allRelatedKeys = [...new Set(activePairs.map((p) => `${p.emp.id}:${p.stage}`))]
-  const dedupeKeys = allRelatedKeys.length > 0
-    ? `&related_entity_id=in.(${allRelatedKeys.map((k) => `"${k}"`).join(',')})`
+  // 5) dedupe — 같은 day, 같은 직원에 대해 이미 발송한 (평가자) 는 스킵.
+  //    오늘(KST 자정) 이후 발송된 deliveries 만 조회 — sent_at >= todayKst ISO
+  const todayKstIso = new Date(todayKst).toISOString()
+  const allEmpIds = [...new Set(activePairs.map((p) => p.emp.id))]
+  const idsIn = allEmpIds.length > 0
+    ? `&related_entity_id=in.(${allEmpIds.map((id) => `"${id}"`).join(',')})`
     : ''
-  const dedupeUrl = `${baseUrl}/rest/v1/notification_deliveries?select=recipient_uid,related_entity_id&related_entity_type=eq.probation_dday${dedupeKeys}`
+  const dedupeUrl = `${baseUrl}/rest/v1/notification_deliveries?select=recipient_uid,related_entity_id&related_entity_type=eq.probation_dday&sent_at=gte.${encodeURIComponent(todayKstIso)}${idsIn}`
   const dedupeRes = await fetch(dedupeUrl, { headers: sbHeaders })
   const dedupeRows: Array<{ recipient_uid: string; related_entity_id: string }> = dedupeRes.ok ? await dedupeRes.json() : []
   const alreadySent = new Set(dedupeRows.map((r) => `${r.recipient_uid}::${r.related_entity_id}`))
@@ -202,7 +204,8 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   type Result = { uid: string; emp: string; stage: string; in_app?: string; push?: string; email?: string; skipped?: string }
   const results: Result[] = []
   for (const { emp, stage } of activePairs) {
-    const relatedKey = `${emp.id}:${stage}`
+    // related_entity_id 는 uuid 타입이라 emp.id 만. stage 별 dedupe 는 subject 또는 sent_at 일자로 분리.
+    const relatedKey = emp.id
     const evaluators = evaluatorsFor(emp)
     const stageLabel = STAGE_LABELS[stage] || stage
     const subject = `🎓 수습평가 D-day — ${emp.name} ${stageLabel}`
