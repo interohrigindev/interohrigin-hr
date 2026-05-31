@@ -31,6 +31,9 @@ const ROUTES: Record<string, string> = {
   // HR — 매 5분, 예약 시작 30분 전 리마인더 (헬스키퍼 + 회의실/스튜디오/차량 등 자원예약)
   '*/5 * * * *': 'https://hr.interohrigin.com/api/cron-booking-reminders',
 
+  // HR — 매일 KST 08:00 (UTC 23:00 전일), 수습평가 D-day 평가자 알림
+  '0 23 * * *': 'https://hr.interohrigin.com/api/cron-probation-dday',
+
   // 예시 (향후 도입 시 주석 해제 + wrangler.toml 에도 같은 expr 추가):
   // '0 0 * * *':  'https://finance.interohrigin.com/api/cron-daily-close',     // KST 09:00 — Finance 일일 마감
   // '0 23 * * *': 'https://cs.interohrigin.com/api/cron-pending-tickets',      // KST 08:00 — CS 미처리 티켓
