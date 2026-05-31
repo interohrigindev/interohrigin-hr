@@ -595,7 +595,6 @@ ${prevSummary}
 
         // KST(Asia/Seoul) 기준 자정 시각을 ms 로 반환 — D-day 계산 시 UTC/KST 혼동으로
         // KST 오전 9시 이전에 하루 일찍 D-1 로 표시되던 버그 fix (2026-06-01)
-        const KST_OFFSET_MS = 9 * 60 * 60 * 1000
         function kstMidnightMs(d: Date): number {
           // d 의 KST 자정 시각을 UTC ms 로 환산
           const kstDateStr = new Intl.DateTimeFormat('en-CA', {
