@@ -137,7 +137,7 @@ const ADMIN_BLOCKS: BlockItem[] = [
   // 0513: IO CS — onClick 은 컴포넌트 내부에서 profile 주입해 덮어씀
   {
     title: 'IO CS',
-    description: '고객관리 플랫폼 — cs.interohrigin.com (승인된 사용자만 / 별도 탭)',
+    description: '고객관리 플랫폼 (별도 탭)',
     icon: MessageSquare,
     color: 'text-sky-600',
     bg: 'bg-sky-50 hover:bg-sky-100 border-sky-200',
@@ -145,7 +145,7 @@ const ADMIN_BLOCKS: BlockItem[] = [
   },
   {
     title: 'IO Finance',
-    description: '회계 플랫폼 — fn.interohrigin.com (별도 탭에서 열림)',
+    description: '회계 플랫폼 (별도 탭)',
     icon: DollarSign,
     color: 'text-emerald-600',
     bg: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200',
@@ -320,7 +320,7 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
     // 0513: IO CS — 승인된 사용자만 접근
     {
       title: 'IO CS',
-      description: '고객관리 플랫폼 — cs.interohrigin.com (승인된 사용자만 / 별도 탭)',
+      description: '고객관리 플랫폼 (별도 탭)',
       icon: MessageSquare,
       color: 'text-sky-600',
       bg: 'bg-sky-50 hover:bg-sky-100 border-sky-200',
@@ -328,7 +328,7 @@ function EmployeeHome({ navigate }: { navigate: ReturnType<typeof useNavigate> }
     },
     {
       title: 'IO Finance',
-      description: '회계 플랫폼 — fn.interohrigin.com (별도 탭에서 열림)',
+      description: '회계 플랫폼 (별도 탭)',
       icon: DollarSign,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200',

@@ -2,10 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* PWA 가로 스크롤 차단 — viewport 보다 큰 콘텐츠가 있어도 좌우 흔들림 방지
+ * 원인 예시: 긴 도메인/URL 텍스트가 nowrap 으로 카드 너비를 늘려 viewport 초과
+ * (단, 명시적으로 overflow-x-auto 를 둔 테이블/스크롤 영역은 정상 작동) */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   font-family: 'Pretendard', 'Noto Sans KR', system-ui, -apple-system, sans-serif;
+}
+
+#root {
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 /* PWA safe area (iPhone 노치 대응) */
@@ -38,6 +51,20 @@ body {
   .grid-cols-3 { grid-template-columns: repeat(2, 1fr); }
   .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
 
-  /* 버튼 텍스트 줄바꿈 방지 */
-  button, [role="button"] { white-space: nowrap; }
+  /* 버튼 자체는 nowrap (라벨 한 줄) — 단, 버튼 내부 <p>/<span> 등 텍스트는
+   * .whitespace-normal 명시 시 wrap 허용. button 자식 전체에 nowrap 상속
+   * 되던 기존 규칙은 카드형 버튼의 description 텍스트를 한 줄로 강제해
+   * viewport 초과 → 가로 스크롤 원인이었음 (2026-06-01 fix). */
+  button, [role="button"] {
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  /* 버튼 내부 descendant block 요소(h1~h3/p/div)는 wrap 허용
+   * → 카드 형태 버튼의 description 텍스트 한국어 가독성 유지 + viewport 초과 방지 */
+  button h1, button h2, button h3, button p, button div,
+  [role="button"] h1, [role="button"] h2, [role="button"] h3,
+  [role="button"] p, [role="button"] div {
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
 }
