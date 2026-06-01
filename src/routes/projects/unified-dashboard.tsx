@@ -968,8 +968,17 @@ export default function UnifiedDashboard() {
     }
 
     // 4) 참여 프로젝트 0 + 작업 0 인 사람은 제외 (완료 프로젝트만 참여했던 케이스)
+    // 4-1) 퇴사자/삭제 직원 제외 — allEmployees(active 만 포함)에 없으면 제거 (2026-06-01)
+    //      퇴사자가 맡았던 단계/작업은 담당자별 업무량에 노출되지 않음
+    const activeEmpIds = new Set(allEmployees.map((e) => e.id))
     for (const [uid, d] of [...map.entries()]) {
-      if (d.projects.length === 0 && d.total_tasks === 0) map.delete(uid)
+      if (d.projects.length === 0 && d.total_tasks === 0) {
+        map.delete(uid)
+        continue
+      }
+      if (!activeEmpIds.has(uid)) {
+        map.delete(uid)
+      }
     }
 
     // 정렬: 선택된 기준에 따라
@@ -985,7 +994,7 @@ export default function UnifiedDashboard() {
       }
     })
     return entries.slice(0, 12)
-  }, [activeProjects, activeTasks, getEmpName, workloadSort])
+  }, [activeProjects, activeTasks, getEmpName, workloadSort, allEmployees])
 
   // Open slide panel
   const openSlidePanel = useCallback((projectId: string, projectName: string, stageId: string, stageName: string) => {
