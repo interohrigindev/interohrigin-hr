@@ -1317,8 +1317,12 @@ export default function UnifiedDashboard() {
                         </div>
 
                         {/* ── Expanded sub-rows (pipeline stages) ── */}
+                        {/* 좌측 띠 색상은 border-l-* 로 지정 (이전엔 bg-* 사용 →
+                         * Tailwind 클래스 정렬 시 bg-violet-500 이 bg-gray-50 을 덮어
+                         * 브랜드사업본부 전체가 violet 으로 보이던 버그 fix, 2026-06-01).
+                         * 모든 본부 통일 — 라이트 그레이 배경 + 회색 좌측 띠. */}
                         {isExpanded && (
-                          <div className={`border-l-4 ${group.color.bar} bg-gray-50/70`}>
+                          <div className="border-l-4 border-l-gray-300 bg-gray-50">
                             <div className="grid grid-cols-[32px_minmax(0,2.5fr)_120px_minmax(0,1.2fr)_80px_90px_100px_60px] gap-0 items-center px-4 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200 min-w-[700px]">
                               <div />
                               <div className="pl-6">파이프라인 단계</div>
@@ -1590,7 +1594,9 @@ export default function UnifiedDashboard() {
       </div>
 
       {/* ─── Bottom Widgets ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* 두 블럭 모두 max-h-[520px] 통일 — 이전엔 주의 필요만 max-h-64(256px) 고정 →
+       * 담당자별이 자연 확장될 때 주의 필요 카드 아래 큰 여백 발생 (2026-06-01 fix) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {/* 주의 필요 — 마감 임박/초과 프로젝트 단계 + 작업 */}
         <Card>
           <CardHeader className="pb-2">
@@ -1607,7 +1613,7 @@ export default function UnifiedDashboard() {
                 <p className="text-sm font-medium">지연 항목 없음</p>
               </div>
             ) : (
-              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+              <div className="space-y-1.5 max-h-[520px] overflow-y-auto">
                 {delayedStages.map((s) => {
                   const project = filteredProjects.find((pr) => pr.stages.some((st) => st.id === s.id))
                   const days = Math.abs(Math.ceil((new Date(s.deadline!).getTime() - Date.now()) / 86400000))
@@ -1697,7 +1703,7 @@ export default function UnifiedDashboard() {
                   <span className="text-right">부하</span>
                 </div>
 
-                <div className="divide-y divide-gray-50">
+                <div className="divide-y divide-gray-50 max-h-[480px] overflow-y-auto">
                   {assigneeWorkload.map(([id, data]) => {
                     const totalLoad = data.total_tasks + data.projects.length
                     const maxLoad = Math.max(...assigneeWorkload.map(([, d]) => d.total_tasks + d.projects.length), 1)
