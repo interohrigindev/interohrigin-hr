@@ -289,7 +289,7 @@ const navGroups: NavGroup[] = [
     label: '예약',
     icon: <CalendarDays className="h-5 w-5" />,
     items: [
-      { externalIomallPath: '/resources', to: '/resources', label: '자원 예약 바로가기', icon: <Calendar className="h-4 w-4" /> },
+      { externalIomallPath: '/resources', to: '/resources', label: '자원 예약', icon: <Calendar className="h-4 w-4" /> },
     ],
   },
   // 시스템 관리 — 법적 리스크 대응 P0 인프라 (감사 로그 / 기능 토글)
@@ -670,11 +670,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             onClose()
                             void openIoMall(item.externalIomallPath!)
                           }}
-                          className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors text-left"
+                          className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors text-left min-w-0"
                           title={`IO Mall — ${item.label} (새 탭으로 열림)`}
                         >
-                          {item.icon}
-                          <span className="flex-1">{item.label}</span>
+                          <span className="shrink-0">{item.icon}</span>
+                          <span className="flex-1 min-w-0 truncate whitespace-nowrap">{item.label}</span>
                           <ExternalLink className="h-3.5 w-3.5 text-gray-400 shrink-0" aria-label="새 탭" />
                         </button>
                       </div>
@@ -689,15 +689,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         onClick={onClose}
                         className={({ isActive }) =>
                           cn(
-                            'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
+                            'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors min-w-0',
                             isActive
                               ? 'bg-brand-50 text-brand-700 font-medium'
                               : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
                           )
                         }
                       >
-                        {item.icon}
-                        {item.label}
+                        <span className="shrink-0">{item.icon}</span>
+                        <span className="flex-1 min-w-0 truncate whitespace-nowrap">{item.label}</span>
                       </NavLink>
                     </div>
                   )
@@ -713,15 +713,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 onClick={onClose}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors min-w-0',
                     isActive
                       ? 'bg-brand-50 text-brand-700'
                       : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   )
                 }
               >
-                <BookOpen className="h-5 w-5" />
-                <span className="flex-1">사용 매뉴얼</span>
+                <BookOpen className="h-5 w-5 shrink-0" />
+                <span className="flex-1 min-w-0 truncate whitespace-nowrap">사용 매뉴얼</span>
               </NavLink>
             </div>
           )}
