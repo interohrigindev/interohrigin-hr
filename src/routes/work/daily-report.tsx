@@ -1186,13 +1186,15 @@ ${completedText || '아직 없음'}
         </div>
       </div>
 
-      {/* Date selector — 오늘 이후 미래 날짜 선택 불가 */}
-      <div className="flex items-center gap-3">
-        <Button size="sm" variant="outline" onClick={() => setSelectedDate(prevDay(selectedDate))}>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex items-center gap-2">
-          <CalendarDays className="h-4 w-4 text-gray-500" />
+      {/* Date selector — 오늘 이후 미래 날짜 선택 불가
+        * 모바일 좁은 화면에서 화살표/캘린더/input 이 겹치던 버그 fix (2026-06-01)
+        * flex-wrap + 그룹화로 한 줄 강제 압축 해소 */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Button size="sm" variant="outline" onClick={() => setSelectedDate(prevDay(selectedDate))} className="px-2">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <CalendarDays className="h-4 w-4 text-gray-500 shrink-0" />
           <Input
             type="date"
             value={selectedDate}
@@ -1206,28 +1208,29 @@ ${completedText || '아직 없음'}
               }
               setSelectedDate(v)
             }}
-            className="w-40"
+            className="w-36 sm:w-40"
           />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isFutureDate(nextDay(selectedDate)) || selectedDate >= formatDate(new Date())}
+            onClick={() => {
+              const n = nextDay(selectedDate)
+              if (isFutureDate(n)) {
+                toast('오늘 이후의 일일 업무보고는 작성할 수 없습니다.', 'info')
+                return
+              }
+              setSelectedDate(n)
+            }}
+            className="px-2"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={isFutureDate(nextDay(selectedDate)) || selectedDate >= formatDate(new Date())}
-          onClick={() => {
-            const n = nextDay(selectedDate)
-            if (isFutureDate(n)) {
-              toast('오늘 이후의 일일 업무보고는 작성할 수 없습니다.', 'info')
-              return
-            }
-            setSelectedDate(n)
-          }}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setSelectedDate(formatDate(new Date()))}>
+        <Button size="sm" variant="ghost" onClick={() => setSelectedDate(formatDate(new Date()))} className="shrink-0">
           오늘
         </Button>
-        {report && <Badge variant="success">저장됨</Badge>}
+        {report && <Badge variant="success" className="shrink-0">저장됨</Badge>}
       </div>
 
       {/* 전일 피드백 */}
@@ -1325,50 +1328,53 @@ ${completedText || '아직 없음'}
                   const palette = paletteFor(g.projectId)
                   return (
                     <div key={g.projectId} className={`rounded-lg border ${palette.border} overflow-hidden`}>
-                      {/* 색상 헤더 블럭 */}
-                      <div className={`${palette.bg} px-4 py-2.5 border-b ${palette.border} flex items-start justify-between flex-wrap gap-2`}>
-                        <div className="flex flex-col gap-1 min-w-0 flex-1">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`inline-block w-1 h-5 rounded-full ${palette.accent} shrink-0`} />
-                            <span className="text-base shrink-0">📁</span>
-                            <h3 className={`font-bold ${palette.text} text-lg break-keep [word-break:keep-all]`}>{g.projectName}</h3>
-                            {g.completed && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 shrink-0">완료</span>
-                            )}
-                            {g.tasks.length > 0 && (
-                              <span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold ${palette.badge} shrink-0`}>
-                                {g.tasks.length}
-                              </span>
-                            )}
-                          </div>
-                          {/* 내가 담당으로 지정된 파이프라인 단계 */}
-                          {g.myStages.length > 0 && (
-                            <div className="flex items-center gap-1.5 flex-wrap pl-4">
-                              <span className={`text-[10px] font-medium ${palette.text} opacity-70 shrink-0`}>내 담당 단계</span>
-                              {g.myStages.map((s, i) => {
-                                const dotCls =
-                                  s.status === '완료' ? 'bg-emerald-500' :
-                                  s.status === '진행중' ? 'bg-blue-500' :
-                                  s.status === '홀딩' ? 'bg-amber-500' :
-                                  'bg-gray-300'
-                                return (
-                                  <span
-                                    key={i}
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/80 border border-white text-[10px] font-medium text-gray-700 shrink-0"
-                                    title={`${s.name} · ${s.status}`}
-                                  >
-                                    <span className={`w-1.5 h-1.5 rounded-full ${dotCls} shrink-0`} />
-                                    {s.name}
-                                  </span>
-                                )
-                              })}
-                            </div>
+                      {/* 색상 헤더 블럭 — 반응형 (2026-06-01 모바일 가독성 개선)
+                       * 모바일: 세로 stack (프로젝트명 / 내 담당 단계 / 액션 행)
+                       * 데스크탑(sm+): 한 행에 제목 + 우측 액션 */}
+                      <div className={`${palette.bg} px-3 sm:px-4 py-2.5 border-b ${palette.border}`}>
+                        {/* 1행: 프로젝트명 (전체 너비 사용 — wrap 자유) */}
+                        <div className="flex items-start gap-2 min-w-0">
+                          <span className={`inline-block w-1 h-5 rounded-full ${palette.accent} shrink-0 mt-0.5`} />
+                          <span className="text-base shrink-0 leading-5">📁</span>
+                          <h3 className={`font-bold ${palette.text} text-base sm:text-lg flex-1 min-w-0 break-keep [word-break:keep-all] leading-tight`}>{g.projectName}</h3>
+                          {g.completed && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 shrink-0">완료</span>
+                          )}
+                          {g.tasks.length > 0 && (
+                            <span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold ${palette.badge} shrink-0`}>
+                              {g.tasks.length}
+                            </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {/* 작업/메모 없는 프로젝트만 '오늘은 작업 없음' 체크 가능 */}
+
+                        {/* 2행: 내 담당 단계 — 모바일에서도 한 줄 wrap, 들여쓰기 작게 */}
+                        {g.myStages.length > 0 && (
+                          <div className="flex items-center gap-1 flex-wrap pl-4 mt-1.5">
+                            <span className={`text-[10px] font-medium ${palette.text} opacity-70 shrink-0 mr-0.5`}>내 담당</span>
+                            {g.myStages.map((s, i) => {
+                              const dotCls =
+                                s.status === '완료' ? 'bg-emerald-500' :
+                                s.status === '진행중' ? 'bg-blue-500' :
+                                s.status === '홀딩' ? 'bg-amber-500' :
+                                'bg-gray-300'
+                              return (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/80 border border-white text-[10px] font-medium text-gray-700"
+                                  title={`${s.name} · ${s.status}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${dotCls} shrink-0`} />
+                                  <span className="break-keep [word-break:keep-all]">{s.name}</span>
+                                </span>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* 3행: 액션 (체크박스 + 항목 추가) — 우측 정렬 */}
+                        <div className="flex items-center justify-end gap-2 flex-wrap mt-2">
                           {g.tasks.length === 0 && isMemoEmpty(projectMemos[g.projectId]) && (
-                            <label className={`inline-flex items-center gap-1 text-[11px] ${palette.text} opacity-75 cursor-pointer select-none px-1.5 py-1 rounded hover:bg-white/60`}>
+                            <label className={`inline-flex items-center gap-1 text-[11px] ${palette.text} opacity-75 cursor-pointer select-none px-1.5 py-1 rounded hover:bg-white/60 whitespace-nowrap`}>
                               <input
                                 type="checkbox"
                                 checked={false}
@@ -1394,6 +1400,7 @@ ${completedText || '아직 없음'}
                             size="sm"
                             variant="ghost"
                             onClick={() => addTask(setCompleted, g.projectId, g.projectName)}
+                            className="whitespace-nowrap"
                           >
                             + 항목 추가
                           </Button>
