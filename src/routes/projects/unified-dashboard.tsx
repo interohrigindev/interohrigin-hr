@@ -24,6 +24,7 @@ import type { StageStatus, ProjectUpdate } from '@/types/project-board'
 import {
   STAGE_STATUS_COLORS,
 } from '@/types/project-board'
+import { ProjectOwnerTransferModal } from '@/components/projects/ProjectOwnerTransferModal'
 
 // ─── Constants ─────────────────────────────────────────────────────
 
@@ -584,6 +585,31 @@ export default function UnifiedDashboard() {
   // Inline editing state
   const [editingField, setEditingField] = useState<EditingField | null>(null)
   const editRef = useRef<HTMLDivElement>(null)
+
+  // 담당자 변경 결재 (2026-06-01) — 옵션 A: 기존 approval 시스템 재활용
+  const [transferProjectId, setTransferProjectId] = useState<string | null>(null)
+  // project_id → 진행중인 transfer 결재 doc_id (있으면 잠금/회수 UI 노출)
+  const [pendingTransfers, setPendingTransfers] = useState<Map<string, string>>(new Map())
+
+  const isAdminLevel = !!profile?.role && ['admin', 'ceo'].includes(profile.role)
+
+  const fetchPendingTransfers = useCallback(async () => {
+    const { data } = await supabase
+      .from('approval_documents')
+      .select('id, content')
+      .eq('doc_type', 'project_owner_transfer')
+      .in('status', ['submitted', 'in_review'])
+    const map = new Map<string, string>()
+    for (const row of (data || []) as Array<{ id: string; content: { project_id?: string } }>) {
+      const pid = row.content?.project_id
+      if (pid) map.set(pid, row.id)
+    }
+    setPendingTransfers(map)
+  }, [])
+
+  useEffect(() => {
+    fetchPendingTransfers()
+  }, [fetchPendingTransfers])
 
   // Slide panel state
   const [slidePanel, setSlidePanel] = useState<SlidePanelState | null>(null)
@@ -1214,29 +1240,68 @@ export default function UnifiedDashboard() {
                             )}
                           </div>
 
-                          {/* Assignees — inline editable */}
+                          {/* Assignees — 담당자 (2026-06-01 결재 워크플로 적용)
+                            * - admin/CEO: 인라인 dropdown (기존 동작 유지 — 긴급 변경 대비)
+                            * - 그 외: 클릭 시 결재 요청 모달 오픈 (인수자→리더+임원 합의)
+                            * - 진행중 transfer 결재 있으면 🔒 자물쇠 + 결재 페이지 이동 링크
+                            */}
                           <div className="relative" ref={isEditingAssignee ? editRef : undefined}>
-                            {isEditingAssignee ? (
-                              <select
-                                autoFocus
-                                className="w-full text-xs border border-blue-400 rounded px-1.5 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                defaultValue={p.manager_id || ''}
-                                onChange={(e) => handleInlineAssigneeChange(p.id, e.target.value)}
-                                onBlur={() => setEditingField(null)}
-                              >
-                                <option value="">미지정</option>
-                                {allEmployees.map((emp) => (
-                                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span
-                                onClick={(e) => { e.stopPropagation(); setEditingField({ projectId: p.id, field: 'assignee' }) }}
-                                className="text-xs text-gray-700 truncate cursor-pointer hover:text-blue-600 transition-colors"
-                              >
-                                {p.manager_name || <span className="text-gray-400">+ 담당자</span>}
-                              </span>
-                            )}
+                            {(() => {
+                              const pendingDocId = pendingTransfers.get(p.id)
+                              if (pendingDocId) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); navigate(`/admin/approval?doc=${pendingDocId}`) }}
+                                    className="text-xs text-amber-700 truncate cursor-pointer hover:underline inline-flex items-center gap-1"
+                                    title="담당자 변경 결재 진행 중 — 클릭하여 결재 페이지로 이동"
+                                  >
+                                    🔒 {p.manager_name || '담당자'} <span className="text-[10px] text-amber-500">(결재중)</span>
+                                  </button>
+                                )
+                              }
+                              if (isAdminLevel && isEditingAssignee) {
+                                return (
+                                  <select
+                                    autoFocus
+                                    className="w-full text-xs border border-blue-400 rounded px-1.5 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                    defaultValue={p.manager_id || ''}
+                                    onChange={(e) => handleInlineAssigneeChange(p.id, e.target.value)}
+                                    onBlur={() => setEditingField(null)}
+                                  >
+                                    <option value="">미지정</option>
+                                    {allEmployees.map((emp) => (
+                                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                                    ))}
+                                  </select>
+                                )
+                              }
+                              // 일반 사용자: 결재 요청 모달 오픈
+                              return (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (isAdminLevel) {
+                                      setEditingField({ projectId: p.id, field: 'assignee' })
+                                    } else {
+                                      if (!p.manager_id) {
+                                        toast('담당자가 지정되지 않은 프로젝트입니다. 관리자에게 문의하세요.', 'error')
+                                        return
+                                      }
+                                      if (p.manager_id !== profile?.id) {
+                                        toast('담당자 변경 요청은 현 담당자만 신청할 수 있습니다.', 'error')
+                                        return
+                                      }
+                                      setTransferProjectId(p.id)
+                                    }
+                                  }}
+                                  className="text-xs text-gray-700 truncate cursor-pointer hover:text-blue-600 transition-colors"
+                                  title={isAdminLevel ? '클릭하여 담당자 변경' : '클릭하여 담당자 변경 결재 요청'}
+                                >
+                                  {p.manager_name || <span className="text-gray-400">+ 담당자</span>}
+                                </span>
+                              )
+                            })()}
                           </div>
 
                           {/* Progress bar */}
@@ -1873,6 +1938,41 @@ export default function UnifiedDashboard() {
           fetchUpdates={fetchUpdates}
         />
       )}
+
+      {/* ─── 담당자 변경 결재 요청 모달 (2026-06-01) ───────────────── */}
+      {(() => {
+        if (!transferProjectId) return null
+        const tp = projects.find((pr) => pr.id === transferProjectId)
+        if (!tp) return null
+        const currentManager = tp.manager_id ? allEmployees.find((e) => e.id === tp.manager_id) || null : null
+        if (!currentManager) return null
+        return (
+          <ProjectOwnerTransferModal
+            open={true}
+            onClose={() => setTransferProjectId(null)}
+            project={{
+              id: tp.id,
+              project_name: tp.project_name,
+              manager_id: tp.manager_id,
+              leader_id: tp.leader_id,
+              executive_id: tp.executive_id,
+            }}
+            currentManager={{
+              id: currentManager.id,
+              name: currentManager.name,
+              department_id: currentManager.department_id,
+            }}
+            employees={allEmployees.map((e) => ({
+              id: e.id, name: e.name,
+              department_id: e.department_id,
+            }))}
+            onSubmitted={() => {
+              fetchPendingTransfers()
+              refresh()
+            }}
+          />
+        )
+      })()}
     </div>
   )
 }

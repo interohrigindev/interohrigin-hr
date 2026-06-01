@@ -101,10 +101,11 @@ const DOC_TYPE_CONFIG: Record<string, { label: string; icon: string; hasAmount: 
   expense:       { label: '지출결의서',           icon: '💰', hasAmount: true,  category: '비용', desc: '사용 경비 정산' },
   purchase:      { label: '사무용품 요청',         icon: '🛒', hasAmount: true,  category: '비용', desc: '사무용품·자재·기기 구매' },
   daily_report:  { label: '일일 업무보고',       icon: '📝', hasAmount: false, category: '업무', desc: '일일 보고서 결재' },
+  project_owner_transfer: { label: '프로젝트 담당자 변경', icon: '👤', hasAmount: false, category: '인사', desc: '담당자 이관 결재 (시스템 자동 생성)' },
   general:       { label: '일반 결재',           icon: '📄', hasAmount: false, category: '기타', desc: '자유 양식' },
 }
 
-const DOC_TYPE_CATEGORIES = ['근태', '비용', '업무', '기타'] as const
+const DOC_TYPE_CATEGORIES = ['근태', '비용', '업무', '인사', '기타'] as const
 
 const STATUS_CONFIG: Record<string, { border: string; badge: 'warning' | 'info' | 'success' | 'danger' | 'default'; label: string }> = {
   draft:      { border: 'border-l-gray-400',    badge: 'default', label: '임시저장' },
@@ -1227,6 +1228,41 @@ export default function ApprovalManagementPage() {
               if (isDailyReport) {
                 return <DailyReportApprovalView content={doc.content as Parameters<typeof DailyReportApprovalView>[0]['content']} />
               }
+              // 프로젝트 담당자 변경 — 변경 전/후 시각화 (2026-06-01)
+              if (doc.doc_type === 'project_owner_transfer') {
+                const projectName = String(c.project_name || '-')
+                const fromName = String(c.from_manager_name || '-')
+                const toName = String(c.to_manager_name || '-')
+                const reason = c.reason ? String(c.reason) : null
+                return (
+                  <div className="space-y-3">
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs font-medium text-gray-500 mb-1">대상 프로젝트</p>
+                      <p className="font-semibold text-gray-900 text-sm">{projectName}</p>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 bg-brand-50 border border-brand-200 rounded-lg">
+                      <div className="flex-1">
+                        <p className="text-[10px] text-gray-500 mb-0.5">현 담당자 (양도)</p>
+                        <p className="text-sm font-semibold text-gray-800">{fromName}</p>
+                      </div>
+                      <span className="text-brand-500 text-xl">→</span>
+                      <div className="flex-1">
+                        <p className="text-[10px] text-gray-500 mb-0.5">인수 담당자 (신규)</p>
+                        <p className="text-sm font-semibold text-brand-700">{toName}</p>
+                      </div>
+                    </div>
+                    {reason && (
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs font-medium text-gray-500 mb-1">변경 사유</p>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap">{reason}</p>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-gray-500 px-1">
+                      ※ 최종 승인 시 시스템이 자동으로 프로젝트 담당자를 변경합니다.
+                    </p>
+                  </div>
+                )
+              }
               const bodyHtml = (doc.content as Record<string, unknown>)?.body_html as string | undefined
               return (
                 <div className="bg-gray-50 rounded-lg p-3 space-y-2">
@@ -1727,6 +1763,41 @@ export default function ApprovalManagementPage() {
                       && (Array.isArray(c.completed) || Array.isArray(c.in_progress) || Array.isArray(c.planned)))
                 if (isDailyReport) {
                   return <DailyReportApprovalView content={doc.content as Parameters<typeof DailyReportApprovalView>[0]['content']} />
+                }
+                // 프로젝트 담당자 변경 — 변경 전/후 시각화 (2026-06-01)
+                if (doc.doc_type === 'project_owner_transfer') {
+                  const projectName = String(c.project_name || '-')
+                  const fromName = String(c.from_manager_name || '-')
+                  const toName = String(c.to_manager_name || '-')
+                  const reason = c.reason ? String(c.reason) : null
+                  return (
+                    <div className="space-y-3">
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs font-medium text-gray-500 mb-1">대상 프로젝트</p>
+                        <p className="font-semibold text-gray-900 text-sm">{projectName}</p>
+                      </div>
+                      <div className="flex items-center gap-3 p-3 bg-brand-50 border border-brand-200 rounded-lg">
+                        <div className="flex-1">
+                          <p className="text-[10px] text-gray-500 mb-0.5">현 담당자 (양도)</p>
+                          <p className="text-sm font-semibold text-gray-800">{fromName}</p>
+                        </div>
+                        <span className="text-brand-500 text-xl">→</span>
+                        <div className="flex-1">
+                          <p className="text-[10px] text-gray-500 mb-0.5">인수 담당자 (신규)</p>
+                          <p className="text-sm font-semibold text-brand-700">{toName}</p>
+                        </div>
+                      </div>
+                      {reason && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-xs font-medium text-gray-500 mb-1">변경 사유</p>
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap">{reason}</p>
+                        </div>
+                      )}
+                      <p className="text-[11px] text-gray-500 px-1">
+                        ※ 최종 승인 시 시스템이 자동으로 프로젝트 담당자를 변경합니다.
+                      </p>
+                    </div>
+                  )
                 }
                 // 다른 양식은 기존 key-value 렌더링
                 const bodyHtml = (doc.content as Record<string, any>)?.body_html as string | undefined
