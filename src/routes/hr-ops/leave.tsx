@@ -37,8 +37,10 @@ interface Employee {
 interface Department { id: string; name: string; parent_id?: string | null }
 
 interface ApprovalStep {
-  step: number
-  role_label: string       // '리더' | '이사' | '대표'
+  step: number              // 표시용 순번 (1-based 누적, UI 노출)
+  step_order?: number       // 결재 진행 그룹 번호 (같은 step_order = 병렬 결재, 2026-06-01 추가)
+                            //   - 없으면 step 과 동일 취급 (백워드 호환: 기존 데이터는 순차)
+  role_label: string        // '리더' | '이사' | '대표'
   approver_id: string
   approver_name: string
   status: 'pending' | 'approved' | 'rejected'
@@ -405,6 +407,7 @@ export default function LeaveManagementPage() {
   function buildApprovalLine(): ApprovalStep[] {
     const approvalLine: ApprovalStep[] = []
     let step = 0
+    let stepOrder = 0  // 결재 진행 그룹 — 같은 step_order 면 병렬 결재 (2026-06-01)
     if (!profile?.id) return approvalLine
 
     if (effectiveLeaveTemplate && effectiveLeaveTemplate.steps && effectiveLeaveTemplate.steps.length > 0) {
@@ -440,33 +443,39 @@ export default function LeaveManagementPage() {
           candidates = allEmployees.filter((e) => e.role === tplStep.role)
         }
 
+        // 같은 template step 의 모든 candidates 는 같은 step_order 부여 (= 병렬 결재)
+        // 한 명이라도 추가된 경우에만 stepOrder 증가 (빈 step 은 건너뜀)
+        let addedThisStep = 0
         for (const c of candidates) {
           if (usedIds.has(c.id)) continue
           usedIds.add(c.id)
           approvalLine.push({
             step: step++,
+            step_order: stepOrder,
             role_label: tplStep.label || tplStep.role,
             approver_id: c.id,
             approver_name: c.name,
             status: 'pending',
             acted_at: null,
           })
+          addedThisStep++
         }
+        if (addedThisStep > 0) stepOrder++
       }
     } else {
-      // Fallback: legacy 4단계 (리더 → 인사담당 → 임원 → 대표)
+      // Fallback: legacy 4단계 (리더 → 인사담당 → 임원 → 대표) — 모두 순차 (step_order 증가)
       // autoLeader 없으면 빈 배열 반환 (호출부에서 "리더 미지정" toast)
       if (!autoLeader) return approvalLine
 
       approvalLine.push({
-        step: step++, role_label: '리더',
+        step: step++, step_order: stepOrder++, role_label: '리더',
         approver_id: autoLeader.id, approver_name: autoLeader.name,
         status: 'pending', acted_at: null,
       })
 
       if (hrAdmin && hrAdmin.id !== autoLeader.id) {
         approvalLine.push({
-          step: step++, role_label: '인사담당',
+          step: step++, step_order: stepOrder++, role_label: '인사담당',
           approver_id: hrAdmin.id, approver_name: hrAdmin.name,
           status: 'pending', acted_at: null,
         })
@@ -474,7 +483,7 @@ export default function LeaveManagementPage() {
 
       if (autoDirector && autoDirector.id !== autoLeader.id && autoDirector.id !== hrAdmin?.id) {
         approvalLine.push({
-          step: step++, role_label: '임원',
+          step: step++, step_order: stepOrder++, role_label: '임원',
           approver_id: autoDirector.id, approver_name: autoDirector.name,
           status: 'pending', acted_at: null,
         })
@@ -482,7 +491,7 @@ export default function LeaveManagementPage() {
 
       if (ceo && ceo.id !== profile.id) {
         approvalLine.push({
-          step: step++, role_label: '대표',
+          step: step++, step_order: stepOrder++, role_label: '대표',
           approver_id: ceo.id, approver_name: ceo.name,
           status: 'pending', acted_at: null,
         })
@@ -778,45 +787,88 @@ export default function LeaveManagementPage() {
     fetchData()
   }
 
-  // ─── 결재 승인/반려 ────────────────────────────────
+  // ─── 결재 승인/반려 (병렬결재 지원, 2026-06-01 개정) ────────────────
+  // 정책:
+  //  - 본인의 pending row 찾기 (current_step 인덱스 무관, 같은 step_order 안 어디든)
+  //  - 같은 step_order 다른 결재자 pending 남으면 current_step 유지 (병렬 대기)
+  //  - 같은 step_order 모두 처리되면 다음 step_order 의 첫 번째 row 인덱스로 이동
+  //  - 반려: 누구 한 명이라도 반려 시 즉시 전체 반려
+  //  - 백워드 호환: step_order 가 없는 기존 데이터는 step 을 step_order 로 간주 (자동 순차)
   async function handleApprovalAction(requestId: string, action: 'approved' | 'rejected') {
     const request = leaveRequests.find((r) => r.id === requestId)
     if (!request || !request.approval_line || !profile?.id) return
 
     const line = [...request.approval_line] as ApprovalStep[]
-    const currentStep = request.current_step ?? 0
-    const currentApprover = line[currentStep]
 
-    if (!currentApprover || currentApprover.approver_id !== profile.id) {
+    // step_order normalize — 기존 데이터(step_order 없음)는 인덱스를 그대로 사용
+    const getStepOrder = (s: ApprovalStep, idx: number): number =>
+      typeof s.step_order === 'number' ? s.step_order : idx
+
+    // 1) 본인의 pending row 찾기 — current_step 무관, 같은 step_order 그룹 안 어디든 가능
+    //    단, 이전 step_order 의 모든 row 가 완료된 경우만 (병렬은 같은 그룹 안에서만)
+    const currentStep = request.current_step ?? 0
+    const currentSO = getStepOrder(line[currentStep] || line[0], currentStep)
+    const myRowIdx = line.findIndex(
+      (s, i) => s.approver_id === profile.id && s.status === 'pending'
+        && getStepOrder(s, i) === currentSO,
+    )
+
+    if (myRowIdx === -1) {
       toast('현재 결재 차례가 아닙니다', 'error')
       return
     }
 
-    // 현재 단계 처리
-    line[currentStep] = { ...currentApprover, status: action, acted_at: new Date().toISOString() }
+    const myRow = line[myRowIdx]
+    line[myRowIdx] = { ...myRow, status: action, acted_at: new Date().toISOString() }
 
     if (action === 'rejected') {
-      // 반려 → 최종 반려
+      // 반려 → 즉시 전체 반려
       await supabase.from('leave_requests').update({
         approval_line: line, approval_status: 'rejected',
         approved_by: profile.id, approved_at: new Date().toISOString(),
       }).eq('id', requestId)
       toast('반려 처리되었습니다', 'success')
-    } else if (currentStep >= line.length - 1) {
-      // 마지막 결재자 승인 → 최종 승인
+      fetchData()
+      return
+    }
+
+    // 2) 같은 step_order 의 다른 pending row 남았는지 확인 (병렬 대기 체크)
+    const sameGroupPending = line.some(
+      (s, i) => i !== myRowIdx && getStepOrder(s, i) === currentSO && s.status === 'pending',
+    )
+
+    if (sameGroupPending) {
+      // 같은 그룹 다른 결재자 대기 중 — current_step 유지 + 알림
+      const waitingNames = line
+        .map((s, i) => ({ s, i }))
+        .filter(({ s, i }) => i !== myRowIdx && getStepOrder(s, i) === currentSO && s.status === 'pending')
+        .map(({ s }) => s.approver_name)
+        .join(', ')
+      await supabase.from('leave_requests').update({ approval_line: line }).eq('id', requestId)
+      toast(`승인 완료. 같은 단계 결재자(${waitingNames}) 승인 대기 중입니다.`, 'success')
+      fetchData()
+      return
+    }
+
+    // 3) 같은 그룹 모두 처리됨 → 다음 step_order 로 이동 (없으면 최종 승인)
+    const nextSO = currentSO + 1
+    const nextStepIdx = line.findIndex((s, i) => getStepOrder(s, i) === nextSO)
+
+    if (nextStepIdx === -1) {
+      // 다음 그룹 없음 → 최종 승인
       await supabase.from('leave_requests').update({
-        approval_line: line, approval_status: 'approved', current_step: currentStep + 1,
+        approval_line: line, approval_status: 'approved', current_step: line.length,
         approved_by: profile.id, approved_at: new Date().toISOString(),
       }).eq('id', requestId)
-
-      // 연차 사용 일수는 DB 트리거(update_leave_balance)가 자동 처리
       toast('최종 승인 완료. 연차가 차감되었습니다.', 'success')
     } else {
-      // 다음 결재자로 이동
+      // 다음 그룹의 첫 row 인덱스로 current_step 이동
+      const nextGroup = line.filter((s, i) => getStepOrder(s, i) === nextSO)
+      const nextNames = nextGroup.map((s) => s.approver_name).join(', ')
       await supabase.from('leave_requests').update({
-        approval_line: line, current_step: currentStep + 1,
+        approval_line: line, current_step: nextStepIdx,
       }).eq('id', requestId)
-      toast(`승인 완료. 다음 결재자(${line[currentStep + 1].approver_name})에게 전달되었습니다.`, 'success')
+      toast(`승인 완료. 다음 결재자(${nextNames})에게 전달되었습니다.`, 'success')
     }
     fetchData()
   }
@@ -1443,7 +1495,10 @@ export default function LeaveManagementPage() {
               <span className="text-[10px] text-gray-500 px-1.5 py-0.5 rounded bg-white border border-gray-200">변경 불가</span>
             </div>
             {(() => {
-              const steps: { role_label: string; approver_name: string; status: 'pending' }[] = []
+              // 결재 흐름 미리보기 — 같은 template step 의 다수 결재자는 1줄로 묶어 노출
+              //   (병렬 결재 의도 명시, 2026-06-01 개정 — 사용자는 "강제묵, 김형석, 안병철 (병렬)" 형태로 봄)
+              type PreviewStep = { role_label: string; approver_name: string; status: 'pending'; parallelCount?: number }
+              const steps: PreviewStep[] = []
               if (effectiveLeaveTemplate && effectiveLeaveTemplate.steps && effectiveLeaveTemplate.steps.length > 0) {
                 const used = new Set<string>([profile?.id || ''])
                 for (const ts of effectiveLeaveTemplate.steps) {
@@ -1460,10 +1515,20 @@ export default function LeaveManagementPage() {
                   else if (ts.role === 'ceo') candidates = ceo ? [ceo] : []
                   else if (ts.role === 'finance') candidates = allEmployees.filter((e) => e.role === 'finance')
                   else candidates = allEmployees.filter((e) => e.role === ts.role)
+                  // 같은 template step 의 candidates 를 하나의 preview step 으로 묶음
+                  const namesInThisStep: string[] = []
                   for (const c of candidates) {
                     if (used.has(c.id)) continue
                     used.add(c.id)
-                    steps.push({ role_label: ts.label || ts.role, approver_name: c.name, status: 'pending' })
+                    namesInThisStep.push(c.name)
+                  }
+                  if (namesInThisStep.length > 0) {
+                    steps.push({
+                      role_label: ts.label || ts.role,
+                      approver_name: namesInThisStep.join(', '),
+                      status: 'pending',
+                      parallelCount: namesInThisStep.length,
+                    })
                   }
                 }
               } else {
@@ -1476,13 +1541,21 @@ export default function LeaveManagementPage() {
               if (steps.length === 0) {
                 return <p className="text-[11px] text-red-600 font-medium">⚠️ 결재 대상자가 없습니다. 관리자에게 문의하세요.</p>
               }
+              const hasParallel = steps.some((s) => (s.parallelCount || 1) > 1)
               return (
-                <ApprovalLineViewer
-                  requesterName={profile?.name || '본인'}
-                  steps={steps}
-                  currentStepIndex={-1}
-                  showStatus={false}
-                />
+                <>
+                  <ApprovalLineViewer
+                    requesterName={profile?.name || '본인'}
+                    steps={steps}
+                    currentStepIndex={-1}
+                    showStatus={false}
+                  />
+                  {hasParallel && (
+                    <p className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 mt-2">
+                      ℹ️ 같은 단계에 결재자가 여러 명인 경우 <strong>병렬 결재</strong>됩니다. 누구나 먼저 결재 가능하며, 같은 단계 결재자 모두 승인 시 다음 단계로 이동합니다.
+                    </p>
+                  )}
+                </>
               )
             })()}
           </div>
