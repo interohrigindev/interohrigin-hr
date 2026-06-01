@@ -2522,9 +2522,36 @@ function ApprovalTemplateManager({
   const categoryList = ['전체', ...DOC_TYPE_CATEGORIES.filter(c => categoriesInUse.includes(c) || c === '근태')]
 
   return (
-    <div className="flex gap-0 min-h-[500px] bg-white border border-gray-200 rounded-xl overflow-hidden">
-      {/* 좌측: 카테고리 사이드바 */}
-      <div className="w-36 shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col">
+    <div className="flex flex-col md:flex-row gap-0 md:min-h-[500px] bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* 모바일 전용: 상단 가로 스크롤 탭 (2026-06-01 모바일 가독성 개선)
+        * 데스크탑 좌측 w-36 사이드바가 모바일 폭의 38% 차지해 카드가 좁아지던 문제 fix */}
+      <nav className="md:hidden border-b border-gray-200 bg-gray-50 overflow-x-auto">
+        <div className="flex min-w-max">
+          {categoryList.map((cat) => {
+            const count = categoryCounts[cat] ?? 0
+            const isActive = categoryFilter === cat
+            return (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={`shrink-0 px-4 py-2.5 text-sm flex items-center gap-1.5 border-b-2 transition-colors ${
+                  isActive
+                    ? 'border-brand-500 text-brand-700 font-semibold bg-white'
+                    : 'border-transparent text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <span className="whitespace-nowrap">{cat}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-brand-100 text-brand-700' : 'bg-gray-200 text-gray-500'}`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </nav>
+
+      {/* 데스크탑 전용: 좌측 카테고리 사이드바 */}
+      <div className="hidden md:flex w-36 shrink-0 border-r border-gray-200 bg-gray-50 flex-col">
         <div className="px-3 py-3 border-b border-gray-200">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">카테고리</p>
         </div>
@@ -2554,12 +2581,12 @@ function ApprovalTemplateManager({
 
       {/* 우측: 서식 목록 */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50 flex-wrap">
           <p className="text-sm text-gray-600 font-medium">
             {categoryFilter === '전체' ? '전체 결재선' : `${categoryFilter} 결재선`}
             <span className="ml-1.5 text-[11px] text-gray-400 font-normal">({filteredTemplates.length}건)</span>
           </p>
-          <Button size="sm" onClick={() => setShowNewTemplate(true)}>
+          <Button size="sm" onClick={() => setShowNewTemplate(true)} className="shrink-0">
             <Plus className="h-3.5 w-3.5 mr-1" /> 새 결재선 추가
           </Button>
         </div>
@@ -2661,10 +2688,12 @@ function ApprovalTemplateManager({
           return (
             <Card key={tmpl.id} className={isEditing ? 'ring-2 ring-brand-400' : ''}>
               <CardContent className="py-4">
-                {/* 헤더 */}
-                <div className="flex items-start justify-between mb-3 gap-2">
+                {/* 헤더 — 모바일은 2행 stack, 데스크탑은 한 줄 (2026-06-01 모바일 가독성 개선)
+                  * 이전엔 우측 수정/삭제 버튼이 100px+ 차지해 좁은 카드에서 제목이 "인.", "일." 로 잘림 */}
+                <div className="mb-3">
+                  {/* 1행: 아이콘 + 이름 + 뱃지들 */}
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                    <span className="text-xl">{typeIcon[tmpl.doc_type] || '📋'}</span>
+                    <span className="text-xl shrink-0">{typeIcon[tmpl.doc_type] || '📋'}</span>
                     {isEditing ? (
                       <input
                         type="text"
@@ -2675,18 +2704,19 @@ function ApprovalTemplateManager({
                         autoFocus
                       />
                     ) : (
-                      <h3 className="font-semibold text-gray-900 text-sm truncate">{tmpl.name}</h3>
+                      <h3 className="font-semibold text-gray-900 text-sm truncate min-w-0 flex-1 break-keep">{tmpl.name}</h3>
                     )}
-                    <Badge variant={tmpl.is_active ? 'success' : 'default'} className="text-[10px]">
+                    <Badge variant={tmpl.is_active ? 'success' : 'default'} className="text-[10px] shrink-0">
                       {tmpl.is_active ? '활성' : '비활성'}
                     </Badge>
                     {(tmpl.department_id || tmpl.team_id) && (
-                      <Badge variant="info" className="text-[10px]">
+                      <Badge variant="info" className="text-[10px] shrink-0">
                         🏢 {tmpl.team_id ? (departments.find((d) => d.id === tmpl.team_id)?.name || '팀') : (departments.find((d) => d.id === tmpl.department_id)?.name || '본부')}
                       </Badge>
                     )}
                   </div>
-                  <div className="flex gap-1 shrink-0">
+                  {/* 2행: 액션 버튼 (수정/삭제) — 우측 정렬 */}
+                  <div className="flex gap-1 justify-end mt-2">
                     {isEditing ? (
                       <>
                         <Button size="sm" onClick={() => saveEdit(tmpl.id)}>저장</Button>
