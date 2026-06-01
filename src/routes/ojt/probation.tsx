@@ -16,6 +16,7 @@ import { getProbationGrade, PROBATION_GRADE_CONFIG } from '@/lib/constants'
 import { useNavigate } from 'react-router-dom'
 import { getDefaultEvaluatorRole, isProbationEvaluator, canSendProbationReminder } from '@/lib/probation-utils'
 import { probationReminderEmail } from '@/lib/email-templates'
+import { ProbationMobileList } from '@/components/probation/ProbationMobileList'
 import {
   PROBATION_CRITERIA,
   type ProbationEvaluation,
@@ -284,6 +285,34 @@ export default function ProbationManage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // 선택된 직원이 바뀌면 — selectedStage 가 해당 직원에게 미도래 회차이면
+  // 도래한 가장 큰 회차로 자동 보정 (CEO 가 회차 잘못 선택 후 저장하는 사고 방지)
+  useEffect(() => {
+    if (!selectedEmployeeId || !evalDialogOpen) return
+    const emp = employees.find((e) => e.id === selectedEmployeeId)
+    if (!emp?.hire_date) return
+    const hire = new Date(`${emp.hire_date}T00:00:00+09:00`)
+    const OFFSETS = [14, 42, 70]
+    const kstTodayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date())
+    const kstTodayMs = new Date(`${kstTodayStr}T00:00:00+09:00`).getTime()
+    const arrived: ProbationStage[] = []
+    STAGES.forEach((s, i) => {
+      const startMs = new Date(hire.getTime() + OFFSETS[i] * 86400000).getTime()
+      const kstStartStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(new Date(startMs))
+      const kstStartMs = new Date(`${kstStartStr}T00:00:00+09:00`).getTime()
+      if (kstStartMs <= kstTodayMs) arrived.push(s)
+    })
+    if (arrived.length === 0) return
+    if (!arrived.includes(selectedStage)) {
+      // 미도래 회차였으면 가장 마지막 도래 회차로 보정
+      setSelectedStage(arrived[arrived.length - 1])
+    }
+  }, [selectedEmployeeId, evalDialogOpen, employees, selectedStage])
+
   // ─── New evaluation ───────────────────────────────────────────
   function openNewEval(empId?: string, stage?: ProbationStage) {
     setSelectedEmployeeId(empId || '')
@@ -418,10 +447,10 @@ ${prevSummary}
   async function handleSaveEval() {
     if (!selectedEmployeeId) { toast('직원을 선택하세요.', 'error'); return }
 
-    // P0-A: 회차 검증 (정책 완화 — 2026.05.19)
-    //  - 관리자급: 모든 제약 우회
-    //  - 일반 평가자(리더/임원/대표): 확인 다이얼로그로 우회 가능
-    //  - 7일 자동 마감은 hard block 에서 confirm 으로 완화
+    // P0-A: 회차 검증 (정책 강화 — 2026.06.01)
+    //  - 회차 시작일(D-day) 미도래: 관리자 포함 hard block. 모바일에서 다른 회차 잘못 선택해
+    //    조기 평가가 저장되는 사고(김보미 사례) 재발 방지.
+    //  - 이전 회차 미완료: confirm 으로 모든 평가자가 우회 가능 (운영 유연성)
     const isAdminLvl = !!(profile?.role && ['admin','ceo','director','division_head'].includes(profile.role))
     const targetEmp = employees.find((e) => e.id === selectedEmployeeId)
     if (targetEmp) {
@@ -429,6 +458,30 @@ ${prevSummary}
       const idx = STAGES.indexOf(selectedStage)
       // KST 자정 기준 — UTC 자정 파싱 시 KST 새벽 시간대 하루 어긋남 방지
       const hire = targetEmp.hire_date ? new Date(`${targetEmp.hire_date}T00:00:00+09:00`) : null
+
+      // 회차 시작일 체크 — 미도래 회차는 관리자 포함 hard block
+      if (hire) {
+        const startMs = new Date(hire.getTime() + ROUND_OFFSET[idx] * 86400 * 1000).getTime()
+        // KST 자정 기준으로 비교 (UTC 새벽 시간대 하루 어긋남 방지)
+        const kstTodayStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(new Date())
+        const kstTodayMs = new Date(`${kstTodayStr}T00:00:00+09:00`).getTime()
+        const kstStartStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(new Date(startMs))
+        const kstStartMs = new Date(`${kstStartStr}T00:00:00+09:00`).getTime()
+        if (kstTodayMs < kstStartMs) {
+          const diffDays = Math.round((kstStartMs - kstTodayMs) / 86400000)
+          toast(`${STAGE_LABELS[selectedStage]} 평가 예정일까지 D-${diffDays} 남았습니다. 예정일 전에는 평가할 수 없습니다.`, 'error')
+          return
+        }
+        // 평가 예정일 + 30일 이상 경과 시 경고 (관리자 포함 confirm)
+        const overdue = (Date.now() - startMs) / 86400000
+        if (overdue > 30) {
+          if (!confirm(`${STAGE_LABELS[selectedStage]} 예정일에서 ${Math.floor(overdue)}일 경과했습니다. 그래도 평가하시겠습니까?`)) return
+        }
+      }
 
       // 캐시된 closures 가 stale 일 수 있어 — DB 에서 최신 상태 재조회
       const { data: freshClosuresRaw } = await supabase
@@ -446,24 +499,9 @@ ${prevSummary}
           (c) => c.employee_id === selectedEmployeeId && c.stage === STAGES[i]
         )
         if (!prevDone && !prevClosed) {
-          if (isAdminLvl) break // 관리자급은 통과
+          if (isAdminLvl) break // 관리자급은 통과 (이전 회차 미완료만)
           if (!confirm(`${STAGE_LABELS[STAGES[i]]} 평가가 아직 완료되지 않았습니다. 그래도 ${STAGE_LABELS[selectedStage]} 평가를 진행하시겠습니까?`)) return
           break
-        }
-      }
-
-      // 회차 시작일 체크 — 미도래 차수도 confirm 으로 우회 가능
-      if (hire) {
-        const start = new Date(hire.getTime() + ROUND_OFFSET[idx] * 86400 * 1000).getTime()
-        const now = Date.now()
-        if (now < start) {
-          if (!isAdminLvl && !confirm(`${STAGE_LABELS[selectedStage]} 예정일이 아직 도래하지 않았습니다. 조기 평가로 진행하시겠습니까?`)) return
-        }
-        // 7일 자동 마감은 사용성 개선 위해 hard block 제거 (수습 기간 90일 내 언제든 가능)
-        // 평가 예정일 + 30일 이상 경과 시에만 경고 토스트
-        const overdue = (now - start) / 86400000
-        if (overdue > 30) {
-          if (!confirm(`${STAGE_LABELS[selectedStage]} 예정일에서 ${Math.floor(overdue)}일 경과했습니다. 그래도 평가하시겠습니까?`)) return
         }
       }
     }
@@ -660,19 +698,54 @@ ${prevSummary}
           return { allowed: true }
         }
 
-        // 정렬: 직원의 모든 미완료 회차 중 "가장 가까운 다가올 평가(D-)" 기준
-        // ① 미완료 중 D- 최소 → 다가옴 그룹(작은 D- 우선)
-        // ② 미완료 모두 D+ → 지남 그룹(작은 D+ = 최근에 지난 것 우선)
-        // ③ 모든 회차 완료/마감 → 맨 아래
+        // 정렬 (사용자 요구 2026-06-01): D-DAY → 평가 진행중 → D+ 초과 → 다가올 D-N → 완료
+        // ① group 1: 오늘 D-day 인 미시작 활성 회차 보유 (가장 시급, 평가자 알림 발송 대상)
+        // ② group 2: 일부 평가만 완료된 활성 회차 보유 (진행중 — 마감 필요)
+        // ③ group 3: D+ 초과한 미시작 활성 회차 보유 (지연, 시급)
+        // ④ group 4: 다가올 D-N 활성 회차 보유 (작은 N 우선)
+        // ⑤ group 5: 모든 회차 완료 또는 라이프사이클 종료
+        //
+        // 분류 기준 — 한 직원의 모든 회차를 보고 가장 시급한 회차 1개로 그룹 결정
         const sortKey = (emp: typeof probEmpsRaw[number]) => {
-          const rounds = buildRounds(emp)
-          const uncompleted = rounds.filter((r) => !r.isCompleted && r.date)
-          if (uncompleted.length === 0) return { group: 3, value: 0 }
-          const diffs = uncompleted.map((r) => kstDiffDays(r.date!, today))
-          const upcoming = diffs.filter((d) => d >= 0)
-          if (upcoming.length > 0) return { group: 1, value: Math.min(...upcoming) }
-          // 미완료 모두 지남 → 가장 최근에 지난 것 (절대값 최소)
-          return { group: 2, value: Math.min(...diffs.map(Math.abs)) }
+          const hire = emp.hire_date ? new Date(`${emp.hire_date}T00:00:00+09:00`) : null
+          if (!hire) return { group: 5, value: 0 }
+
+          let hasDday = false
+          let hasInProgress = false
+          let dPlusMin: number | null = null     // 가장 작은 D+ 값 (가장 최근 초과)
+          let dMinusMin: number | null = null    // 가장 작은 D-N 값 (가장 가까운 다가옴)
+          let allRoundsDone = true
+
+          STAGES.forEach((stg, i) => {
+            const rdate = new Date(hire.getTime() + ROUND_OFFSET_DAYS[i] * 86400000)
+            const stageEvals = evaluations.filter((ev) => ev.employee_id === emp.id && ev.stage === stg)
+            const isClosed = closures.some((c) => c.employee_id === emp.id && c.stage === stg)
+            const fullyDone = stageEvals.length > 0 && isStageFullyEvaluated(stageEvals, emp)
+            // 완료(fullyDone) 또는 마감(isClosed) 은 제외
+            if (fullyDone || isClosed) return
+            allRoundsDone = false
+            const diff = kstDiffDays(rdate, today)
+            if (stageEvals.length > 0) {
+              // 일부 평가만 완료 = 진행중
+              hasInProgress = true
+              return
+            }
+            // 미시작 회차
+            if (diff === 0) hasDday = true
+            else if (diff < 0) {
+              const absDiff = Math.abs(diff)
+              if (dPlusMin === null || absDiff < dPlusMin) dPlusMin = absDiff
+            } else {
+              if (dMinusMin === null || diff < dMinusMin) dMinusMin = diff
+            }
+          })
+
+          if (allRoundsDone) return { group: 5, value: 0 }
+          if (hasDday) return { group: 1, value: 0 }
+          if (hasInProgress) return { group: 2, value: 0 }
+          if (dPlusMin !== null) return { group: 3, value: dPlusMin }
+          if (dMinusMin !== null) return { group: 4, value: dMinusMin }
+          return { group: 5, value: 0 }
         }
         const probEmps = [...probEmpsRaw].sort((a, b) => {
           const ka = sortKey(a)
@@ -723,7 +796,41 @@ ${prevSummary}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
+              {/* 모바일 카드 뷰 (md 이하) — D-day/D-7 직원 자동 펼침, 그 외 접힘 */}
+              <div className="md:hidden">
+                <ProbationMobileList
+                  probEmps={probEmps}
+                  evaluations={evaluations}
+                  closures={closures}
+                  departments={departments}
+                  employeeTeams={employeeTeams}
+                  employees={employees}
+                  menuPermissions={menuPermissions}
+                  profile={profile}
+                  today={today}
+                  kstDiffDays={kstDiffDays}
+                  formatDate={formatDate}
+                  isStageFullyEvaluated={isStageFullyEvaluated}
+                  getRequiredCountsFor={getRequiredCountsFor}
+                  getTotalScore={getTotalScore}
+                  lifecycleTab={lifecycleTab}
+                  onOpenEval={openNewEval}
+                  onOpenReminder={(empId, empName, stage, stageLabel, diff) =>
+                    setReminderCell({ empId, empName, stage, stageLabel, diffDays: diff })
+                  }
+                  onOpenCellAction={(empId, empName, stage, stageLabel, isOverdue) =>
+                    setCellAction({ empId, empName, stage, stageLabel, isOverdue })
+                  }
+                  onOpenLifecycle={(empId, empName, action) =>
+                    setLifecycleAction({ empId, empName, action })
+                  }
+                  onDeleteEvals={deleteEvaluations}
+                  onReopenClosure={reopenClosure}
+                />
+              </div>
+
+              {/* 데스크탑 테이블 (md 이상) */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b-2 border-gray-200 text-gray-600">
@@ -1072,7 +1179,28 @@ ${prevSummary}
                 label="평가 회차 *"
                 value={selectedStage}
                 onChange={(e) => setSelectedStage(e.target.value as ProbationStage)}
-                options={STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }))}
+                options={(() => {
+                  // 선택된 직원의 입사일 기준 — 예정일 도래한 회차만 노출
+                  // 회차 잘못 선택해 조기 평가가 저장되는 사고 방지 (김보미 3회차 사례)
+                  const emp = employees.find((e) => e.id === selectedEmployeeId)
+                  const hire = emp?.hire_date ? new Date(`${emp.hire_date}T00:00:00+09:00`) : null
+                  if (!hire) return STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }))
+                  const OFFSETS = [14, 42, 70]
+                  const kstTodayStr = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+                  }).format(new Date())
+                  const kstTodayMs = new Date(`${kstTodayStr}T00:00:00+09:00`).getTime()
+                  const out: { value: string; label: string }[] = []
+                  STAGES.forEach((s, i) => {
+                    const startMs = new Date(hire.getTime() + OFFSETS[i] * 86400000).getTime()
+                    const kstStartStr = new Intl.DateTimeFormat('en-CA', {
+                      timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+                    }).format(new Date(startMs))
+                    const kstStartMs = new Date(`${kstStartStr}T00:00:00+09:00`).getTime()
+                    if (kstStartMs <= kstTodayMs) out.push({ value: s, label: STAGE_LABELS[s] })
+                  })
+                  return out
+                })()}
               />
               <Select
                 label="평가자 역할 *"
