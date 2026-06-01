@@ -165,14 +165,14 @@ export default function BulletinIndex() {
                         <span className="text-xs text-brand-600 font-medium">[{post.comment_count}]</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
-                      <span>{post.author_name}</span>
-                      {post.department && <span>{post.department}</span>}
-                      <span>{formatDate(post.created_at)}</span>
-                      <span className="flex items-center gap-0.5">
+                    <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-1 text-xs text-gray-400">
+                      <span className="truncate max-w-[120px]">{post.author_name}</span>
+                      {post.department && <span className="truncate max-w-[120px]">{post.department}</span>}
+                      <span className="shrink-0">{formatDate(post.created_at)}</span>
+                      <span className="flex items-center gap-0.5 shrink-0">
                         <Eye className="h-3 w-3" />{post.view_count}
                       </span>
-                      <span className="flex items-center gap-0.5">
+                      <span className="flex items-center gap-0.5 shrink-0">
                         <MessageSquare className="h-3 w-3" />{post.comment_count}
                       </span>
                     </div>

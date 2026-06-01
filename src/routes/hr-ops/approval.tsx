@@ -1487,7 +1487,7 @@ export default function ApprovalManagementPage() {
 
               {/* 선택된 카테고리의 결재 양식 그리드 */}
               <div className="p-3">
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-1.5">
                   {Object.entries(DOC_TYPE_CONFIG)
                     .filter(([, cfg]) => cfg.category === newRequestCategory)
                     .map(([key, cfg]) => (

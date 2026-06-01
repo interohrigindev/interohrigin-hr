@@ -732,8 +732,8 @@ export default function AttendanceManagementPage() {
 
           return (
             <div className="space-y-4">
-              {/* 요약 */}
-              <div className="grid grid-cols-4 gap-2">
+              {/* 요약 — 모바일에선 2열로 펼침 */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="bg-blue-50 rounded-lg p-2 text-center">
                   <p className="text-lg font-bold text-blue-600">{presentDays}일</p>
                   <p className="text-[10px] text-blue-500">출근</p>

@@ -263,9 +263,9 @@ export default function TaskManage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-gray-900">작업 관리</h1>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} className="shrink-0">
           <Plus className="h-4 w-4" /> 새 작업
         </Button>
       </div>
