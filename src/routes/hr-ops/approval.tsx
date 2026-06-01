@@ -2328,6 +2328,8 @@ function ApprovalTemplateManager({
   const { toast } = useToast()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editSteps, setEditSteps] = useState<EditStep[]>([])
+  // 결재선 이름 편집 (2026-06-01 추가)
+  const [editName, setEditName] = useState<string>('')
   // 금액 조건 편집
   const [editCondField, setEditCondField] = useState<string | null>(null)
   const [editCondOp, setEditCondOp] = useState<string | null>(null)
@@ -2344,6 +2346,7 @@ function ApprovalTemplateManager({
   function startEdit(tmpl: ApprovalTemplate) {
     setEditingId(tmpl.id)
     setEditSteps([...(tmpl.steps as EditStep[])])
+    setEditName(tmpl.name)
     setEditCondField(tmpl.condition_field)
     setEditCondOp(tmpl.condition_operator)
     setEditCondVal(tmpl.condition_value)
@@ -2354,12 +2357,19 @@ function ApprovalTemplateManager({
   function cancelEdit() {
     setEditingId(null)
     setEditSteps([])
+    setEditName('')
     setEditCondField(null); setEditCondOp(null); setEditCondVal(null)
     setEditDeptId(null); setEditTeamId(null)
   }
 
   async function saveEdit(tmplId: string) {
+    const trimmedName = editName.trim()
+    if (!trimmedName) {
+      toast('결재선 이름을 입력하세요', 'error')
+      return
+    }
     const { error } = await supabase.from('approval_templates').update({
+      name: trimmedName,
       steps: editSteps,
       condition_field: editCondField || null,
       condition_operator: editCondOp || null,
@@ -2584,7 +2594,18 @@ function ApprovalTemplateManager({
                 <div className="flex items-start justify-between mb-3 gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     <span className="text-xl">{typeIcon[tmpl.doc_type] || '📋'}</span>
-                    <h3 className="font-semibold text-gray-900 text-sm truncate">{tmpl.name}</h3>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="결재선 이름 (예: 일일 업무보고)"
+                        className="font-semibold text-gray-900 text-sm border-2 border-brand-300 rounded px-2 py-0.5 bg-white focus:outline-none focus:border-brand-500 min-w-0 flex-1 max-w-[280px]"
+                        autoFocus
+                      />
+                    ) : (
+                      <h3 className="font-semibold text-gray-900 text-sm truncate">{tmpl.name}</h3>
+                    )}
                     <Badge variant={tmpl.is_active ? 'success' : 'default'} className="text-[10px]">
                       {tmpl.is_active ? '활성' : '비활성'}
                     </Badge>
