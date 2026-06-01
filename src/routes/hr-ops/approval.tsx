@@ -1451,12 +1451,12 @@ export default function ApprovalManagementPage() {
             onClick={() => setNewRequestExpanded((v) => !v)}
             className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors text-left"
           >
-            <div className="flex items-center gap-2">
-              <Plus className="h-4 w-4 text-brand-600" />
-              <span className="text-sm font-bold text-gray-700">새 결재 신청</span>
-              <span className="text-[11px] text-gray-400">{newRequestExpanded ? '클릭하여 닫기' : '클릭하여 펼치기'}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <Plus className="h-4 w-4 text-brand-600 shrink-0" />
+              <span className="text-sm font-bold text-gray-700 shrink-0">새 결재 신청</span>
+              <span className="hidden sm:inline text-[11px] text-gray-400 truncate">{newRequestExpanded ? '클릭하여 닫기' : '클릭하여 펼치기'}</span>
             </div>
-            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${newRequestExpanded ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform shrink-0 ${newRequestExpanded ? 'rotate-180' : ''}`} />
           </button>
 
           {/* 본문 — expanded 일 때만 노출 */}

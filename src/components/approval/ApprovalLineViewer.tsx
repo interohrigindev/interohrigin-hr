@@ -154,11 +154,11 @@ export function ApprovalLineViewer({
             {/* 우측 정보 */}
             <div className={`flex-1 min-w-0 ${isLast ? '' : 'pb-2'}`}>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] text-gray-400 font-mono">{idx + 1}.</span>
-                <span className={`${compact ? 'text-xs' : 'text-sm'} font-semibold text-gray-900`}>
+                <span className="text-[10px] text-gray-400 font-mono shrink-0">{idx + 1}.</span>
+                <span className={`${compact ? 'text-xs' : 'text-sm'} font-semibold text-gray-900 break-keep [word-break:keep-all]`}>
                   {step.approver_name}
                 </span>
-                <span className="text-xs text-gray-500">— {step.role_label}</span>
+                <span className="text-xs text-gray-500 break-keep shrink-0">— {step.role_label}</span>
                 {step.action_type && step.action_type !== 'approve' && (
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${ACTION_TYPE_COLOR[actionType]}`}>
                     {ACTION_TYPE_LABEL[actionType]}

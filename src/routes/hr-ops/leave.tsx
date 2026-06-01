@@ -1096,21 +1096,21 @@ export default function LeaveManagementPage() {
                     <button
                       type="button"
                       onClick={() => toggleEmpExpand(emp.id)}
-                      className="w-full text-left flex items-center justify-between gap-3"
+                      className="w-full text-left flex items-center justify-between gap-2 flex-wrap"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center text-base font-bold text-blue-700 shrink-0">{emp.name[0]}</div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="font-bold text-gray-900 text-lg truncate leading-tight">{emp.name}</p>
                           <p className="text-xs text-gray-500 truncate">{getDeptName(emp.department_id)}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2.5 shrink-0">
-                        <div className="text-right leading-none">
-                          <span className="text-3xl font-extrabold text-blue-600">{emp.remainingAnnual}</span>
-                          <span className="text-xs text-gray-400 ml-0.5">일 잔여</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="text-right leading-none whitespace-nowrap">
+                          <span className="text-2xl sm:text-3xl font-extrabold text-blue-600">{emp.remainingAnnual}</span>
+                          <span className="text-xs text-gray-400 ml-0.5">일</span>
                         </div>
-                        {isUrgent ? <Badge variant="danger" className="text-xs shrink-0">촉진 필요</Badge> : isWarning ? <Badge variant="warning" className="text-xs shrink-0">주의</Badge> : emp.usageRate >= 80 ? <Badge variant="success" className="text-xs shrink-0">양호</Badge> : <Badge variant="default" className="text-xs shrink-0">정상</Badge>}
+                        {isUrgent ? <Badge variant="danger" className="text-xs shrink-0 whitespace-nowrap">촉진</Badge> : isWarning ? <Badge variant="warning" className="text-xs shrink-0 whitespace-nowrap">주의</Badge> : emp.usageRate >= 80 ? <Badge variant="success" className="text-xs shrink-0 whitespace-nowrap">양호</Badge> : <Badge variant="default" className="text-xs shrink-0 whitespace-nowrap">정상</Badge>}
                         <span className="text-gray-300 text-sm">{expandedEmps.has(emp.id) ? '▲' : '▼'}</span>
                       </div>
                     </button>
